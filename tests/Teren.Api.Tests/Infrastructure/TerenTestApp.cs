@@ -8,9 +8,13 @@ using Npgsql;
 using Teren.Core.Entities;
 using Teren.Core.Ai;
 using Teren.Core.Processing;
+using Teren.Core.Reporting;
 using Teren.Core.Storage;
 using Teren.Core.Tenancy;
 using Teren.Infrastructure.Persistence;
+using Teren.Infrastructure.Reporting;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Testcontainers.PostgreSql;
 
 namespace Teren.Api.Tests.Infrastructure;
@@ -66,6 +70,15 @@ public sealed class TerenTestApp : IAsyncLifetime
 
     public RecordingPipelineQueue Pipeline { get; } = new();
 
+    public FakeReportDelivery Delivery { get; } = new();
+
+    /// <summary>The real QuestPDF renderer with the model it was given recorded. Real on purpose:
+    /// the PDF is the product's face, and a stub would leave the licence declaration, the Serbian
+    /// glyph check and the whole layout untested behind a green suite.</summary>
+    public RecordingReportRenderer Renderer { get; } = new(
+        Options.Create(new ReportingOptions()),
+        NullLogger<QuestPdfReportRenderer>.Instance);
+
     public InsertRaceInterceptor RaceInterceptor { get; } = new();
 
     public string ApiConnectionString { get; private set; } = string.Empty;
@@ -110,6 +123,16 @@ public sealed class TerenTestApp : IAsyncLifetime
             "Storage__UploadUrlTtl", UploadUrlTtl.ToString("c"));
         // The floor the options validator allows, so the budget test costs two seconds, not ten.
         Environment.SetEnvironmentVariable("Storage__VerificationBudget", "00:00:02");
+
+        // B6. The relay itself is faked, but everything in front of it is real — including the
+        // options binding, so a range the validator would refuse fails the fixture rather than
+        // one unlucky test.
+        Environment.SetEnvironmentVariable("Reporting__FromAddress", "izvestaj@teren.test");
+        Environment.SetEnvironmentVariable("Reporting__FromName", "Teren");
+        Environment.SetEnvironmentVariable("Reporting__Smtp__Host", "mail.invalid");
+        // The floor the options validator allows, so the render-budget test costs two seconds
+        // rather than five minutes. Same trick, and same justification, as Storage__VerificationBudget.
+        Environment.SetEnvironmentVariable("Reporting__RenderBudget", "00:00:02");
 
         // No Hangfire in the test host. The pipeline's own seams — IPipelineQueue in front of it
         // and EntryProcessor behind it — are what the tests drive, so a job server would only
@@ -199,6 +222,8 @@ public sealed class TerenTestApp : IAsyncLifetime
         Transcription.Reset();
         Extractor.Reset();
         Pipeline.Reset();
+        Delivery.Reset();
+        Renderer.Reset();
         RaceInterceptor.Disarm();
 
         await using var db = CreateDbContext(companyId: null);
@@ -220,6 +245,8 @@ public sealed class TerenTestApp : IAsyncLifetime
                 Address = "Vojvode Stepe 212, Voždovac, Beograd",
                 Latitude = 44.7692,
                 Longitude = 20.4787,
+                // One recipient, Serbian: the ordinary private job.
+                Recipients = OneRecipient,
                 ReportLanguage = "sr",
                 CreatedAt = now,
             },
@@ -228,7 +255,12 @@ public sealed class TerenTestApp : IAsyncLifetime
                 Id = TestIds.ProjectA2,
                 CompanyId = TestIds.CompanyA,
                 Name = "Zgrada B",
-                ReportLanguage = "sr",
+                // Two recipients, and English. Both halves are load-bearing: commercial jobs in
+                // Serbia carry the investor and the nadzorni organ on one list (which is why the
+                // demo seed's second site does too), and a foreign investor's project is what
+                // proves the report follows project.report_language rather than the caller.
+                Recipients = TwoRecipients,
+                ReportLanguage = "en",
                 CreatedAt = now,
             },
             new Project
@@ -236,12 +268,26 @@ public sealed class TerenTestApp : IAsyncLifetime
                 Id = TestIds.ProjectB1,
                 CompanyId = TestIds.CompanyB,
                 Name = "Gradiliste druge firme",
+                Recipients = OneRecipient,
                 ReportLanguage = "sr",
                 CreatedAt = now,
             });
 
         await db.SaveChangesAsync();
     }
+
+    /// <summary>The distribution lists the baseline projects carry, in the shape ARCHITECTURE §6
+    /// fixes for <c>project.recipients</c>.</summary>
+    public const string OneRecipient =
+        """
+        [{"name": "Dragan Obradović", "email": "dragan.obradovic@example.com", "role": "investitor"}]
+        """;
+
+    public const string TwoRecipients =
+        """
+        [{"name": "Jelena Marković", "email": "jelena.markovic@example.com", "role": "investitor"},
+         {"name": "Aleksandar Stanković", "email": "aleksandar.stankovic@example.com", "role": "nadzorni organ"}]
+        """;
 
     // ------------------------------------------------------------------ plumbing
 
@@ -284,6 +330,15 @@ public sealed class TerenTestApp : IAsyncLifetime
 
                 services.RemoveAll<IPipelineQueue>();
                 services.AddSingleton<IPipelineQueue>(app.Pipeline);
+
+                // The mail relay, faked at the seam PROJECT.md §11 put there. The renderer is
+                // *not* faked — it is the real one, wrapped so the model it was handed can be
+                // inspected.
+                services.RemoveAll<IReportDelivery>();
+                services.AddSingleton<IReportDelivery>(app.Delivery);
+
+                services.RemoveAll<IReportRenderer>();
+                services.AddSingleton<IReportRenderer>(app.Renderer);
 
                 // A second AddDbContext contributes another options configuration, applied after
                 // the one in Program.cs; the connection string is identical (both come from the

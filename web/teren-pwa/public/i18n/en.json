@@ -46,6 +46,13 @@
       "label": "Recent entries",
       "all": "All entries",
       "empty": "No entries on this phone for this site yet."
+    },
+    "attention": {
+      "zero": "Nothing is waiting for you",
+      "one": "{{count}} entry is waiting for you",
+      "few": "{{count}} entries are waiting for you",
+      "other": "{{count}} entries are waiting for you",
+      "hint": "Check what was understood so the report can go out."
     }
   },
   "entry": {
@@ -99,6 +106,35 @@
         "body": "The recording and photos are safe on this phone and upload on their own. Until they arrive, this entry cannot go into a report."
       }
     },
+    "revise": {
+      "title": "You can still correct this entry",
+      "body": "You have already confirmed this day. Until the report goes out to the client, you can still change what it says.",
+      "action": "Correct the entry",
+      "row": "Correct",
+      "rowLabel": "Correct the entry recorded at {{time}}"
+    },
+    "report": {
+      "title": "Report sent to the client",
+      "body": "This is the PDF the client received. Download it to keep it or to pass it on.",
+      "download": "Download the PDF",
+      "again": "Try again",
+      "downloading": "Downloading…",
+      "progress": "{{percent}}% downloaded",
+      "saved": "The report has been downloaded to this device.",
+      "error": {
+        "offline": "No internet, so the report could not be fetched. Nothing has happened to it — try again once the network is back.",
+        "server": "The server did not answer, so the report could not be fetched. It has not been lost — try again in a moment.",
+        "notReady": "The report is not ready yet. It is still being produced and sent — try again in a few moments.",
+        "notReported": "No report has gone out for this day yet, so there is nothing to download. It appears here once it has been sent to the client.",
+        "missing": "The server has no such entry. This record may have been opened from an old link.",
+        "unavailable": "The report was sent to the client, but the server can no longer produce the file. The client still has it by email; the entry and its evidence are untouched.",
+        "rejected": "The server refused the request for this report. The entry itself is untouched, but this cannot be fixed from the phone.",
+        "unauthorized": "This phone is not authorised to download reports from the server.",
+        "notConfigured": "This app has no server set up, so reports cannot be downloaded.",
+        "empty": "The server sent an empty file, so nothing was saved. Try again in a moment.",
+        "unknown": "The report could not be downloaded. Nothing has changed on the entry — try again."
+      }
+    },
     "section": {
       "work": "Work done",
       "headcount": "People",
@@ -109,7 +145,8 @@
       "transcript": "Transcript",
       "photos": "Photos",
       "audio": "Recording",
-      "conditions": "Conditions"
+      "conditions": "Conditions",
+      "report": "Report"
     },
     "structure": {
       "corrected": "Checked by a person",
@@ -172,6 +209,123 @@
       "label": "Location",
       "accuracy": "±{{metres}} m"
     }
+  },
+  "confirm": {
+    "title": "Check the entry",
+    "open": "Check and confirm",
+    "lead": "Nothing is sent to the client until you confirm it.",
+    "draftSaved": "Everything you type is kept on this phone, before it is sent.",
+    "draftNotSaved": "This phone could not save your corrections. They are still on screen — confirm now so the server keeps them.",
+    "banner": {
+      "awaiting": {
+        "title": "Check what was understood",
+        "body": "This is what the system made of your recording. Correct anything that is wrong — the recording itself is never changed."
+      },
+      "noTranscript": {
+        "title": "Nothing could be read from the recording",
+        "body": "Write down what was done, using your own words below. The recording and the photos are kept exactly as they were."
+      },
+      "noStructure": {
+        "title": "The system could not sort this day into lines",
+        "body": "Your own words came through and are above, exactly as recorded. Write the lines yourself below — the recording and the photos are kept exactly as they were."
+      },
+      "confirmed": {
+        "title": "Confirmed",
+        "body": "You can still correct this entry until the report goes out."
+      }
+    },
+    "state": {
+      "loading": "Loading the entry…",
+      "processing": {
+        "title": "Processing",
+        "body": "The server has the recording and is still working on it. This screen opens on its own as soon as there is something to check."
+      },
+      "notSent": {
+        "title": "Not on the server yet",
+        "body": "The recording and photos are safe on this phone and upload on their own. There is nothing to confirm until they arrive."
+      },
+      "notFound": {
+        "title": "Entry not found",
+        "body": "This entry is neither on the phone nor on the server."
+      },
+      "unreachable": {
+        "title": "The server could not be asked",
+        "body": "This entry cannot be confirmed without a connection. Nothing has been lost — try again when the network is back."
+      },
+      "reported": {
+        "title": "This entry has already been sent",
+        "body": "A sent entry never changes. Record a new entry with the correction; it will refer back to this one."
+      }
+    },
+    "field": {
+      "description": "What was done",
+      "location": "Where",
+      "quantity": "Quantity",
+      "unit": "Unit",
+      "total": "People on site",
+      "role": "Trade",
+      "count": "How many",
+      "name": "Material",
+      "waitingOn": "Waiting on",
+      "notes": "Notes"
+    },
+    "add": {
+      "work": "Add work",
+      "role": "Add a trade",
+      "material": "Add material",
+      "blocker": "Add a blocker",
+      "hiddenWork": "Add hidden work"
+    },
+    "remove": "Remove this line",
+    "empty": {
+      "work": "No work written down yet.",
+      "roles": "No trades written down yet.",
+      "materials": "No material written down yet.",
+      "blockers": "No blockers.",
+      "hiddenWork": "No hidden work recorded."
+    },
+    "delivered": {
+      "label": "Delivery",
+      "unknown": "Not said"
+    },
+    "transcript": {
+      "hint": "Your own words, as recorded. Never changed.",
+      "toNotes": "Copy into notes"
+    },
+    "verbatim": {
+      "title": "The system could not sort this day into lines",
+      "body": "Your words came through correctly and are above. Only the sorting into work, materials and people failed. You can send those words as today's record — the client reads them as your own description of the day, not as data the system read out.",
+      "action": "Send my own words",
+      "orEdit": "Or write the day out in lines below instead."
+    },
+    "action": {
+      "confirm": "Confirm entry",
+      "sending": "Sending…",
+      "again": "Try again",
+      "done": "Done",
+      "revise": "Correct again"
+    },
+    "requireContent": "Write at least one line before confirming.",
+    "requireContentOrWords": "Write at least one line, or send your own words above.",
+    "success": {
+      "title": "Entry confirmed",
+      "body": "The report is built from what you confirmed. Your corrections are kept so the system reads the next recording better."
+    },
+    "successVerbatim": {
+      "title": "Your own words were confirmed",
+      "body": "The report carries your description of the day, exactly as you spoke it — with no lines for work, materials or people, because the system could not read them out of the recording."
+    },
+    "error": {
+      "offline": "The server could not be reached, so the entry was not confirmed.",
+      "server": "The server is not responding right now, so the entry was not confirmed.",
+      "reported": "The report for this entry has already been sent, so it can no longer be changed. A correction is a new entry.",
+      "notReady": "The server is still working on this entry. Try again in a moment.",
+      "rejected": "The server did not accept this confirmation.",
+      "unauthorized": "This phone is not authorised to confirm entries.",
+      "notConfigured": "This app has no server set up, so nothing can be confirmed.",
+      "unknown": "Confirming failed for an unexpected reason."
+    },
+    "errorSafe": "Nothing was lost — everything you typed is kept on this phone."
   },
   "capture": {
     "record": {

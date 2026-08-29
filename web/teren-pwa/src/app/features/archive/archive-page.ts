@@ -18,7 +18,7 @@ import { ArchiveService, RemoteStatus } from '../../core/archive/archive.service
 import { ConnectivityService } from '../../core/connectivity.service';
 import { EntryStore } from '../../core/db/entry-store';
 import { DayLabel, dayLabel, localDay } from '../../core/db/local-day';
-import { LocalEntry } from '../../core/db/models';
+import { LocalEntry, canRevise } from '../../core/db/models';
 import { ProjectService } from '../../core/projects/project.service';
 import { AppHeader } from '../../ui/app-header';
 import { DurationPipe } from '../../ui/duration.pipe';
@@ -228,6 +228,28 @@ export class ArchivePage {
 
   protected open(row: ArchiveRow): void {
     void this.router.navigate(['/dnevnik'], { queryParams: { unos: row.id } });
+  }
+
+  /**
+   * Whether this day may still be corrected — and therefore whether the row offers the way back.
+   *
+   * The archive is where this belongs and Home is where it does not. Home's attention row asks
+   * "what is waiting on a person?" and a confirmed entry is waiting on nobody; putting it there
+   * would nag a foreman about work he has already finished. Here he is *looking* for a past
+   * entry, which is exactly the moment he notices the typo.
+   */
+  protected revisable(row: ArchiveRow): boolean {
+    return canRevise(row.serverStatus, row.reportedAt);
+  }
+
+  /**
+   * Straight to the gate, not to the record first.
+   *
+   * The one action behind this button is correcting the entry; routing through the read-only
+   * record would put a screen he did not ask for between the tap and the form.
+   */
+  protected revise(row: ArchiveRow): void {
+    void this.router.navigate(['/potvrda', row.id]);
   }
 
   /**

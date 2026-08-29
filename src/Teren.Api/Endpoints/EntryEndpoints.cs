@@ -7,6 +7,7 @@ using Teren.Api.Contracts;
 using Teren.Api.Validation;
 using Teren.Core.Entities;
 using Teren.Core.Processing;
+using Teren.Core.Reporting;
 using Teren.Core.Storage;
 using Teren.Infrastructure.Persistence;
 using Teren.Infrastructure.Storage;
@@ -57,6 +58,13 @@ public static class EntryEndpoints
             .WithName("ListEntries")
             .WithSummary("Archive list, filtered by project and date range.")
             .Produces<EntryListResponse>();
+
+        group.MapGet("/{id}/report", GetEntryReportAsync)
+            .WithName("GetEntryReport")
+            .WithSummary("Download the PDF report that was sent for this entry.")
+            .Produces<FileResult>(StatusCodes.Status200OK, "application/pdf")
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         return api;
     }
@@ -555,6 +563,7 @@ public static class EntryEndpoints
         string id,
         ConfirmEntryRequest request,
         TerenDbContext db,
+        IPipelineQueue pipeline,
         ILogger<Entry> logger,
         CancellationToken ct)
     {
@@ -602,11 +611,75 @@ public static class EntryEndpoints
         if (entry.Status == EntryStatus.Confirmed
             && JsonNode.DeepEquals(ParseJson(entry.Corrected), request.Corrected))
         {
-            // A replay: same entry, same approved structure. Free, and confirmed_at keeps the
-            // moment the human actually decided rather than the moment his phone retried.
+            // A replay: same entry, same approved structure. `confirmed_at` keeps the moment the
+            // human actually decided rather than the moment his phone retried.
+            //
+            // But it is **not** a no-op, because a confirmation always means the same thing:
+            // this entry should be reported. That matters for the realistic retry — the report
+            // failed because the project had no recipients, or the relay was misconfigured, and
+            // fixing either changes nothing about the entry a foreman would re-approve. If a
+            // replay short-circuited here, the documented "fix the cause and confirm again" path
+            // would silently do nothing and the entry would sit unreported forever. Re-queueing
+            // is free: the report row's unique entry_id lets exactly one pass send.
+            //
+            // **Except when the server does not know whether the client already has the report.**
+            // A replay is a wire event — this is literally the moment his phone retried, and it
+            // carries no human intent whatsoever. If the previous attempt was abandoned mid-send
+            // or broke after transmission had begun, clearing that reason and re-queueing would
+            // resend it on nothing but a lost HTTP response, and a second copy of a site diary
+            // would land in an investor's inbox with nobody having decided anything.
+            // ARCHITECTURE §6: a report abandoned mid-send is never re-sent automatically — a
+            // person decides. Resending after one must take a gesture a network retry cannot
+            // carry, which is a founder decision and is not built yet; until then the reason
+            // stands and the phone is told the current state, which is exactly true.
+            if (ReportFailure.IsCustodyUnknown(entry.FailureReason))
+            {
+                logger.LogWarning(
+                    "Entry {EntryId} confirmation replayed, but its last report ended with "
+                    + "custody unknown ({FailureCode}); nothing is queued and the reason stands.",
+                    entryId, ReportFailure.CodeOf(entry.FailureReason));
+
+                return TypedResults.Ok(await ToResponseAsync(db, entry, ct));
+            }
+
+            if (entry.FailureReason is not null)
+            {
+                entry.FailureReason = null;
+                await db.SaveChangesAsync(ct);
+            }
+
+            pipeline.EnqueueReport(entry.Id, entry.CompanyId);
+
             logger.LogInformation(
-                "Entry {EntryId} confirmation replayed; nothing changed.", entryId);
+                "Entry {EntryId} confirmation replayed; the report is queued again.", entryId);
             return TypedResults.Ok(await ToResponseAsync(db, entry, ct));
+        }
+
+        // From here on the content is *changing*. "A person can revise his own answer up until the
+        // report goes out" is only true if that is enforced, and a report row in `sending` is
+        // precisely "the report is going out right now": a pass is holding the claim and the next
+        // thing it does is hand the PDF to a relay. Accepting a revision into that window seals an
+        // entry that does not match the document the client received — the contractor's own
+        // archive contradicting the report in a dispute, which for an evidence product is worse
+        // than refusing.
+        //
+        // THE TRADE-OFF, STATED RATHER THAN BURIED: if a pass dies while holding the claim, this
+        // refusal stands until the sweeper marks the row failed — up to Reporting:StaleAfter, 30
+        // minutes — during which a foreman who wants to correct his entry is told to wait. That is
+        // a rare crash window against a routine correctness hazard, and it fails in the direction
+        // that keeps the archive honest. Retry-After says a minute because the claim usually
+        // resolves in seconds.
+        if (entry.Status == EntryStatus.Confirmed
+            && await db.Reports.AnyAsync(
+                r => r.EntryId == entryId && r.Status == ReportStatus.Sending, ct))
+        {
+            logger.LogInformation(
+                "Entry {EntryId}: a changed confirmation arrived while its report was being "
+                + "sent; refusing rather than sealing content the client will not have.", entryId);
+
+            return ApiProblems.Conflict(
+                $"Entry {entryId} is being reported right now, so it cannot be changed at this "
+                + "moment. Try again shortly.");
         }
 
         // raw_transcript and structure are not touched here, by construction. They are two thirds
@@ -616,12 +689,21 @@ public static class EntryEndpoints
         entry.Corrected = corrected;
         entry.Status = EntryStatus.Confirmed;
         entry.ConfirmedAt = DateTime.UtcNow;
+        // Cleared deliberately, and it is what makes "fix the cause and confirm again" the retry
+        // path for a report that failed: the sweeper picks up a confirmed, unreported entry only
+        // while it carries no failure reason.
         entry.FailureReason = null;
 
         await db.SaveChangesAsync(ct);
 
+        // The report is built and emailed in a Hangfire job, never here. Generating a PDF and
+        // holding an SMTP conversation open inside a request a human is waiting on is exactly
+        // what principle 4 forbids. If this enqueue is lost the entry is still `confirmed` with
+        // no failure reason, which is precisely what the sweeper picks up.
+        pipeline.EnqueueReport(entry.Id, entry.CompanyId);
+
         logger.LogInformation(
-            "Entry {EntryId} confirmed (structure {StructureState}).",
+            "Entry {EntryId} confirmed (structure {StructureState}); report queued.",
             entryId, entry.Structure is null ? "absent" : "present");
 
         return TypedResults.Ok(await ToResponseAsync(db, entry, ct));
@@ -721,6 +803,141 @@ public static class EntryEndpoints
             .ToList();
 
         return TypedResults.Ok(new EntryListResponse(items, items.Count));
+    }
+
+    // ------------------------------------------------ GET /api/entries/{id}/report
+
+    /// <summary>
+    /// Streams the PDF that was sent to the client, so the contractor can pull his own report out
+    /// of the app instead of going looking for the email.
+    ///
+    /// <para><b>Authenticated bytes, never a presigned GET</b> (founder, 2026-08-29, PROJECT.md
+    /// §11). Every other object in this system is reached with a presigned URL, and this one
+    /// deliberately is not: a presigned link works for anyone who ends up holding it — forwarded,
+    /// pasted into a chat, sitting in a browser history — and a site diary is a client's
+    /// commercial data. The trade-off accepted in exchange is that these bytes pass through the
+    /// API, which ARCHITECTURE §2 rule 1 forbids for *media*. A report is not media: it is the one
+    /// artefact the server produces rather than receives, the same exception §8 already records
+    /// for the write side.</para>
+    ///
+    /// <para><b>This is the system's first read path for object storage</b>, and the groundwork
+    /// for closing the photo gap that keeps C3 at ◐ (ARCHITECTURE §8). The photo endpoint is a
+    /// separate increment and is deliberately not built here; what is built here is the shape it
+    /// will reuse — <c>IObjectStorage.OpenReadAsync</c> returning metadata with the bytes, and
+    /// <c>VerifiedObjectReader</c> proving them before anybody is handed them.</para>
+    ///
+    /// <para>Three answers, and the distinction between them is the contract:
+    /// <list type="bullet">
+    /// <item><b>404</b> — no such entry *for this company*. An entry belonging to another tenant
+    /// is indistinguishable from one that never existed, which is the rule the whole API follows
+    /// (see <see cref="ApiProblems"/>).</item>
+    /// <item><b>409 <c>report_not_ready</c></b> — the entry is yours, but nothing has been sent
+    /// yet. The phone must be able to tell this from "gone", because one is worth polling and the
+    /// other is worth telling the user about.</item>
+    /// <item><b>409 <c>report_unavailable</c></b> — a report was sent, and its bytes are not
+    /// retrievable. A server-side fault, reported honestly rather than dressed up as "try
+    /// later".</item>
+    /// </list></para>
+    /// </summary>
+    private static async Task<IResult> GetEntryReportAsync(
+        string id,
+        TerenDbContext db,
+        IObjectStorage storage,
+        ILogger<Entry> logger,
+        CancellationToken ct)
+    {
+        if (!Guid.TryParse(id, out var entryId))
+        {
+            return ApiProblems.BadRequest("The entry id in the path is not a valid UUID.");
+        }
+
+        // Tenant-scoped by the global query filter, exactly like GET /api/entries/{id}: another
+        // company's entry comes back null and is answered as though it does not exist.
+        var entry = await db.Entries.AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == entryId, ct);
+
+        if (entry is null)
+        {
+            return ApiProblems.NotFound($"Entry {entryId} was not found.");
+        }
+
+        var report = await db.Reports.AsNoTracking()
+            .FirstOrDefaultAsync(r => r.EntryId == entryId, ct);
+
+        // `sent` and nothing else. A row that is `sending` has a PDF in storage already, but the
+        // relay has not taken custody — handing that out would let the app show a client a report
+        // the client has not been sent, and if the pass then fails it is a document that never
+        // officially existed.
+        if (report is not { Status: ReportStatus.Sent, PdfObjectKey: { Length: > 0 } objectKey })
+        {
+            return ApiProblems.Conflict(
+                ApiProblemCodes.ReportNotReady,
+                $"Entry {entryId} has no sent report to download"
+                + (report is null
+                    ? "; no report has been generated for it."
+                    : $"; its report is {ReportStatusNames.ToWire(report.Status)}."));
+        }
+
+        VerifiedObject? verified;
+        try
+        {
+            // Verified before a single byte is served, for the same reason a photograph's
+            // checksum is verified before it is embedded (ARCHITECTURE §6, review F3): this is an
+            // evidence product, and bytes that do not match the record must not be handed to
+            // anybody as though they did. Spooled to a temp file rather than into memory — see
+            // VerifiedObjectReader.
+            verified = await VerifiedObjectReader.OpenVerifiedAsync(
+                storage, objectKey, report.PdfSha256, ct);
+        }
+        catch (EvidenceIntegrityException ex)
+        {
+            logger.LogError(
+                "Entry {EntryId}: report {ReportId} is in storage but does not match the recorded "
+                + "checksum — {Reason}", entryId, report.Id, ex.Message);
+
+            return ApiProblems.Conflict(
+                ApiProblemCodes.ReportUnavailable,
+                $"The stored report for entry {entryId} does not match what was sent.");
+        }
+
+        if (verified is null)
+        {
+            logger.LogError(
+                "Entry {EntryId}: report {ReportId} was sent at {SentAt} but nothing is stored at "
+                + "its key.", entryId, report.Id, report.SentAt);
+
+            return ApiProblems.Conflict(
+                ApiProblemCodes.ReportUnavailable,
+                $"The report for entry {entryId} is no longer in storage.");
+        }
+
+        if (!verified.Verified)
+        {
+            // A row written before report.pdf_sha256 existed. Served, because a report that was
+            // genuinely sent must stay retrievable — but never silently.
+            logger.LogWarning(
+                "Entry {EntryId}: report {ReportId} records no checksum, so the bytes served were "
+                + "not proven against anything.", entryId, report.Id);
+        }
+
+        var project = await db.Projects.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == entry.ProjectId, ct);
+
+        // The same name the client already has on the copy in his inbox — one report, one file
+        // name, whichever way it reached him.
+        var fileName = ReportFileName.ForDaily(
+            ReportStrings.For(project?.ReportLanguage),
+            project?.Name ?? string.Empty,
+            entry.EntryDate);
+
+        // FileStreamHttpResult reads Length off the (seekable) file for Content-Length, writes
+        // `Content-Disposition: attachment; filename="..."`, and disposes the stream when the
+        // response is done — which, because it was opened DeleteOnClose, is also what removes the
+        // temp file.
+        return Results.File(
+            verified.Content,
+            contentType: "application/pdf",
+            fileDownloadName: fileName);
     }
 
     // ------------------------------------------------------------------- helpers

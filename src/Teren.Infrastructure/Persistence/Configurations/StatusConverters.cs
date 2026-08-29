@@ -23,4 +23,7 @@ internal static class StatusConverters
 
     public static readonly ValueConverter<ReportKind, string> ReportKind =
         new(kind => ReportKindNames.ToWire(kind), value => ReportKindNames.Parse(value));
+
+    public static readonly ValueConverter<ReportStatus, string> ReportStatus =
+        new(status => ReportStatusNames.ToWire(status), value => ReportStatusNames.Parse(value));
 }

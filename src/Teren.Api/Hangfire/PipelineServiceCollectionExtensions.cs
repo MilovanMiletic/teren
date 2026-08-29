@@ -2,8 +2,10 @@ using Hangfire;
 using Hangfire.PostgreSql;
 using Teren.Core.Ai;
 using Teren.Core.Processing;
+using Teren.Core.Reporting;
 using Teren.Infrastructure.Ai;
 using Teren.Infrastructure.Processing;
+using Teren.Infrastructure.Reporting;
 
 namespace Teren.Api.Hangfire;
 
@@ -41,6 +43,17 @@ public static class PipelineServiceCollectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        // Same policy as the AI keys: the timings and limits are validated because a nonsensical
+        // one is a deployment mistake, but an absent relay host is not — capture and upload need
+        // no mail server, and a host that refused to boot without one would make the whole
+        // upload path unrunnable on a laptop. A missing relay surfaces as an honest
+        // `delivery_not_configured` on the entry.
+        services
+            .AddOptions<ReportingOptions>()
+            .Bind(configuration.GetSection(ReportingOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         // ---- external services --------------------------------------------
 
         var azure = configuration
@@ -54,11 +67,19 @@ public static class PipelineServiceCollectionExtensions
         services.AddSingleton<ITranscriptionProvider, AzureFastTranscriptionProvider>();
         services.AddSingleton<IStructureExtractor, ClaudeStructureExtractor>();
 
+        // B6. Both stateless: the renderer holds only layout settings, and the SMTP client is
+        // created per send because a pooled connection to a relay is a connection that goes
+        // stale between two reports a day.
+        services.AddSingleton<IReportRenderer, QuestPdfReportRenderer>();
+        services.AddSingleton<IReportDelivery, SmtpReportDelivery>();
+
         // ---- the pipeline --------------------------------------------------
-        // Scoped: both take the request-or-job-scoped DbContext and TenantContext.
+        // Scoped: all of them take the request-or-job-scoped DbContext and TenantContext.
         services.AddScoped<EntryProcessor>();
+        services.AddScoped<EntryReporter>();
         services.AddScoped<PipelineSweeper>();
         services.AddScoped<EntryProcessingJob>();
+        services.AddScoped<EntryReportJob>();
         services.AddScoped<PipelineSweepJob>();
 
         return services;

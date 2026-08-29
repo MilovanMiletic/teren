@@ -81,6 +81,13 @@
   margin-top: 1px;
 }
 
+/* The one action a read-only record offers: hand over to the gate. */
+.detail__notice-action {
+  flex: none;
+  width: auto;
+  align-self: center;
+}
+
 .detail__notice-text {
   display: flex;
   flex-direction: column;
@@ -108,6 +115,45 @@
 .detail__notice--err .detail__notice-title,
 .detail__notice--err .t-meta {
   color: var(--color-err);
+}
+
+/*
+ * The still-correctable notice: the same object, in the accent rather than in a semantic alarm
+ * colour. Nothing is wrong with this entry and nothing is outstanding — he confirmed it — so an
+ * orange box would be the record raising an alarm about finished work.
+ */
+.detail__notice--accent {
+  background: var(--color-accent-tint-1);
+  box-shadow: none;
+  /*
+   * Compact (<768) cannot hold an icon, two lines of explanation and a pill on one row without
+   * squeezing the sentence into a column two words wide, so the action drops beneath the text
+   * and sits at the right edge. From medium up there is room and the row never wraps.
+   */
+  flex-wrap: wrap;
+}
+
+.detail__notice--accent .detail__notice-text {
+  flex-grow: 1;
+  /* Narrower than this the sentence stops reading as a sentence; the action wraps instead. */
+  min-width: 15rem;
+}
+
+.detail__notice--accent .detail__notice-icon {
+  color: var(--color-accent-deep);
+}
+
+.detail__notice--accent .detail__notice-title {
+  color: var(--color-ink);
+}
+
+.detail__notice--accent .t-meta {
+  color: var(--color-ink-2);
+}
+
+.detail__notice--accent .detail__notice-action {
+  /* On the wrapped line: under the sentence, not under the icon. */
+  margin-left: auto;
 }
 
 /*
@@ -366,6 +412,104 @@
 @media (hover: hover) and (pointer: fine) {
   .photos__thumb:hover {
     box-shadow: var(--shadow-card);
+    opacity: 0.92;
+  }
+}
+
+/* ---- The report ---------------------------------------------------------------------------
+ * The finished document, at the end of the evidence it was built from — and the only action a
+ * reported record offers, so its button may be the primary one. */
+
+.detail__report-row {
+  /* Compact: side by side here would squeeze the sentence into a column two words wide. */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.detail__report-action {
+  flex: none;
+}
+
+.detail__report-status:not(:empty) {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.detail__report-saved {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-ok);
+}
+
+.detail__progress {
+  flex-grow: 1;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-canvas);
+  overflow: hidden;
+}
+
+/* No radius of its own — the track clips it to the pill. */
+.detail__progress-bar {
+  height: 100%;
+  background: var(--color-accent-deep);
+}
+
+.detail__report-error {
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  border-radius: var(--radius-card);
+  line-height: 1.5;
+}
+
+/* The whole sentence takes the semantic ink — it is one line, so there is no title to carry it. */
+.detail__report-error.notice--warn {
+  color: var(--color-warn);
+}
+
+.detail__report-error.notice--err {
+  color: var(--color-err);
+}
+
+@media (min-width: 768px) {
+  /* Medium: room for sentence and action on one row — a record with an action, not a form. */
+  .detail__report-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  .detail__report-action {
+    width: auto;
+    min-width: 13rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  /* Expanded: beside the day list this is the one card meant to be acted on, so it is
+     given real presence rather than inheriting the phone's stacked card. */
+  .detail__report {
+    background: var(--color-accent-tint-1);
+    box-shadow: none;
+  }
+
+  .detail__report .detail__progress {
+    background: var(--color-card);
+  }
+
+  .detail__report-action {
+    min-width: 15rem;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .detail__report-action:hover:not(:disabled) {
     opacity: 0.92;
   }
 }

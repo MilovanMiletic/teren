@@ -23,6 +23,8 @@ public sealed class FakeObjectStorage : IObjectStorage
     private readonly ConcurrentDictionary<string, byte[]> _objects = new(StringComparer.Ordinal);
     private readonly ConcurrentQueue<string> _headCalls = new();
     private readonly ConcurrentQueue<string> _readCalls = new();
+    private readonly ConcurrentQueue<string> _putCalls = new();
+    private readonly ConcurrentDictionary<string, string> _contentTypes = new(StringComparer.Ordinal);
 
     /// <summary>Keys whose HEAD or read throws as if the store were unreachable.</summary>
     public HashSet<string> UnreachableKeys { get; } = new(StringComparer.Ordinal);
@@ -32,6 +34,10 @@ public sealed class FakeObjectStorage : IObjectStorage
 
     /// <summary>Delay applied to every HEAD, for exercising the verification budget.</summary>
     public TimeSpan HeadDelay { get; set; } = TimeSpan.Zero;
+
+    /// <summary>Delay applied to every read, for exercising Reporting:RenderBudget — storage that
+    /// answers slowly rather than not at all is precisely the failure that budget exists for.</summary>
+    public TimeSpan ReadDelay { get; set; } = TimeSpan.Zero;
 
     public IReadOnlyList<string> HeadCalls => [.. _headCalls];
 
@@ -53,9 +59,12 @@ public sealed class FakeObjectStorage : IObjectStorage
         _objects.Clear();
         _headCalls.Clear();
         _readCalls.Clear();
+        _putCalls.Clear();
+        _contentTypes.Clear();
         UnreachableKeys.Clear();
         Unreachable = false;
         HeadDelay = TimeSpan.Zero;
+        ReadDelay = TimeSpan.Zero;
     }
 
     public ValueTask<PresignedUpload> CreatePresignedUploadAsync(
@@ -88,17 +97,50 @@ public sealed class FakeObjectStorage : IObjectStorage
             : null;
     }
 
-    public Task<Stream?> OpenReadAsync(string objectKey, CancellationToken ct = default)
+    public async Task<StoredObjectContent?> OpenReadAsync(
+        string objectKey, CancellationToken ct = default)
     {
         _readCalls.Enqueue(objectKey);
+
+        if (ReadDelay > TimeSpan.Zero)
+        {
+            await Task.Delay(ReadDelay, ct);
+        }
+
         ThrowIfUnreachable(objectKey);
 
-        Stream? stream = _objects.TryGetValue(objectKey, out var content)
-            ? new MemoryStream(content, writable: false)
+        return _objects.TryGetValue(objectKey, out var content)
+            ? new StoredObjectContent(
+                new MemoryStream(content, writable: false),
+                content.LongLength,
+                _contentTypes.TryGetValue(objectKey, out var type) ? type : null,
+                "\"etag\"")
             : null;
-
-        return Task.FromResult(stream);
     }
+
+    /// <summary>
+    /// The write side, added at B6: a generated report PDF is the one artefact the server
+    /// produces rather than receives. Recorded per key so "the PDF was stored, once, at the key
+    /// derived from the entry" is assertable, and so a retry overwriting its own output is
+    /// visible rather than assumed.
+    /// </summary>
+    public Task PutAsync(
+        string objectKey, byte[] content, string contentType, CancellationToken ct = default)
+    {
+        _putCalls.Enqueue(objectKey);
+        ThrowIfUnreachable(objectKey);
+        _objects[objectKey] = content;
+        _contentTypes[objectKey] = contentType;
+        return Task.CompletedTask;
+    }
+
+    public IReadOnlyList<string> PutCalls => [.. _putCalls];
+
+    public byte[]? GetObject(string objectKey) =>
+        _objects.TryGetValue(objectKey, out var content) ? content : null;
+
+    public string? ContentTypeOf(string objectKey) =>
+        _contentTypes.TryGetValue(objectKey, out var type) ? type : null;
 
     private void ThrowIfUnreachable(string objectKey)
     {

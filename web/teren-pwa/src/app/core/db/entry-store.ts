@@ -4,7 +4,16 @@ import Dexie, { liveQuery } from 'dexie';
 
 import { STALLED_AFTER_ATTEMPTS } from '../api/api-failure';
 import { localDay } from './local-day';
-import { GeoFix, LocalEntry, LocalMedia, OutboxItem, OutboxState, Project } from './models';
+import {
+  ConfirmDraft,
+  GeoFix,
+  LocalEntry,
+  LocalMedia,
+  OutboxItem,
+  OutboxState,
+  Project,
+  needsConfirmation,
+} from './models';
 import { TEREN_DB } from './teren-db';
 
 /** A photo that has already been compressed, with the metadata read before compression. */
@@ -730,6 +739,82 @@ export class EntryStore {
       serverStatus: serverStatus as LocalEntry['serverStatus'],
       updatedAt: new Date().toISOString(),
     });
+  }
+
+  /**
+   * Write several server statuses in one transaction, and report how many actually changed.
+   *
+   * The count is what the caller needs: a status refresh runs on a timer, and re-rendering a
+   * screen because the server repeated itself is churn. Rows the phone does not hold are skipped
+   * silently — the server's list also carries entries recorded on other phones, and this table is
+   * only ever about this one.
+   */
+  async applyServerStatuses(statuses: ReadonlyMap<string, string>): Promise<number> {
+    if (statuses.size === 0) {
+      return 0;
+    }
+    let changed = 0;
+    const nowIso = new Date().toISOString();
+    await this.db.transaction('rw', this.db.entries, async () => {
+      for (const [entryId, serverStatus] of statuses) {
+        const entry = await this.db.entries.get(entryId);
+        if (!entry || entry.serverStatus === serverStatus) {
+          continue;
+        }
+        await this.db.entries.update(entryId, {
+          serverStatus: serverStatus as LocalEntry['serverStatus'],
+          updatedAt: nowIso,
+        });
+        changed += 1;
+      }
+    });
+    return changed;
+  }
+
+  /**
+   * Live list of this project's entries that are waiting for the human (B5), oldest first.
+   *
+   * Oldest first on purpose: the queue of things needing attention is worked from the back of the
+   * day forward, and the entry that has been waiting longest is the one closest to being the
+   * report that never went out.
+   */
+  watchAwaitingConfirmation(projectId: string, limit = 50): Observable<LocalEntry[]> {
+    return from(
+      liveQuery(async () => {
+        const entries = await this.db.entries
+          .where('[projectId+capturedAt]')
+          .between([projectId, Dexie.minKey], [projectId, Dexie.maxKey])
+          .toArray();
+        return entries.filter((entry) => needsConfirmation(entry.serverStatus)).slice(0, limit);
+      }),
+    );
+  }
+
+  // ---- Confirmation drafts (B5) --------------------------------------------------------------
+
+  /**
+   * Persist what a person has typed on the confirmation screen.
+   *
+   * Called on every change, and it is not a cache: for an entry whose extraction failed this is
+   * the *only* copy of the record's content until the server accepts it. Cheap enough to do on a
+   * keystroke's debounce — one small object, keyed by the entry id, overwritten in place.
+   */
+  async saveConfirmDraft(entryId: string, draft: unknown): Promise<void> {
+    const row: ConfirmDraft = { entryId, draft, updatedAt: new Date().toISOString() };
+    await this.db.confirmDrafts.put(row);
+  }
+
+  async getConfirmDraft(entryId: string): Promise<ConfirmDraft | undefined> {
+    return this.db.confirmDrafts.get(entryId);
+  }
+
+  /**
+   * Drop a draft. Called **only** after the server has accepted the confirmation — the same rule
+   * that governs the outbox row, for the same reason: until the server answers, this phone is the
+   * only place the work exists.
+   */
+  async clearConfirmDraft(entryId: string): Promise<void> {
+    await this.db.confirmDrafts.delete(entryId);
   }
 
   // ---- Media, as the upload loop needs it ----------------------------------------------------

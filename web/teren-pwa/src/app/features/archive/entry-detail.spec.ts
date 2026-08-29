@@ -1,10 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Router, provideRouter } from '@angular/router';
 import { TranslocoTestingModule } from '@jsverse/transloco';
 
 import { EntryResponse } from '../../core/api/api-types';
 import { ArchiveService } from '../../core/archive/archive.service';
 import { EntryStore } from '../../core/db/entry-store';
 import { TEREN_DB, TerenDb } from '../../core/db/teren-db';
+import { ReportResult, ReportService } from '../../core/report/report.service';
 import { captureEntry } from '../../testing/capture-fixture';
 import { flushLiveQueries, waitUntil } from '../../testing/flush';
 import en from '../../../../public/i18n/en.json';
@@ -28,6 +30,11 @@ const SEEDED_STRUCTURE = {
   notes: null,
 };
 
+/** A failed download, in the shape `ReportService` returns. */
+function failed(failure: string, retryable: boolean): ReportResult {
+  return { ok: false, failure: failure as ReportResult['failure'], retryable, filename: null };
+}
+
 function serverEntry(overrides: Partial<EntryResponse> = {}): EntryResponse {
   return {
     id: 'entry-1',
@@ -49,6 +56,7 @@ describe('EntryDetail', () => {
   let store: EntryStore;
   let fixture: ComponentFixture<EntryDetail>;
   let archive: { getEntry: ReturnType<typeof vi.fn> };
+  let reports: { download: ReturnType<typeof vi.fn> };
 
   async function render(entryId: string): Promise<HTMLElement> {
     fixture = TestBed.createComponent(EntryDetail);
@@ -70,6 +78,11 @@ describe('EntryDetail', () => {
   beforeEach(() => {
     db = new TerenDb(`teren-test-${crypto.randomUUID()}`);
     archive = { getEntry: vi.fn().mockResolvedValue({ status: 'ok', entry: null, missing: true }) };
+    reports = {
+      download: vi
+        .fn()
+        .mockResolvedValue({ ok: true, failure: null, retryable: false, filename: 'teren.pdf' }),
+    };
 
     TestBed.configureTestingModule({
       imports: [
@@ -85,8 +98,10 @@ describe('EntryDetail', () => {
         }),
       ],
       providers: [
+        provideRouter([]),
         { provide: TEREN_DB, useValue: db },
         { provide: ArchiveService, useValue: archive as unknown as ArchiveService },
+        { provide: ReportService, useValue: reports as unknown as ReportService },
       ],
     });
     store = TestBed.inject(EntryStore);
@@ -216,9 +231,33 @@ describe('EntryDetail', () => {
       missing: false,
       entry: serverEntry({
         media: [
-          { id: 'm1', kind: 'photo', content_type: 'image/jpeg', byte_size: 1, sha256: 'x', object_key: 'k1', upload_status: 'verified' },
-          { id: 'm2', kind: 'photo', content_type: 'image/jpeg', byte_size: 1, sha256: 'x', object_key: 'k2', upload_status: 'verified' },
-          { id: 'm3', kind: 'audio', content_type: 'audio/ogg', byte_size: 1, sha256: 'x', object_key: 'k3', upload_status: 'verified' },
+          {
+            id: 'm1',
+            kind: 'photo',
+            content_type: 'image/jpeg',
+            byte_size: 1,
+            sha256: 'x',
+            object_key: 'k1',
+            upload_status: 'verified',
+          },
+          {
+            id: 'm2',
+            kind: 'photo',
+            content_type: 'image/jpeg',
+            byte_size: 1,
+            sha256: 'x',
+            object_key: 'k2',
+            upload_status: 'verified',
+          },
+          {
+            id: 'm3',
+            kind: 'audio',
+            content_type: 'audio/ogg',
+            byte_size: 1,
+            sha256: 'x',
+            object_key: 'k3',
+            upload_status: 'verified',
+          },
         ],
       }),
     });
@@ -368,10 +407,7 @@ describe('EntryDetail', () => {
       entry: serverEntry({
         structure: {
           schema_version: 1,
-          materials: [
-            { name: 'kuglasti ventil 1"', delivered: false },
-            { name: 'Silikon' },
-          ],
+          materials: [{ name: 'kuglasti ventil 1"', delivered: false }, { name: 'Silikon' }],
         },
       }),
     });
@@ -381,6 +417,291 @@ describe('EntryDetail', () => {
 
     // Exactly one chip: the material with no stated delivery gets no claim made about it.
     expect(element.querySelectorAll('.items__chip')).toHaveLength(1);
+  });
+
+  it('offers the confirmation gate on an entry the server is holding for a person', async () => {
+    // The record stays read-only — that is what makes it evidence — but naming the problem and
+    // hiding the only control that fixes it is the defect B5 fixed on Home.
+    const entry = await captureEntry(store);
+    archive.getEntry.mockResolvedValue({
+      status: 'ok',
+      missing: false,
+      entry: serverEntry({ id: entry.id, status: 'needs_review', reported_at: null }),
+    });
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate');
+
+    const element = await render(entry.id);
+    await settled(element, 'Proverite i potvrdite');
+
+    element.querySelector<HTMLButtonElement>('.detail__notice-action')!.click();
+    expect(navigate).toHaveBeenCalledWith(['/potvrda', entry.id]);
+  });
+
+  it('lets a foreman go back and correct an entry he has already confirmed', async () => {
+    // The window between `confirmed` and `reported` is the last cheap chance to fix a typo: once
+    // the report goes out the row is sealed for ever (B6) and the only remedy is a new correction
+    // entry (C4, not built). Before this the way back existed only by typing the URL.
+    const entry = await captureEntry(store);
+    archive.getEntry.mockResolvedValue({
+      status: 'ok',
+      missing: false,
+      entry: serverEntry({ id: entry.id, status: 'confirmed', reported_at: null }),
+    });
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate');
+
+    const element = await render(entry.id);
+    await settled(element, 'Ovaj unos još može da se ispravi');
+
+    // A second chance, not an outstanding task: he did the work and said yes, and the record must
+    // not imply he left something unfinished.
+    expect(element.textContent).toContain('Ovaj dan ste već potvrdili');
+    expect(element.textContent).not.toContain('Proverite i potvrdite');
+    // Nor an alarm — the entry is fine. The warning tones belong to entries that need something.
+    expect(element.querySelector('.detail__notice--warn')).toBeNull();
+    expect(element.querySelector('.detail__notice--err')).toBeNull();
+
+    element.querySelector<HTMLButtonElement>('.detail__notice-action')!.click();
+    expect(navigate).toHaveBeenCalledWith(['/potvrda', entry.id]);
+  });
+
+  it('offers no correction once the server says the report has gone out', async () => {
+    // The status lags; `reported_at` does not. An entry the server has sealed must have no
+    // editable path from anywhere.
+    const entry = await captureEntry(store);
+    archive.getEntry.mockResolvedValue({
+      status: 'ok',
+      missing: false,
+      entry: serverEntry({
+        id: entry.id,
+        status: 'confirmed',
+        reported_at: '2026-08-29T18:00:00.000Z',
+      }),
+    });
+
+    const element = await render(entry.id);
+    // The chip only reads "Potvrđen" once the server's answer has landed, so this waits for the
+    // very load that carries `reported_at` rather than asserting on a half-drawn record.
+    await settled(element, 'Potvrđen');
+
+    expect(element.querySelector('.detail__notice-action')).toBeNull();
+    expect(element.textContent).not.toContain('Ovaj unos još može da se ispravi');
+  });
+
+  it('offers no gate on a reported entry, which never changes again', async () => {
+    const entry = await captureEntry(store);
+    archive.getEntry.mockResolvedValue({
+      status: 'ok',
+      missing: false,
+      entry: serverEntry({ id: entry.id }),
+    });
+
+    const element = await render(entry.id);
+    await settled(element, 'Poslat');
+
+    expect(element.querySelector('.detail__notice-action')).toBeNull();
+  });
+
+  /*
+   * ---- The report download (PROJECT.md §11, ruling 5) -----------------------------------------
+   *
+   * The founder's rule for this screen, three reviews running: it must never claim to know
+   * something it does not. So these tests are mostly about *what the screen refuses to say* —
+   * that a report is missing when the server merely could not be reached, that it is gone when it
+   * is thirty seconds away.
+   */
+
+  /** Render a reported entry and wait for the download action to appear. */
+  async function reportedRecord(): Promise<HTMLElement> {
+    archive.getEntry.mockResolvedValue({
+      status: 'ok',
+      missing: false,
+      entry: serverEntry({ reported_at: '2026-08-29T18:00:00.000Z' }),
+    });
+    const element = await render('entry-1');
+    await settled(element, 'Preuzmi PDF');
+    return element;
+  }
+
+  function downloadButton(element: HTMLElement): HTMLButtonElement {
+    const button = element.querySelector<HTMLButtonElement>('.detail__report-action');
+    if (!button) {
+      throw new Error('no download action on the record');
+    }
+    return button;
+  }
+
+  /** Click, let the (already resolved) service promise settle, and repaint. */
+  async function tapDownload(element: HTMLElement): Promise<void> {
+    downloadButton(element).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  it('offers the report on a reported entry, and says the client already has it', async () => {
+    const element = await reportedRecord();
+
+    expect(element.textContent).toContain('Izveštaj poslat klijentu');
+    // A fetch with the device token, never a link — so it must be a button, not an anchor.
+    expect(downloadButton(element).tagName).toBe('BUTTON');
+  });
+
+  it('offers nothing to download on an entry whose report has not gone out', async () => {
+    // A button that can only fail is the same lie as a screen inventing a fact. `reported_at`
+    // from the server decides — never the local status cache, which is written once at upload
+    // time and never refreshed.
+    archive.getEntry.mockResolvedValue({
+      status: 'ok',
+      missing: false,
+      entry: serverEntry({ status: 'confirmed', reported_at: null }),
+    });
+
+    const element = await render('entry-1');
+    await settled(element, 'Potvrđen');
+
+    expect(element.querySelector('.detail__report-action')).toBeNull();
+    expect(reports.download).not.toHaveBeenCalled();
+  });
+
+  it('downloads the report and says so, naming the file from the entry date', async () => {
+    const element = await reportedRecord();
+    await tapDownload(element);
+
+    expect(reports.download).toHaveBeenCalledTimes(1);
+    // The fallback name carries no translated words: the report's language is the project's, not
+    // the phone's, so a UI-locale filename would be wrong exactly when it is used.
+    expect(reports.download.mock.calls[0][1]).toBe('teren-2026-08-29');
+    expect(element.textContent).toContain('Izveštaj je preuzet na ovaj uređaj');
+  });
+
+  it('says "not ready yet" for a 409 — not that the entry is missing', async () => {
+    // The distinction the whole feature turns on. The report is being produced and sent; nothing
+    // is wrong, and nothing has been lost.
+    reports.download.mockResolvedValue(failed('notReady', true));
+
+    const element = await reportedRecord();
+    await tapDownload(element);
+
+    expect(element.textContent).toContain('Izveštaj još nije spreman');
+    expect(element.textContent).not.toContain('Server nema ovaj unos');
+    // Not an alarm, either: an orange notice, not a red one.
+    expect(element.querySelector('.detail__report-error.notice--warn')).not.toBeNull();
+    expect(element.querySelector('.detail__report-error.notice--err')).toBeNull();
+    // And the button now says what pressing it would do.
+    expect(downloadButton(element).textContent).toContain('Pokušaj ponovo');
+  });
+
+  it('says the server could not be asked when it could not be asked', async () => {
+    // C3's review found a 404 rendering identically to an unreachable server on this very
+    // screen. Offline is not evidence that the report is gone.
+    reports.download.mockResolvedValue(failed('offline', true));
+
+    const element = await reportedRecord();
+    await tapDownload(element);
+
+    expect(element.textContent).toContain('Nema interneta');
+    expect(element.textContent).not.toContain('Server nema ovaj unos');
+    expect(element.textContent).not.toContain('Izveštaj još nije spreman');
+  });
+
+  it('says a missing entry is missing, and calls that an error rather than a wait', async () => {
+    reports.download.mockResolvedValue(failed('missing', false));
+
+    const element = await reportedRecord();
+    await tapDownload(element);
+
+    expect(element.textContent).toContain('Server nema ovaj unos');
+    expect(element.querySelector('.detail__report-error.notice--err')).not.toBeNull();
+    // Nothing to try again: offering a retry over a terminal answer costs a foreman five taps.
+    expect(downloadButton(element).textContent).not.toContain('Pokušaj ponovo');
+  });
+
+  it('says a lost report is lost, and that the client still has it', async () => {
+    // The server sent the report and can no longer produce the file. "Try again in a few
+    // moments" would be the screen promising a document that is never coming — so this one is
+    // told as a fault, and it carries the part that is still true and still useful.
+    reports.download.mockResolvedValue(failed('unavailable', false));
+
+    const element = await reportedRecord();
+    await tapDownload(element);
+
+    expect(element.textContent).toContain('server više ne može da napravi fajl');
+    expect(element.textContent).toContain('Klijent ga i dalje ima na mejlu');
+    expect(element.textContent).not.toContain('Izveštaj još nije spreman');
+    expect(element.querySelector('.detail__report-error.notice--err')).not.toBeNull();
+    expect(downloadButton(element).textContent).not.toContain('Pokušaj ponovo');
+  });
+
+  it('starts one download however many times the button is tapped', async () => {
+    // A few megabytes on a site connection is a button that looks inert for ten seconds, which is
+    // how a foreman queues five downloads. The disabled attribute is the visible half; the guard
+    // in the component is the half that holds when the tap arrives anyway.
+    let release: (result: ReportResult) => void = () => undefined;
+    reports.download.mockReturnValue(
+      new Promise<ReportResult>((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    const element = await reportedRecord();
+    const button = downloadButton(element);
+
+    // Three taps with **no change detection between them**, which is the real race: setting
+    // `reportBusy` marks the component dirty, but the `disabled` attribute does not reach the DOM
+    // until Angular repaints, and a browser will happily deliver a second tap before that. If the
+    // only guard were the attribute, this would start three downloads.
+    button.click();
+    button.click();
+    button.click();
+    expect(reports.download).toHaveBeenCalledTimes(1);
+
+    // And the visible half, once the repaint does happen.
+    fixture.detectChanges();
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toContain('Preuzimanje');
+
+    release({ ok: true, failure: null, retryable: false, filename: 'teren.pdf' });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(downloadButton(element).disabled).toBe(false);
+  });
+
+  it('shows real progress while the bytes are arriving', async () => {
+    // Determinate where the server sent a length: a silent button is what a foreman taps five
+    // times.
+    reports.download.mockImplementation(
+      (_id: string, _name: string, onProgress: (fraction: number | null) => void) => {
+        onProgress(0.42);
+        return new Promise<ReportResult>(() => undefined);
+      },
+    );
+
+    const element = await reportedRecord();
+    downloadButton(element).click();
+    fixture.detectChanges();
+
+    const bar = element.querySelector<HTMLElement>('.detail__progress-bar');
+    expect(bar?.style.width).toBe('42%');
+    expect(element.textContent).toContain('Preuzeto 42%');
+  });
+
+  it('will not carry one entry’s failure onto the next record opened', async () => {
+    reports.download.mockResolvedValue(failed('missing', false));
+
+    const element = await reportedRecord();
+    await tapDownload(element);
+    expect(element.textContent).toContain('Server nema ovaj unos');
+
+    archive.getEntry.mockResolvedValue({
+      status: 'ok',
+      missing: false,
+      entry: serverEntry({ id: 'entry-2', reported_at: '2026-08-29T18:00:00.000Z' }),
+    });
+    fixture.componentRef.setInput('entryId', 'entry-2');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    await settled(element, 'Preuzmi PDF');
+
+    expect(element.textContent).not.toContain('Server nema ovaj unos');
   });
 
   it('will not call a half-uploaded entry from another phone "received"', async () => {

@@ -160,7 +160,8 @@ public sealed class S3ObjectStorage : IObjectStorage, IDisposable
     }
 
     /// <inheritdoc />
-    public async Task<Stream?> OpenReadAsync(string objectKey, CancellationToken ct = default)
+    public async Task<StoredObjectContent?> OpenReadAsync(
+        string objectKey, CancellationToken ct = default)
     {
         try
         {
@@ -168,7 +169,11 @@ public sealed class S3ObjectStorage : IObjectStorage, IDisposable
                 new GetObjectRequest { BucketName = _options.Bucket, Key = objectKey }, ct);
 
             // The caller owns the stream; disposing it disposes the response with it.
-            return response.ResponseStream;
+            return new StoredObjectContent(
+                response.ResponseStream,
+                response.ContentLength,
+                response.Headers.ContentType,
+                response.ETag);
         }
         catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
@@ -191,6 +196,50 @@ public sealed class S3ObjectStorage : IObjectStorage, IDisposable
 
             throw new ObjectStorageUnavailableException(
                 "Object storage did not answer within "
+                + $"{_options.DownloadTimeout.TotalSeconds:0.#} s.", ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task PutAsync(
+        string objectKey, byte[] content, string contentType, CancellationToken ct = default)
+    {
+        try
+        {
+            // The bulk client, not the request client: a report with twenty photographs is
+            // megabytes, and the 5 s phone-facing budget would abort it mid-stream. Nothing is
+            // waiting on this — it runs inside a Hangfire job.
+            using var body = new MemoryStream(content, writable: false);
+
+            await _downloadClient.PutObjectAsync(
+                new PutObjectRequest
+                {
+                    BucketName = _options.Bucket,
+                    Key = objectKey,
+                    InputStream = body,
+                    ContentType = contentType,
+                    // The report is ours, not the phone's, so the SDK may checksum it normally —
+                    // there is no presigned signature for the header to contradict.
+                    DisablePayloadSigning = false,
+                },
+                ct);
+
+            _logger.LogInformation(
+                "Stored {Bytes} bytes at {ObjectKey}.", content.LongLength, objectKey);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is AmazonServiceException
+                                       or HttpRequestException
+                                       or OperationCanceledException
+                                       or TimeoutException)
+        {
+            _logger.LogError(ex, "Object storage refused a write to {ObjectKey}.", objectKey);
+
+            throw new ObjectStorageUnavailableException(
+                "Object storage did not accept the write within "
                 + $"{_options.DownloadTimeout.TotalSeconds:0.#} s.", ex);
         }
     }

@@ -23,6 +23,16 @@ export const routes: Routes = [
   },
   {
     /*
+     * The confirmation gate (B5). A route of its own, and a path segment rather than a query
+     * parameter — unlike the archive, which pairs a list with a record on one screen. This is a
+     * single-entry screen with a form in it: the phone's back gesture must mean "leave this
+     * entry", a reload must come back to the same one, and nothing else on screen depends on it.
+     */
+    path: 'potvrda/:entryId',
+    loadComponent: () => import('./features/confirm/confirm-page').then((m) => m.ConfirmPage),
+  },
+  {
+    /*
      * The archive. One route, not two: the open record is `?unos=<id>` rather than a path
      * segment, because two sibling route configs would rebuild the whole screen on every click
      * in the desktop list rail. `ArchivePage` explains the choice in full.

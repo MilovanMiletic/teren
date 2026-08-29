@@ -30,6 +30,15 @@ export interface ArchiveRow {
   /** Null for a row this device never captured. */
   localStatus: LocalEntryStatus | null;
   serverStatus: string | null;
+  /**
+   * When the report went out, or null — including "null because only the phone knows this row".
+   *
+   * Carried on the row rather than looked up per click because it is what decides whether the
+   * list may offer a way back into the confirmation gate (`canRevise`). The phone does not store
+   * it: a local-only row has never been reported by definition, and a row whose stale local
+   * status still says `confirmed` is corrected by the server's answer the moment one arrives.
+   */
+  reportedAt: string | null;
   /** The evidence is on this phone: photos and audio can actually be opened. */
   onPhone: boolean;
   /** The server holds the complete entry (`received_at` is stamped). */
@@ -65,6 +74,8 @@ export function mergeArchiveRows(
       localStatus: entry.status,
       // The last thing the sync loop heard. Overwritten below if the list is fresher.
       serverStatus: entry.serverStatus,
+      // Only the server knows this. Overwritten below when it has answered.
+      reportedAt: null,
       onPhone: true,
       onServer: entry.confirmedByServerAt !== null,
     });
@@ -74,6 +85,7 @@ export function mergeArchiveRows(
     const existing = rows.get(item.id);
     if (existing) {
       existing.serverStatus = item.status;
+      existing.reportedAt = item.reported_at;
       existing.onServer = existing.onServer || item.received_at !== null;
       // The server counts what it verified. The phone counts what it holds, and after C1 prunes
       // a confirmed entry that is zero — so the larger of the two is the honest number of photos
@@ -91,6 +103,7 @@ export function mergeArchiveRows(
       audioDurationMs: null,
       localStatus: null,
       serverStatus: item.status,
+      reportedAt: item.reported_at,
       onPhone: false,
       onServer: item.received_at !== null,
     });

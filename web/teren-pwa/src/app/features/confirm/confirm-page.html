@@ -1,0 +1,607 @@
+<div class="screen" *transloco="let t">
+  <app-header [project]="projectName()" [showBack]="true" (back)="back()" />
+
+  <!-- Compact: the screen carries its own bar; from medium up the app header does. -->
+  <header class="column head band-top">
+    <button
+      type="button"
+      class="btn-icon head__back"
+      [attr.aria-label]="t('common.back')"
+      (click)="back()"
+    >
+      <app-icon name="chevron-left" [size]="20" />
+    </button>
+    <div class="head__text">
+      <h1 class="t-h1 head__title">{{ t('confirm.title') }}</h1>
+      @if (day(); as date) {
+        <span class="t-meta t-num">{{ date | date: 'EEEE, d. M. y.' }}</span>
+      }
+    </div>
+    <span class="chip chip--{{ statusTone() }}">{{ t(statusKey()) }}</span>
+  </header>
+
+  @switch (state()) {
+    @case ('loading') {
+      <div class="column content">
+        <p class="card state t-meta">{{ t('confirm.state.loading') }}</p>
+      </div>
+    }
+
+    @case ('processing') {
+      <!--
+        Every freshly captured entry passes through here. The screen polls and opens itself, so
+        nobody has to learn to come back — and it says the recording is safe, because the one
+        question a foreman has while a spinner turns is whether his thirty seconds survived.
+      -->
+      <div class="column content">
+        <section class="card state">
+          <app-icon name="clock" [size]="24" class="state__icon" />
+          <h2 class="t-h2">{{ t('confirm.state.processing.title') }}</h2>
+          <p class="t-meta state__body">{{ t('confirm.state.processing.body') }}</p>
+        </section>
+      </div>
+    }
+
+    @case ('notSent') {
+      <div class="column content">
+        <section class="card state">
+          <app-icon name="upload-cloud" [size]="24" class="state__icon" />
+          <h2 class="t-h2">{{ t('confirm.state.notSent.title') }}</h2>
+          <p class="t-meta state__body">{{ t('confirm.state.notSent.body') }}</p>
+          <button type="button" class="btn btn--tertiary state__action" (click)="openRecord()">
+            {{ t('archive.detail.open') }}
+          </button>
+        </section>
+      </div>
+    }
+
+    @case ('notFound') {
+      <div class="column content">
+        <section class="card state">
+          <app-icon name="alert-triangle" [size]="24" class="state__icon state__icon--err" />
+          <h2 class="t-h2">{{ t('confirm.state.notFound.title') }}</h2>
+          <p class="t-meta state__body">{{ t('confirm.state.notFound.body') }}</p>
+        </section>
+      </div>
+    }
+
+    @case ('unreachable') {
+      <!--
+        The server could not be *asked*. Not the same as "there is nothing to confirm", and on the
+        screen that gates every report the difference is the whole message.
+      -->
+      <div class="column content">
+        <section class="card state">
+          <app-icon name="wifi-off" [size]="24" class="state__icon state__icon--warn" />
+          <h2 class="t-h2">{{ t('confirm.state.unreachable.title') }}</h2>
+          <p class="t-meta state__body">{{ t('confirm.state.unreachable.body') }}</p>
+        </section>
+      </div>
+    }
+
+    @case ('reported') {
+      <!--
+        Immutable (PROJECT.md principle 2). No form, no confirm button — offering an edit here and
+        refusing it on send would be the screen promising something the product does not do.
+      -->
+      <div class="column content">
+        <section class="card state">
+          <app-icon name="check" [size]="24" class="state__icon state__icon--ok" />
+          <h2 class="t-h2">{{ t('confirm.state.reported.title') }}</h2>
+          <p class="t-meta state__body">{{ t('confirm.state.reported.body') }}</p>
+          <button type="button" class="btn btn--tertiary state__action" (click)="openRecord()">
+            {{ t('archive.detail.open') }}
+          </button>
+        </section>
+      </div>
+    }
+
+    @case ('ready') {
+      <div class="column content content--form">
+        <!-- ---- Evidence: what he actually said, beside what is being corrected ----------- -->
+        <div class="pane pane--evidence">
+          <section class="card evidence">
+            <h2 class="t-label evidence__label">{{ t('archive.section.transcript') }}</h2>
+            @if (transcript(); as text) {
+              <p class="evidence__text">{{ text }}</p>
+              <p class="t-meta evidence__hint">{{ t('confirm.transcript.hint') }}</p>
+              @if (editable()) {
+                <!--
+                  Explicit, never automatic: `corrected` is the human's answer and the third
+                  column of the eval triple. Pre-filling it with the transcript would make every
+                  untouched entry look like a person had agreed the transcript was the record.
+                -->
+                <button
+                  type="button"
+                  class="btn btn--tertiary btn--row evidence__action"
+                  (click)="transcriptToNotes()"
+                >
+                  <app-icon name="plus" [size]="18" />
+                  <span>{{ t('confirm.transcript.toNotes') }}</span>
+                </button>
+              }
+            } @else {
+              <p class="t-meta evidence__hint">
+                {{
+                  serverStatus() === 'needs_review'
+                    ? t('archive.transcript.needsReview')
+                    : t('archive.transcript.pending')
+                }}
+              </p>
+            }
+          </section>
+
+          <section class="card evidence">
+            <h2 class="t-label evidence__label">{{ t('archive.section.audio') }}</h2>
+            @if (audioUrl(); as url) {
+              <!--
+                Replaying the three seconds that produced a mangled material code is the fastest
+                way to fix it, and the platform's own player is keyboard-accessible for free.
+              -->
+              <audio class="evidence__audio" controls preload="metadata" [src]="url"></audio>
+            } @else {
+              <p class="t-meta evidence__hint">{{ t('archive.audio.offsite') }}</p>
+            }
+          </section>
+        </div>
+
+        <!-- ---- The editable day --------------------------------------------------------- -->
+        <div class="pane pane--form">
+          @if (justConfirmed()) {
+            <!--
+              A verbatim day is not the good path and must not read like one, even in success.
+              Telling a man who sent prose that his structured day is confirmed is how a broken
+              extraction goes unnoticed for weeks — which is exactly how this arrived: an Anthropic
+              account out of credit.
+            -->
+            <section class="card notice notice--ok" role="status">
+              <app-icon name="check" [size]="20" class="notice__icon" />
+              <div class="notice__text">
+                @if (attemptWasVerbatim()) {
+                  <span class="notice__title">{{ t('confirm.successVerbatim.title') }}</span>
+                  <span class="t-meta">{{ t('confirm.successVerbatim.body') }}</span>
+                } @else {
+                  <span class="notice__title">{{ t('confirm.success.title') }}</span>
+                  <span class="t-meta">{{ t('confirm.success.body') }}</span>
+                }
+              </div>
+            </section>
+          } @else if (canConfirmVerbatim()) {
+            <!--
+              The words came through and only the structuring failed, and nothing has been typed.
+              One tap sends his own words as the day's record. Warn-toned and stated plainly on
+              purpose: the system failed at its job here, and the screen says so rather than
+              dressing the fallback up as the product working.
+            -->
+            <section class="card verbatim" role="status">
+              <div class="verbatim__head">
+                <app-icon name="alert-triangle" [size]="20" class="verbatim__icon" />
+                <div class="verbatim__text">
+                  <span class="verbatim__title">{{ t('confirm.verbatim.title') }}</span>
+                  <span class="t-meta">{{ t('confirm.verbatim.body') }}</span>
+                </div>
+              </div>
+
+              @if (verbatimError(); as key) {
+                <!--
+                  Beside the button that was pressed. The form's own gate is at the foot of a long
+                  day, and an error reported down there over an action taken up here is an error
+                  nobody reads.
+                -->
+                <p class="actions__error" role="alert">
+                  <app-icon name="alert-triangle" [size]="18" class="actions__error-icon" />
+                  <span>{{ t(key) }} {{ t('confirm.errorSafe') }}</span>
+                </p>
+              }
+
+              <button
+                type="button"
+                class="btn btn--primary verbatim__action"
+                [disabled]="sending()"
+                (click)="confirmVerbatim()"
+              >
+                {{
+                  sending()
+                    ? t('confirm.action.sending')
+                    : failureRetryable()
+                      ? t('confirm.action.again')
+                      : t('confirm.verbatim.action')
+                }}
+              </button>
+              <p class="t-meta verbatim__or">{{ t('confirm.verbatim.orEdit') }}</p>
+            </section>
+          } @else {
+            <section class="card notice notice--{{ bannerTone() }}" role="status">
+              <app-icon
+                [name]="bannerTone() === 'warn' ? 'alert-triangle' : 'check'"
+                [size]="20"
+                class="notice__icon"
+              />
+              <div class="notice__text">
+                <span class="notice__title">{{
+                  t('confirm.banner.' + bannerKey() + '.title')
+                }}</span>
+                <span class="t-meta">{{ t('confirm.banner.' + bannerKey() + '.body') }}</span>
+              </div>
+            </section>
+          }
+
+          <!-- Work done -->
+          <section class="card group">
+            <h2 class="t-label group__label">{{ t('archive.section.work') }}</h2>
+            @for (item of draft().workDone; track item.id) {
+              <div class="row">
+                <div class="row__fields">
+                  <label class="field field--wide">
+                    <span class="t-label field__label">{{ t('confirm.field.description') }}</span>
+                    <input
+                      class="field__input"
+                      type="text"
+                      [value]="item.description"
+                      (input)="patchWork(item.id, { description: text($event) })"
+                    />
+                  </label>
+                  <label class="field">
+                    <span class="t-label field__label">{{ t('confirm.field.location') }}</span>
+                    <input
+                      class="field__input"
+                      type="text"
+                      [value]="item.location"
+                      (input)="patchWork(item.id, { location: text($event) })"
+                    />
+                  </label>
+                  <label class="field field--narrow">
+                    <span class="t-label field__label">{{ t('confirm.field.quantity') }}</span>
+                    <input
+                      class="field__input t-num"
+                      type="text"
+                      inputmode="decimal"
+                      [value]="item.quantity.value"
+                      (input)="patchWorkQuantity(item.id, { value: text($event) })"
+                    />
+                  </label>
+                  <label class="field field--narrow">
+                    <span class="t-label field__label">{{ t('confirm.field.unit') }}</span>
+                    <input
+                      class="field__input"
+                      type="text"
+                      [value]="item.quantity.unit"
+                      (input)="patchWorkQuantity(item.id, { unit: text($event) })"
+                    />
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  class="btn-icon row__remove"
+                  [attr.aria-label]="t('confirm.remove')"
+                  (click)="removeWork(item.id)"
+                >
+                  <app-icon name="x" [size]="18" />
+                </button>
+              </div>
+            } @empty {
+              <p class="t-meta group__empty">{{ t('confirm.empty.work') }}</p>
+            }
+            <button type="button" class="btn btn--tertiary btn--row group__add" (click)="addWork()">
+              <app-icon name="plus" [size]="18" />
+              <span>{{ t('confirm.add.work') }}</span>
+            </button>
+          </section>
+
+          <!-- People -->
+          <section class="card group">
+            <h2 class="t-label group__label">{{ t('archive.section.headcount') }}</h2>
+            <label class="field field--narrow">
+              <span class="t-label field__label">{{ t('confirm.field.total') }}</span>
+              <input
+                class="field__input t-num"
+                type="text"
+                inputmode="numeric"
+                [value]="draft().headcountTotal"
+                (input)="setHeadcountTotal(text($event))"
+              />
+            </label>
+            @for (item of draft().roles; track item.id) {
+              <div class="row">
+                <div class="row__fields">
+                  <label class="field field--wide">
+                    <span class="t-label field__label">{{ t('confirm.field.role') }}</span>
+                    <input
+                      class="field__input"
+                      type="text"
+                      [value]="item.role"
+                      (input)="patchRole(item.id, { role: text($event) })"
+                    />
+                  </label>
+                  <label class="field field--narrow">
+                    <span class="t-label field__label">{{ t('confirm.field.count') }}</span>
+                    <input
+                      class="field__input t-num"
+                      type="text"
+                      inputmode="numeric"
+                      [value]="item.count"
+                      (input)="patchRole(item.id, { count: text($event) })"
+                    />
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  class="btn-icon row__remove"
+                  [attr.aria-label]="t('confirm.remove')"
+                  (click)="removeRole(item.id)"
+                >
+                  <app-icon name="x" [size]="18" />
+                </button>
+              </div>
+            } @empty {
+              <p class="t-meta group__empty">{{ t('confirm.empty.roles') }}</p>
+            }
+            <button type="button" class="btn btn--tertiary btn--row group__add" (click)="addRole()">
+              <app-icon name="plus" [size]="18" />
+              <span>{{ t('confirm.add.role') }}</span>
+            </button>
+          </section>
+
+          <!--
+            Materials. The line most likely to be wrong: transcription mangles material codes on
+            every provider path ("PPR cev 25" comes back as "pipr cevi dvaes 5"), so this is a
+            routine correction and the name field is the first thing under the thumb.
+          -->
+          <section class="card group">
+            <h2 class="t-label group__label">{{ t('archive.section.materials') }}</h2>
+            @for (item of draft().materials; track item.id) {
+              <div class="row">
+                <div class="row__fields">
+                  <label class="field field--wide">
+                    <span class="t-label field__label">{{ t('confirm.field.name') }}</span>
+                    <input
+                      class="field__input"
+                      type="text"
+                      [value]="item.name"
+                      (input)="patchMaterial(item.id, { name: text($event) })"
+                    />
+                  </label>
+                  <label class="field field--narrow">
+                    <span class="t-label field__label">{{ t('confirm.field.quantity') }}</span>
+                    <input
+                      class="field__input t-num"
+                      type="text"
+                      inputmode="decimal"
+                      [value]="item.quantity.value"
+                      (input)="patchMaterialQuantity(item.id, { value: text($event) })"
+                    />
+                  </label>
+                  <label class="field field--narrow">
+                    <span class="t-label field__label">{{ t('confirm.field.unit') }}</span>
+                    <input
+                      class="field__input"
+                      type="text"
+                      [value]="item.quantity.unit"
+                      (input)="patchMaterialQuantity(item.id, { unit: text($event) })"
+                    />
+                  </label>
+                  <div class="field field--narrow">
+                    <span class="t-label field__label">{{ t('confirm.delivered.label') }}</span>
+                    <!--
+                      Three states, not a checkbox: "he did not say" is the common case, and a
+                      two-state control would silently record "not delivered" for every line the
+                      recording never mentioned.
+                    -->
+                    <button
+                      type="button"
+                      class="chip chip--{{ deliveredTone(item) }} field__toggle"
+                      [attr.aria-label]="t('confirm.delivered.label')"
+                      (click)="cycleDelivered(item.id)"
+                    >
+                      {{ t(deliveredKey(item)) }}
+                    </button>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="btn-icon row__remove"
+                  [attr.aria-label]="t('confirm.remove')"
+                  (click)="removeMaterial(item.id)"
+                >
+                  <app-icon name="x" [size]="18" />
+                </button>
+              </div>
+            } @empty {
+              <p class="t-meta group__empty">{{ t('confirm.empty.materials') }}</p>
+            }
+            <button
+              type="button"
+              class="btn btn--tertiary btn--row group__add"
+              (click)="addMaterial()"
+            >
+              <app-icon name="plus" [size]="18" />
+              <span>{{ t('confirm.add.material') }}</span>
+            </button>
+          </section>
+
+          <!-- Blockers -->
+          <section class="card group">
+            <h2 class="t-label group__label">{{ t('archive.section.blockers') }}</h2>
+            @for (item of draft().blockers; track item.id) {
+              <div class="row">
+                <div class="row__fields">
+                  <label class="field field--wide">
+                    <span class="t-label field__label">{{ t('confirm.field.description') }}</span>
+                    <input
+                      class="field__input"
+                      type="text"
+                      [value]="item.description"
+                      (input)="patchBlocker(item.id, { description: text($event) })"
+                    />
+                  </label>
+                  <label class="field">
+                    <span class="t-label field__label">{{ t('confirm.field.waitingOn') }}</span>
+                    <input
+                      class="field__input"
+                      type="text"
+                      [value]="item.waitingOn"
+                      (input)="patchBlocker(item.id, { waitingOn: text($event) })"
+                    />
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  class="btn-icon row__remove"
+                  [attr.aria-label]="t('confirm.remove')"
+                  (click)="removeBlocker(item.id)"
+                >
+                  <app-icon name="x" [size]="18" />
+                </button>
+              </div>
+            } @empty {
+              <p class="t-meta group__empty">{{ t('confirm.empty.blockers') }}</p>
+            }
+            <button
+              type="button"
+              class="btn btn--tertiary btn--row group__add"
+              (click)="addBlocker()"
+            >
+              <app-icon name="plus" [size]="18" />
+              <span>{{ t('confirm.add.blocker') }}</span>
+            </button>
+          </section>
+
+          <!--
+            Hidden work, called out with its own accent: the evidence that cannot be recovered
+            once the wall closes, and the reason an owner pays for this product.
+          -->
+          <section class="card group group--hidden">
+            <h2 class="t-label group__label">{{ t('archive.section.hiddenWork') }}</h2>
+            @for (item of draft().hiddenWork; track item.id) {
+              <div class="row">
+                <div class="row__fields">
+                  <label class="field field--wide">
+                    <span class="t-label field__label">{{ t('confirm.field.description') }}</span>
+                    <input
+                      class="field__input"
+                      type="text"
+                      [value]="item.description"
+                      (input)="patchHiddenWork(item.id, { description: text($event) })"
+                    />
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  class="btn-icon row__remove"
+                  [attr.aria-label]="t('confirm.remove')"
+                  (click)="removeHiddenWork(item.id)"
+                >
+                  <app-icon name="x" [size]="18" />
+                </button>
+              </div>
+            } @empty {
+              <p class="t-meta group__empty">{{ t('confirm.empty.hiddenWork') }}</p>
+            }
+            <button
+              type="button"
+              class="btn btn--tertiary btn--row group__add"
+              (click)="addHiddenWork()"
+            >
+              <app-icon name="plus" [size]="18" />
+              <span>{{ t('confirm.add.hiddenWork') }}</span>
+            </button>
+          </section>
+
+          <!--
+            Notes. Free text, and the whole typed fallback in one field: an entry whose extraction
+            produced nothing can still become a real record here, in his own words.
+          -->
+          <section class="card group">
+            <h2 class="t-label group__label">{{ t('archive.section.notes') }}</h2>
+            <label class="field field--wide">
+              <span class="visually-hidden">{{ t('confirm.field.notes') }}</span>
+              <textarea
+                class="field__input field__textarea"
+                rows="4"
+                [value]="draft().notes"
+                (input)="setNotes(text($event))"
+              ></textarea>
+            </label>
+          </section>
+
+          <!-- ---- The gate ------------------------------------------------------------ -->
+          <div class="actions">
+            <!--
+              Not when the verbatim card is carrying it: one failure, reported once, next to the
+              button that caused it.
+            -->
+            @if (gateError(); as key) {
+              <p class="actions__error" role="alert">
+                <app-icon name="alert-triangle" [size]="18" class="actions__error-icon" />
+                <span>
+                  {{ t(key) }}
+                  <!--
+                    Said every time, because it is the thing that is true and the thing a person
+                    assumes is not: a confirmation that did not reach the server costs nothing.
+                  -->
+                  {{ t('confirm.errorSafe') }}
+                </span>
+              </p>
+            }
+
+            @if (justConfirmed()) {
+              <button type="button" class="btn btn--primary" (click)="done()">
+                {{ t('confirm.action.done') }}
+              </button>
+              <button type="button" class="btn btn--tertiary" (click)="revise()">
+                {{ t('confirm.action.revise') }}
+              </button>
+            } @else {
+              <button
+                type="button"
+                class="btn btn--primary"
+                [disabled]="!canConfirm()"
+                (click)="confirm()"
+              >
+                <!--
+                  After a failure the button says what pressing it would now do. "Potvrdi unos"
+                  over an attempt that has already failed once reads as though nothing happened.
+                -->
+                {{
+                  sending()
+                    ? t('confirm.action.sending')
+                    : failureRetryable()
+                      ? t('confirm.action.again')
+                      : t('confirm.action.confirm')
+                }}
+              </button>
+              <!--
+                The hint under the button is a promise: "everything you type is kept on this
+                phone". Once a local write has failed that promise is false, and this is the one
+                place a person can still act on it — the words are on screen, so confirming now
+                is what saves them. Retracting it loudly beats a hint that quietly lies.
+              -->
+              @if (draftSaveFailed()) {
+                <p class="t-meta actions__hint actions__hint--warn" role="alert">
+                  <app-icon name="alert-triangle" [size]="16" class="actions__error-icon" />
+                  <span>{{ t('confirm.draftNotSaved') }}</span>
+                </p>
+              }
+              @if (empty()) {
+                <!--
+                  "Write at least one line" is false while one tap above would finish the day.
+                  The disabled button at the foot of the screen must not contradict the offer at
+                  the top of it.
+                -->
+                <p class="t-meta actions__hint">
+                  {{
+                    canConfirmVerbatim()
+                      ? t('confirm.requireContentOrWords')
+                      : t('confirm.requireContent')
+                  }}
+                </p>
+              } @else if (!draftSaveFailed()) {
+                <p class="t-meta actions__hint">{{ t('confirm.draftSaved') }}</p>
+              }
+            }
+          </div>
+        </div>
+      </div>
+    }
+  }
+</div>

@@ -15,6 +15,13 @@ public sealed class HangfirePipelineQueue(
 
         logger.LogInformation("Entry {EntryId} queued for processing.", entryId);
     }
+
+    public void EnqueueReport(Guid entryId, Guid companyId)
+    {
+        jobs.Enqueue<EntryReportJob>(job => job.RunAsync(entryId, companyId, null!));
+
+        logger.LogInformation("Entry {EntryId} queued for reporting.", entryId);
+    }
 }
 
 /// <summary>
@@ -33,4 +40,9 @@ public sealed class DisabledPipelineQueue(ILogger<DisabledPipelineQueue> logger)
         logger.LogWarning(
             "Background processing is disabled (Hangfire:Enabled=false); entry {EntryId} stays "
             + "in `received` and will be picked up when a worker runs.", entryId);
+
+    public void EnqueueReport(Guid entryId, Guid companyId) =>
+        logger.LogWarning(
+            "Background processing is disabled (Hangfire:Enabled=false); entry {EntryId} stays "
+            + "`confirmed` and its report will be sent when a worker runs.", entryId);
 }

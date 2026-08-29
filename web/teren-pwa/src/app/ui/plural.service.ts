@@ -17,7 +17,17 @@ export class PluralService {
 
   /** The full translation key for a photo count, e.g. `common.photos.few`. */
   photos(count: number): string {
-    return `common.photos.${this.suffix(count)}`;
+    return this.key('common.photos', count);
+  }
+
+  /**
+   * The plural branch of any counted key, e.g. `home.attention` + 2 → `home.attention.few`.
+   *
+   * The dictionaries define all four suffixes under every such key, so no lookup can miss — and
+   * a new counted noun needs a dictionary entry, not another method here.
+   */
+  key(base: string, count: number): string {
+    return `${base}.${this.suffix(count)}`;
   }
 
   private suffix(count: number): 'zero' | 'one' | 'few' | 'other' {

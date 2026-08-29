@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -9,6 +8,7 @@ using Teren.Core.Storage;
 using Teren.Core.Tenancy;
 using Teren.Core.Text;
 using Teren.Infrastructure.Persistence;
+using Teren.Infrastructure.Storage;
 
 namespace Teren.Infrastructure.Processing;
 
@@ -147,7 +147,13 @@ public sealed class EntryProcessor(
             }
             catch (EvidenceIntegrityException ex)
             {
-                return await ParkAsync(entry, ex.Code, ex.Message, ct);
+                // The kind, not the message: the same verifier serves report generation, which
+                // maps the same two facts onto its own photo_* vocabulary.
+                var code = ex.Kind == EvidenceIntegrityKind.Missing
+                    ? ProcessingFailure.AudioMissing
+                    : ProcessingFailure.AudioChecksumMismatch;
+
+                return await ParkAsync(entry, code, ex.Message, ct);
             }
             catch (ObjectStorageUnavailableException ex)
             {
@@ -341,79 +347,13 @@ public sealed class EntryProcessor(
     /// <summary>
     /// Downloads the voice note and verifies the SHA-256 the phone declared.
     /// <para>
-    /// This obligation was handed here explicitly by B3 (ARCHITECTURE §6): <c>/complete</c>
-    /// verifies existence and size only, because the API never reads media bytes. B4 is the
-    /// first moment anyone reads them, so it is the first moment the checksum can be checked —
-    /// and a mismatch parks the entry rather than transcribing bytes that are not the evidence
-    /// the record claims.
+    /// The verification itself lives in <see cref="VerifiedMediaReader"/>, shared with report
+    /// generation: B3 handed the same obligation to both (ARCHITECTURE §6), and one
+    /// implementation is the only way it cannot hold in one place and lapse in the other.
     /// </para>
     /// </summary>
-    private async Task<byte[]> DownloadAndVerifyAsync(Media audio, CancellationToken ct)
-    {
-        await using var stream = await storage.OpenReadAsync(audio.ObjectKey, ct);
-        if (stream is null)
-        {
-            throw new EvidenceIntegrityException(
-                ProcessingFailure.AudioMissing,
-                $"the voice note is no longer in storage (media {audio.Id}), though it was "
-                + "verified when the entry was completed");
-        }
-
-        // Bounded by the declared size plus a byte: anything larger is not the file that was
-        // declared, and reading it would be an unbounded allocation driven by storage content.
-        using var buffer = new MemoryStream(capacity: (int)Math.Min(audio.ByteSize, 1 << 20));
-        var limit = audio.ByteSize + 1;
-        var chunk = new byte[81920];
-        long total = 0;
-
-        while (true)
-        {
-            var read = await stream.ReadAsync(chunk, ct);
-            if (read == 0)
-            {
-                break;
-            }
-
-            total += read;
-            if (total > limit)
-            {
-                throw new EvidenceIntegrityException(
-                    ProcessingFailure.AudioChecksumMismatch,
-                    $"the stored voice note is larger than the {audio.ByteSize} bytes declared "
-                    + $"for media {audio.Id}");
-            }
-
-            buffer.Write(chunk, 0, read);
-        }
-
-        var bytes = buffer.ToArray();
-
-        if (bytes.LongLength != audio.ByteSize)
-        {
-            throw new EvidenceIntegrityException(
-                ProcessingFailure.AudioChecksumMismatch,
-                $"the stored voice note is {bytes.LongLength} bytes but media {audio.Id} "
-                + $"declared {audio.ByteSize}");
-        }
-
-        var actual = Convert.ToHexStringLower(SHA256.HashData(bytes));
-        var declared = audio.Sha256.TrimEnd();
-
-        if (!string.Equals(actual, declared, StringComparison.OrdinalIgnoreCase))
-        {
-            // Never silent (ARCHITECTURE §6). The bytes in storage are not the bytes the phone
-            // hashed, so nothing downstream may treat them as this entry's evidence.
-            throw new EvidenceIntegrityException(
-                ProcessingFailure.AudioChecksumMismatch,
-                $"media {audio.Id} hashes to {actual} but was declared as {declared}");
-        }
-
-        logger.LogInformation(
-            "Entry {EntryId}: media {MediaId} verified ({Bytes} bytes, sha256 matches).",
-            audio.EntryId, audio.Id, bytes.LongLength);
-
-        return bytes;
-    }
+    private Task<byte[]> DownloadAndVerifyAsync(Media audio, CancellationToken ct) =>
+        VerifiedMediaReader.ReadAsync(storage, audio, logger, ct);
 
     // ------------------------------------------------------------------ helpers
 
@@ -511,14 +451,4 @@ public sealed class EntryProcessor(
 
         return EntryProcessingOutcome.Parked;
     }
-}
-
-/// <summary>
-/// The stored bytes are not the evidence the record claims — a checksum mismatch, a wrong size,
-/// or an object that has gone missing since it was verified. Always terminal: no number of reads
-/// turns the wrong bytes into the right ones.
-/// </summary>
-public sealed class EvidenceIntegrityException(string code, string message) : Exception(message)
-{
-    public string Code { get; } = code;
 }

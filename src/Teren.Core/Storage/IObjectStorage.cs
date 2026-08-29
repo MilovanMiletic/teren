@@ -28,14 +28,43 @@ public interface IObjectStorage
     /// <summary>
     /// Opens an object for reading, or returns null when there is nothing at that key.
     /// <para>
-    /// The one place the server reads media bytes, and it exists for B4: the pipeline downloads
-    /// the voice note to transcribe it and, while it holds the bytes, verifies the SHA-256 the
-    /// phone declared — <c>/complete</c> verified size only, deliberately (ARCHITECTURE §6).
-    /// Because it moves whole files, it is only ever called from a Hangfire job, never from a
-    /// request the phone is waiting on.
+    /// The server's one read path, and it serves two very different callers on purpose. The
+    /// pipeline downloads a voice note to transcribe it and verifies the SHA-256 the phone
+    /// declared while it holds the bytes, because <c>/complete</c> verified size only
+    /// (ARCHITECTURE §6). And <c>GET /api/entries/{id}/report</c> streams a stored report PDF
+    /// back to the app.
+    /// </para>
+    /// <para>
+    /// It returns <see cref="StoredObjectContent"/> rather than a bare stream so a caller that is
+    /// answering an HTTP request can set <c>Content-Length</c> and <c>Content-Type</c> from what
+    /// storage actually holds instead of guessing. **That is the shape the photo read path will
+    /// need too** — closing the media-read gap in ARCHITECTURE §8 is a matter of adding an
+    /// endpoint over this method, not of adding another one beside it.
+    /// </para>
+    /// <para>
+    /// Because it moves whole files it uses the bulk client, not the phone-facing budget. The
+    /// caller owns the returned content and must dispose it.
     /// </para>
     /// </summary>
-    Task<Stream?> OpenReadAsync(string objectKey, CancellationToken ct = default);
+    Task<StoredObjectContent?> OpenReadAsync(string objectKey, CancellationToken ct = default);
+
+    /// <summary>
+    /// Writes an object, overwriting whatever is at that key.
+    /// <para>
+    /// The one place the server *produces* bytes, and it exists for B6: a generated report is
+    /// not media the phone uploaded, so there is no presigned PUT to hand anybody — the PDF is
+    /// made here and must be stored from here. This does not weaken the §2 rule that media never
+    /// passes through the API: media still does not. A report is our own artefact, and it is
+    /// written from a Hangfire job, never from a request the phone is waiting on.
+    /// </para>
+    /// <para>
+    /// Overwrite rather than create-if-absent is deliberate: the report object key is derived
+    /// from the entry, so a re-run of a report pass that failed before delivery replaces its own
+    /// half-finished output instead of leaving an orphan behind at a fresh key.
+    /// </para>
+    /// </summary>
+    Task PutAsync(
+        string objectKey, byte[] content, string contentType, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -49,3 +78,20 @@ public sealed record PresignedUpload(
     IReadOnlyDictionary<string, string> RequiredHeaders);
 
 public sealed record StoredObject(long ByteSize, string? ETag, DateTimeOffset LastModified);
+
+/// <summary>
+/// An open object: its bytes, and what storage says about them. Disposing it disposes the
+/// underlying response.
+/// </summary>
+/// <param name="ByteSize">What storage reports, which is not the same thing as what the record
+/// claims — the caller compares the two.</param>
+/// <param name="ContentType">As declared when the object was written. Advisory: a caller serving
+/// this to a browser should send the type it knows the object must be, not this one.</param>
+public sealed record StoredObjectContent(
+    Stream Content,
+    long ByteSize,
+    string? ContentType,
+    string? ETag) : IDisposable
+{
+    public void Dispose() => Content.Dispose();
+}

@@ -119,6 +119,48 @@ This product is **not**:
 
 ## 11. Decided
 
+- **The report is a client's document, not a system record** (2026-08-29, founder). Five rulings,
+  all pointing the same way — what an investor reads should carry evidence, not plumbing:
+  1. **The record id comes off entirely.** A GUID means nothing to an investor. Accepted
+     trade-off, stated plainly: in a dispute the PDF is matched to the archive by project + date
+     rather than by identifier. That is unambiguous today because there is one report per entry
+     per day, and it stops being unambiguous the moment that changes.
+  2. **Location prints as a place name, not coordinates.** `44.81731, 20.49829` becomes
+     "Vojvode Stepe 212". The site's name is what a reader can act on.
+  3. **Timestamps print in the site's own local time**, via a new per-project `time_zone` column
+     defaulting to `Europe/Belgrade` — the same shape as `report_language`, and correct if a
+     contractor ever works across a border. UTC stays the storage format everywhere; this is a
+     rendering concern only.
+  4. **Teren is branded on the report as a letterspaced "TEREN" wordmark**, no image asset. Swaps
+     for a real logo later through one config line without touching layout.
+  5. **The PDF is downloadable from the app**, not only from the client's email — served by an
+     **authenticated API endpoint that streams the bytes**, never a presigned GET link. A presigned
+     URL works for anyone holding it, and this is a client's commercial data. This is also the
+     first read path the system has ever had for object storage, and the groundwork for closing the
+     photo gap that keeps C3 at ◐ (ARCHITECTURE §8).
+
+- **The confirmation screen is a decision, not a form** (2026-08-29, founder). Triggered by the
+  founder confirming a real entry and finding he had to *type the day himself* — the transcript was
+  perfect, but extraction had never run (no Anthropic key), so the form was empty and B5 blocked an
+  empty draft. He was doing the extraction by hand, which is the exact work the product exists to
+  remove. Three rulings:
+  1. **Read-only summary by default; one primary action.** The day is presented as a summary with a
+     single "Sve je tačno — pošalji"; tapping a line turns it into a field. Reading is the default,
+     editing the exception. A correct entry must be **one tap**.
+  2. **The raw transcript is always visible**, with the audio beside it — his own words next to what
+     the system understood, checkable without tapping. Capped at ~3 lines with an expander so the
+     structure still starts above the fold on a 390 px phone; the audio control never truncates.
+  3. **With a transcript but no structure, he can confirm the transcript as the record.** The
+     report then carries his words verbatim as the day's description, clearly marked as his own
+     words rather than extracted data. This makes the product's floor "a timestamped, geotagged,
+     voice-backed record in his own words" instead of "type it yourself" — a foreman can always
+     finish his day in one tap even with every AI in the chain down.
+     - The eval triple stays honest: `extracted` is null and `corrected` records approval-as-is,
+       which is distinguishable from typing, so the training signal is not polluted.
+     - It must **never look like the good path**: the screen says plainly that the system could not
+       structure the day and that his own words are what goes out. Otherwise nothing creates
+       pressure to notice that extraction is broken.
+
 - **Name: Teren** (2026-08-28). Rationale: it's a Serbian product for the Serbian market — the
   name is instantly natural to both foreman and owner ("šta ima na terenu?"), one word, works
   across ex-YU markets. Runner-ups if the name ever needs to change: MojRaport (mojraport.rs),

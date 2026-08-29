@@ -204,4 +204,8 @@ public static class Wire
 
     public static string Sha256OfBytes(byte[] bytes) =>
         Convert.ToHexStringLower(SHA256.HashData(bytes));
+
+    /// <summary>A real PNG for a declared photograph — see <see cref="TestImage"/> for why the
+    /// bytes have to be a decodable image and not a placeholder.</summary>
+    public static byte[] PhotoBytes(int index = 0) => TestImage.Png(index);
 }

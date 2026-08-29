@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Teren.Core.Entities;
+using Teren.Core.Reporting;
 
 namespace Teren.Infrastructure.Seeding;
 
@@ -89,6 +90,7 @@ public static class DemoSeeder
                 }
                 """,
             ReportLanguage = "sr",
+            TimeZone = ReportTimeZone.Default,
             CreatedAt = now,
         });
 
@@ -118,6 +120,7 @@ public static class DemoSeeder
                 }
                 """,
             ReportLanguage = "sr",
+            TimeZone = ReportTimeZone.Default,
             CreatedAt = now,
         });
 
@@ -145,6 +148,7 @@ public static class DemoSeeder
                 }
                 """,
             ReportLanguage = "sr",
+            TimeZone = ReportTimeZone.Default,
             CreatedAt = now,
         });
 

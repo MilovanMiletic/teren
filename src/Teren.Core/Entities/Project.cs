@@ -21,5 +21,13 @@ public sealed class Project
     /// <summary>Report/email language for this client (not the foreman's device language).</summary>
     public string ReportLanguage { get; set; } = "sr";
 
+    /// <summary>
+    /// The site's own wall-clock zone, as an IANA id — the same per-project shape as
+    /// <see cref="ReportLanguage"/>, and for the same reason: a report belongs to the place the
+    /// work happened, not to the server or to the foreman's phone. Every timestamp on the report
+    /// is rendered in it. Storage stays UTC everywhere (ARCHITECTURE §6).
+    /// </summary>
+    public string TimeZone { get; set; } = Reporting.ReportTimeZone.Default;
+
     public DateTime CreatedAt { get; set; }
 }

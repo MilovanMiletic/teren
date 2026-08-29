@@ -94,6 +94,34 @@ describe('mergeArchiveRows', () => {
     expect(rows[0].serverStatus).toBe('confirmed');
   });
 
+  it('carries the moment the report went out, which decides whether the entry may still change', () => {
+    // `reportedAt` is the field the archive reads to offer — or refuse — the way back into the
+    // confirmation gate. Reading the status alone would offer a correction on an entry the
+    // server has already sealed.
+    const reported = mergeArchiveRows([], [listItem({ id: 'sent' })]);
+    const editable = mergeArchiveRows(
+      [],
+      [listItem({ id: 'open', status: 'confirmed', reported_at: null })],
+    );
+
+    expect(reported[0].reportedAt).toBe('2026-08-27T14:06:00.000Z');
+    expect(editable[0].reportedAt).toBeNull();
+  });
+
+  it('lets the server overrule a phone that still thinks a reported entry is merely confirmed', () => {
+    // The phone stores a status and never a `reported_at`, so a local row alone cannot know the
+    // report has gone. The list is what corrects it — and until it does, the confirmation screen
+    // itself re-reads the entry and refuses to edit a sealed one.
+    const rows = mergeArchiveRows(
+      [localEntry({ id: 'a', serverStatus: 'confirmed' })],
+      [listItem({ id: 'a', status: 'reported', reported_at: '2026-08-29T18:00:00.000Z' })],
+    );
+
+    expect(rows[0].reportedAt).toBe('2026-08-29T18:00:00.000Z');
+    expect(mergeArchiveRows([localEntry({ id: 'a', serverStatus: 'confirmed' })], [])[0].reportedAt)
+      .toBeNull();
+  });
+
   it('orders by site day first, then by the moment inside it', () => {
     // Day before time: an entry captured just after midnight for the previous day's work must
     // not jump out of the day it belongs to.

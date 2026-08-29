@@ -46,6 +46,13 @@
       "label": "Poslednji unosi",
       "all": "Svi unosi",
       "empty": "Za ovo gradilište još nema unosa na telefonu."
+    },
+    "attention": {
+      "zero": "Ništa ne čeka na vas",
+      "one": "{{count}} unos čeka na vas",
+      "few": "{{count}} unosa čekaju na vas",
+      "other": "{{count}} unosa čeka na vas",
+      "hint": "Proverite šta je sistem razumeo da bi izveštaj mogao da ode."
     }
   },
   "entry": {
@@ -99,6 +106,35 @@
         "body": "Snimak i fotografije su bezbedni na telefonu i šalju se sami. Dok ne stignu, unos ne može da uđe u izveštaj."
       }
     },
+    "revise": {
+      "title": "Ovaj unos još može da se ispravi",
+      "body": "Ovaj dan ste već potvrdili. Dok izveštaj ne ode klijentu, još možete da promenite ono što u njemu piše.",
+      "action": "Ispravi unos",
+      "row": "Ispravi",
+      "rowLabel": "Ispravi unos snimljen u {{time}}"
+    },
+    "report": {
+      "title": "Izveštaj poslat klijentu",
+      "body": "Ovo je PDF koji je klijent dobio. Preuzmite ga da biste ga sačuvali ili prosledili.",
+      "download": "Preuzmi PDF",
+      "again": "Pokušaj ponovo",
+      "downloading": "Preuzimanje…",
+      "progress": "Preuzeto {{percent}}%",
+      "saved": "Izveštaj je preuzet na ovaj uređaj.",
+      "error": {
+        "offline": "Nema interneta, pa izveštaj nije mogao da se preuzme. Njemu se ništa nije desilo — pokušajte ponovo kada se mreža vrati.",
+        "server": "Server nije odgovorio, pa izveštaj nije preuzet. Nije izgubljen — pokušajte ponovo za koji trenutak.",
+        "notReady": "Izveštaj još nije spreman. Upravo se pravi i šalje — pokušajte ponovo za koji trenutak.",
+        "notReported": "Za ovaj dan izveštaj još nije poslat, pa nema šta da se preuzme. Pojaviće se ovde čim ode klijentu.",
+        "missing": "Server nema ovaj unos. Možda je ovaj zapis otvoren preko starog linka.",
+        "unavailable": "Izveštaj je poslat klijentu, ali server više ne može da napravi fajl. Klijent ga i dalje ima na mejlu; unos i dokazi su netaknuti.",
+        "rejected": "Server je odbio zahtev za ovaj izveštaj. Sam unos je netaknut, ali ovo ne može da se popravi sa telefona.",
+        "unauthorized": "Ovaj telefon nema dozvolu da preuzima izveštaje sa servera.",
+        "notConfigured": "Aplikacija nema podešen server, pa izveštaji ne mogu da se preuzimaju.",
+        "empty": "Server je poslao prazan fajl, pa ništa nije sačuvano. Pokušajte ponovo za koji trenutak.",
+        "unknown": "Izveštaj nije mogao da se preuzme. Na unosu se ništa nije promenilo — pokušajte ponovo."
+      }
+    },
     "section": {
       "work": "Radovi",
       "headcount": "Ljudstvo",
@@ -109,7 +145,8 @@
       "transcript": "Transkript",
       "photos": "Fotografije",
       "audio": "Snimak",
-      "conditions": "Uslovi"
+      "conditions": "Uslovi",
+      "report": "Izveštaj"
     },
     "structure": {
       "corrected": "Proverio čovek",
@@ -172,6 +209,123 @@
       "label": "Lokacija",
       "accuracy": "±{{metres}} m"
     }
+  },
+  "confirm": {
+    "title": "Provera unosa",
+    "open": "Proverite i potvrdite",
+    "lead": "Ništa ne ide klijentu dok vi ne potvrdite.",
+    "draftSaved": "Sve što upišete čuva se na telefonu i pre slanja.",
+    "draftNotSaved": "Telefon nije uspeo da sačuva vaše ispravke. Još su na ekranu — potvrdite sada da ih server sačuva.",
+    "banner": {
+      "awaiting": {
+        "title": "Proverite šta je sistem razumeo",
+        "body": "Ovo je ono što je sistem napravio od vašeg snimka. Ispravite šta nije tačno — sam snimak se nikada ne menja."
+      },
+      "noTranscript": {
+        "title": "Iz snimka nije moglo da se pročita ništa",
+        "body": "Upišite svojim rečima šta je urađeno. Snimak i fotografije ostaju tačno onakvi kakvi jesu."
+      },
+      "noStructure": {
+        "title": "Sistem nije uspeo da razvrsta ovaj dan po stavkama",
+        "body": "Vaše reči su pročitane i stoje gore, tačno onako kako su snimljene. Stavke upišite sami ispod — snimak i fotografije ostaju tačno onakvi kakvi jesu."
+      },
+      "confirmed": {
+        "title": "Potvrđeno",
+        "body": "Unos možete ispravljati sve dok izveštaj ne ode."
+      }
+    },
+    "state": {
+      "loading": "Učitavanje unosa…",
+      "processing": {
+        "title": "Obrada je u toku",
+        "body": "Server je primio snimak i još radi na njemu. Ekran se sam otvara čim bude imalo šta da se proveri."
+      },
+      "notSent": {
+        "title": "Još nije stiglo na server",
+        "body": "Snimak i fotografije su bezbedni na telefonu i šalju se sami. Dok ne stignu, nema šta da se potvrdi."
+      },
+      "notFound": {
+        "title": "Unos nije pronađen",
+        "body": "Ovaj unos nije ni na telefonu ni na serveru."
+      },
+      "unreachable": {
+        "title": "Server nije mogao da se pita",
+        "body": "Bez veze sa serverom unos ne može da se potvrdi. Ništa nije izgubljeno — pokušajte kada se mreža vrati."
+      },
+      "reported": {
+        "title": "Ovaj unos je već poslat",
+        "body": "Poslat unos se ne menja. Snimite novi unos sa ispravkom; on će se pozvati na ovaj."
+      }
+    },
+    "field": {
+      "description": "Šta je urađeno",
+      "location": "Gde",
+      "quantity": "Količina",
+      "unit": "Jedinica",
+      "total": "Ljudi na gradilištu",
+      "role": "Zanimanje",
+      "count": "Koliko",
+      "name": "Materijal",
+      "waitingOn": "Čeka se",
+      "notes": "Napomena"
+    },
+    "add": {
+      "work": "Dodaj rad",
+      "role": "Dodaj zanimanje",
+      "material": "Dodaj materijal",
+      "blocker": "Dodaj zastoj",
+      "hiddenWork": "Dodaj skriveni rad"
+    },
+    "remove": "Ukloni ovaj red",
+    "empty": {
+      "work": "Nijedan rad još nije upisan.",
+      "roles": "Nijedno zanimanje još nije upisano.",
+      "materials": "Nijedan materijal još nije upisan.",
+      "blockers": "Nema zastoja.",
+      "hiddenWork": "Nema upisanih skrivenih radova."
+    },
+    "delivered": {
+      "label": "Isporuka",
+      "unknown": "Nije rečeno"
+    },
+    "transcript": {
+      "hint": "Vaše reči, kako su snimljene. Ne menjaju se.",
+      "toNotes": "Prebaci u napomenu"
+    },
+    "verbatim": {
+      "title": "Sistem nije uspeo da razvrsta ovaj dan po stavkama",
+      "body": "Vaše reči su pročitane tačno i stoje gore. Nije uspelo samo razvrstavanje na rad, materijal i ljude. Te reči možete poslati kao današnji zapis — klijent ih čita kao vaš opis dana, a ne kao podatke koje je sistem izvukao.",
+      "action": "Pošalji moje reči",
+      "orEdit": "Ili ispod upišite dan po stavkama."
+    },
+    "action": {
+      "confirm": "Potvrdi unos",
+      "sending": "Šalje se…",
+      "again": "Pokušaj ponovo",
+      "done": "Gotovo",
+      "revise": "Ispravi još"
+    },
+    "requireContent": "Upišite bar jednu stavku pre potvrde.",
+    "requireContentOrWords": "Upišite bar jednu stavku, ili gore pošaljite svoje reči.",
+    "success": {
+      "title": "Unos je potvrđen",
+      "body": "Izveštaj se pravi od onoga što ste potvrdili. Vaše ispravke se čuvaju da bi sistem sledeći snimak razumeo bolje."
+    },
+    "successVerbatim": {
+      "title": "Vaše reči su potvrđene",
+      "body": "Izveštaj nosi vaš opis dana, onako kako ste ga izgovorili — bez stavki za rad, materijal i ljude, jer sistem nije uspeo da ih pročita iz snimka."
+    },
+    "error": {
+      "offline": "Server nije bio dostupan, pa unos nije potvrđen.",
+      "server": "Server trenutno ne odgovara, pa unos nije potvrđen.",
+      "reported": "Izveštaj za ovaj unos je već poslat, pa više ne može da se menja. Ispravka se unosi kao novi unos.",
+      "notReady": "Server još radi na ovom unosu. Pokušajte za koji trenutak.",
+      "rejected": "Server nije prihvatio ovu potvrdu.",
+      "unauthorized": "Ovaj telefon nema dozvolu da potvrđuje unose.",
+      "notConfigured": "Aplikacija nema podešen server, pa ništa ne može da se potvrdi.",
+      "unknown": "Potvrda nije uspela iz nepoznatog razloga."
+    },
+    "errorSafe": "Ništa nije izgubljeno — sve što ste upisali ostaje na telefonu."
   },
   "capture": {
     "record": {

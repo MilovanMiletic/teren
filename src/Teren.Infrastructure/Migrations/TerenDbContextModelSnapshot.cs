@@ -266,6 +266,13 @@ namespace Teren.Infrastructure.Migrations
                         .HasDefaultValue("sr")
                         .HasColumnName("report_language");
 
+                    b.Property<string>("TimeZone")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("Europe/Belgrade")
+                        .HasColumnName("time_zone");
+
                     b.Property<string>("Vocabulary")
                         .HasColumnType("jsonb")
                         .HasColumnName("vocabulary");
@@ -285,6 +292,14 @@ namespace Teren.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<DateTime?>("AttemptStartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("attempt_started_at");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
                     b.Property<Guid>("CompanyId")
                         .HasColumnType("uuid")
                         .HasColumnName("company_id");
@@ -292,6 +307,18 @@ namespace Teren.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<string>("DeliveryDetail")
+                        .HasColumnType("text")
+                        .HasColumnName("delivery_detail");
+
+                    b.Property<Guid?>("EntryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("entry_id");
+
+                    b.Property<string>("FailureReason")
+                        .HasColumnType("text")
+                        .HasColumnName("failure_reason");
 
                     b.Property<string>("Kind")
                         .IsRequired()
@@ -301,6 +328,11 @@ namespace Teren.Infrastructure.Migrations
                     b.Property<string>("PdfObjectKey")
                         .HasColumnType("text")
                         .HasColumnName("pdf_object_key");
+
+                    b.Property<string>("PdfSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("pdf_sha256");
 
                     b.Property<DateOnly>("PeriodEnd")
                         .HasColumnType("date")
@@ -322,11 +354,21 @@ namespace Teren.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("sent_at");
 
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
                     b.HasKey("Id")
                         .HasName("pk_report");
 
                     b.HasIndex("CompanyId")
                         .HasDatabaseName("ix_report_company_id");
+
+                    b.HasIndex("EntryId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_report_entry_id")
+                        .HasFilter("entry_id IS NOT NULL");
 
                     b.HasIndex("ProjectId", "PeriodStart")
                         .IsDescending(false, true)
@@ -335,6 +377,10 @@ namespace Teren.Infrastructure.Migrations
                     b.ToTable("report", null, t =>
                         {
                             t.HasCheckConstraint("ck_report_kind", "kind IN ('daily','weekly')");
+
+                            t.HasCheckConstraint("ck_report_sent_at", "(status = 'sent') = (sent_at IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_report_status", "status IN ('sending','sent','failed')");
                         });
                 });
 
@@ -396,6 +442,12 @@ namespace Teren.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_report_company");
+
+                    b.HasOne("Teren.Core.Entities.Entry", null)
+                        .WithMany()
+                        .HasForeignKey("EntryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_report_entry");
 
                     b.HasOne("Teren.Core.Entities.Project", null)
                         .WithMany()

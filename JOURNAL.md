@@ -12,6 +12,87 @@ Entry format:
 
 ---
 
+## 2026-08-30 (through the night) — B5 + B6: the money path closed, then the founder used it
+
+**The loop closes.** Speak → transcript → confirm → PDF → email → sealed, proven end to end against
+real Postgres, MinIO and SMTP. B5 and B6 both went through their reviewers; both came back
+**accept-with-fixes**, and both sets of findings were the interesting part of the day.
+
+**B5's reviewer found a small gating bug and a much better one underneath.** The gating item was a
+missing dictionary key (`confirm.error.reported`) that would have shown a foreman a raw
+translation key. The fix closed the *class*: `CONFIRM_FAILURES` is now derived from a
+`Record<ConfirmFailure, true>` — the one TypeScript construct checked for completeness — plus a
+spec that reads every `.ts`/`.html` off disk and asserts every dictionary-shaped string resolves in
+both languages. The better find was non-gating: `saveConfirmDraft` swallowed failures under a
+comment claiming Home surfaced them. **It did not.** On a screen whose entire promise is *ništa
+nije izgubljeno*, a quota-exhausted write would have discarded a foreman's typed correction in
+silence. Third instance of the same species — a comment or a screen asserting something the code
+does not deliver.
+
+**B6's reviewer found four, and all four were about the same promise:** *a client never receives two
+reports, and a sealed entry matches what was sent.*
+
+1. A **network replay** of `/confirm` cleared `report_interrupted` and resent — two copies in an
+   investor's inbox, no human deciding, in direct breach of §6's own rule.
+2. **Post-DATA SMTP failures were retried** — the classic duplicate-email vector. A relay that
+   accepted the message but answered slowly got it up to three times, and the row then recorded
+   "nothing left the building", which was false. **The tests could not see this**: the fake delivery
+   threw *before* recording a send, so "accepted and then threw" was literally unrepresentable.
+   Making that state expressible was the fix that mattered.
+3. A crash between *sent* and *sealed* stranded an entry **permanently** — the recovery branch
+   existed and was tested, but only by direct call; the sweeper's predicate could never reach it.
+4. A **changed re-confirmation mid-pass** sealed v2 while v1 was already in the client's hands.
+
+Sobering pattern: three of the four were compositions of individually-correct features, and the
+fourth was invisible to a test suite that looked thorough.
+
+**Then the founder actually used it, and that was worth more than any review.**
+
+He captured a real entry, and had to *type the whole day himself*. The transcript was perfect;
+extraction had never run. He said the obvious thing — *"if what I read from the transcript is what
+I said, I should just be able to confirm it"* — and he was right. The screen had been designed for
+the happy path and the empty path, and the space between them is where the product actually lives.
+
+The cause turned out to be mundane in a way worth recording: **the Anthropic account was out of
+credit**. A $5 billing fact, presenting as a product design failure. Nothing in the system said so
+where anyone would look, and — because `/confirm` clears `failure_reason` deliberately, so that
+"fix the cause and confirm again" works as a retry — **the evidence of why the AI produced nothing
+is destroyed the moment a foreman confirms.** For a product whose eval set is the point, that is a
+real gap, now written down.
+
+Worse, the screen *lied about it*. With a perfectly good transcript displayed on screen, the banner
+read **"Nothing could be read from the recording."** `needs_review` covers two unrelated
+situations and the copy only knew one. Fifth instance of the class.
+
+**Decided, and built the same night:** with a transcript and no structure, the foreman **confirms
+his own words as the record, in one tap**. `described_verbatim: true` with the transcript verbatim
+in `notes`; the report renders the day as prose, marked as his words rather than as extracted data.
+The eval triple stays honest — `extracted` null, `corrected` recording approval-as-is, so approval
+is still distinguishable from typing, and the offer is withdrawn the instant he edits a section.
+
+**This changes what the product's floor is.** Not "type it yourself" when the AI is down, but *a
+timestamped, geotagged, voice-backed record in his own words*. A foreman can finish his day in one
+tap with every AI in the chain unavailable. That is a better product than the one designed on
+paper, and it came from ten minutes of real use.
+
+**Also decided and shipped, all founder-driven after reading a real PDF:** the record id comes off
+(matching by project + date instead, with the assumption commented where it will break), location
+prints as a place name rather than decimal degrees, timestamps print in the site's own local time
+(new per-project `time_zone`, default `Europe/Belgrade`), a TEREN wordmark, and **the PDF downloads
+from the app** — the system's first storage read path, authenticated streaming rather than a
+presigned link, shaped so photos can reuse it.
+
+**The timezone test that nearly wasn't.** Dropping the UTC→Belgrade conversion failed five tests.
+But hard-coding `+2` — the plausible wrong fix — **passed the summer test**; only the winter test
+caught it. One test would have shipped a report printing the wrong time for four months a year.
+
+**Suites: 447 backend, 403 PWA** (from 260 and 255 at the start of the day). Every increment
+mutation-proven. Two agents caught their *own* specs being vacuous mid-run and said so.
+
+**Still owed:** reviewer gates on the verbatim pair and the report-polish pair. Nobody has looked at
+any PDF in a viewer, and the Serbian report copy is unreviewed by a native speaker. B3a staging is
+next, then the founder's welcome + login gate.
+
 ## 2026-08-29 (night, C3 + first real transcript) — The archive shipped, and the pipeline spoke Serbian
 
 **The archive, pulled ahead of M1 on the founder's ask**

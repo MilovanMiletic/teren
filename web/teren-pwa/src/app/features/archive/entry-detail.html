@@ -59,6 +59,46 @@
           <span class="t-meta">{{ t('archive.detail.awaiting.body') }}</span>
         </div>
       </div>
+    } @else if (needsConfirming()) {
+      <!--
+        The record is read-only, and it stays read-only — but an entry the server has handed back
+        to a person must not be a dead end here. Showing "Potrebna provera" with no way to act on
+        it would be this screen naming the problem and hiding the only control that fixes it.
+      -->
+      <div class="card detail__notice detail__notice--warn" role="status">
+        <app-icon name="alert-triangle" [size]="20" class="detail__notice-icon" />
+        <div class="detail__notice-text">
+          <span class="detail__notice-title">{{ t('confirm.banner.awaiting.title') }}</span>
+          <span class="t-meta">{{ t('home.attention.hint') }}</span>
+        </div>
+        <button
+          type="button"
+          class="btn btn--primary btn--row detail__notice-action"
+          (click)="openConfirm()"
+        >
+          {{ t('confirm.open') }}
+        </button>
+      </div>
+    } @else if (revisable()) {
+      <!--
+        Not a warning and not a task: he confirmed this day, and this is the door back in while
+        it is still open. It shuts at `reported_at` and never opens again (B6), so the record
+        says plainly how long the chance lasts rather than leaving him to find out later.
+      -->
+      <div class="card detail__notice detail__notice--accent" role="status">
+        <app-icon name="pencil" [size]="20" class="detail__notice-icon" />
+        <div class="detail__notice-text">
+          <span class="detail__notice-title">{{ t('archive.revise.title') }}</span>
+          <span class="t-meta">{{ t('archive.revise.body') }}</span>
+        </div>
+        <button
+          type="button"
+          class="btn btn--tertiary btn--row detail__notice-action"
+          (click)="openConfirm()"
+        >
+          {{ t('archive.revise.action') }}
+        </button>
+      </div>
     }
 
     <!-- ---- The structured day ------------------------------------------------------------ -->
@@ -67,7 +107,9 @@
       <div class="detail__provenance">
         <app-icon name="check" [size]="14" />
         <span>{{
-          structureIsCorrected() ? t('archive.structure.corrected') : t('archive.structure.extracted')
+          structureIsCorrected()
+            ? t('archive.structure.corrected')
+            : t('archive.structure.extracted')
         }}</span>
       </div>
 
@@ -137,7 +179,9 @@
                     </span>
                   }
                   @if (item.delivered === true) {
-                    <span class="chip chip--ok items__chip">{{ t('archive.materials.delivered') }}</span>
+                    <span class="chip chip--ok items__chip">{{
+                      t('archive.materials.delivered')
+                    }}</span>
                   } @else if (item.delivered === false) {
                     <!-- "Ordered, not delivered" is a fact a report has to carry. -->
                     <span class="chip chip--warn items__chip">{{
@@ -265,6 +309,93 @@
         <p class="t-meta detail__state-body">{{ t('archive.audio.none') }}</p>
       }
     </section>
+
+    <!-- ---- The report: the finished artefact the client received ------------------------ -->
+
+    @if (reported()) {
+      <section class="card detail__card detail__report">
+        <h3 class="t-label detail__card-label">{{ t('archive.section.report') }}</h3>
+        <div class="detail__report-row">
+          <!-- The record's own text objects, reused: this card invents no typography. -->
+          <div class="detail__notice-text">
+            <p class="detail__state-title">{{ t('archive.report.title') }}</p>
+            <p class="t-meta detail__state-body">{{ t('archive.report.body') }}</p>
+          </div>
+          <!--
+            A fetch, not a link: the route is inside the device-token group and an `<a href>`
+            cannot carry the header (PROJECT.md §11, ruling 5 — never a presigned URL).
+          -->
+          <button
+            type="button"
+            class="btn btn--primary btn--row detail__report-action"
+            [disabled]="reportBusy()"
+            [attr.aria-busy]="reportBusy()"
+            (click)="downloadReport()"
+          >
+            <app-icon name="download" [size]="18" />
+            <span>
+              <!--
+                After a failure the button says what pressing it would now do; "Preuzmi PDF" over
+                an attempt that has already failed reads as though nothing happened.
+              -->
+              {{
+                reportBusy()
+                  ? t('archive.report.downloading')
+                  : reportRetryable()
+                    ? t('archive.report.again')
+                    : t('archive.report.download')
+              }}
+            </span>
+          </button>
+        </div>
+
+        <!--
+          Always in the DOM so the live region is there before it has anything to announce; a
+          region created at the same moment as its first message is not read out at all.
+        -->
+        <div class="detail__report-status" role="status" aria-live="polite">
+          @if (reportBusy()) {
+            @if (reportPercent() !== null) {
+              <!-- A real fraction where the server sent a length: minutes of silence otherwise. -->
+              <div
+                class="detail__progress"
+                role="progressbar"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                [attr.aria-valuenow]="reportPercent()"
+              >
+                <div class="detail__progress-bar" [style.width.%]="reportPercent()"></div>
+              </div>
+              <span class="t-meta t-num">
+                {{ t('archive.report.progress', { percent: reportPercent() }) }}
+              </span>
+            } @else {
+              <!--
+                No `Content-Length`, so no fraction. Saying so beats a bar at an invented width:
+                the screen does not claim to know how far along it is.
+              -->
+              <span class="t-meta">{{ t('archive.report.downloading') }}</span>
+            }
+          } @else if (reportSaved()) {
+            <span class="t-meta detail__report-saved">
+              <app-icon name="check" [size]="16" />
+              <span>{{ t('archive.report.saved') }}</span>
+            </span>
+          }
+        </div>
+
+        @if (reportErrorKey(); as key) {
+          <!--
+            Three different facts, told apart: "not ready yet" is not "missing", and neither is
+            "the server could not be asked". The tone follows the same split.
+          -->
+          <p class="notice detail__report-error notice--{{ reportErrorTone() }}" role="alert">
+            <app-icon name="alert-triangle" [size]="18" class="notice__icon" />
+            <span>{{ t(key) }}</span>
+          </p>
+        }
+      </section>
+    }
 
     <!-- ---- Conditions: where, and what the weather was --------------------------------- -->
 

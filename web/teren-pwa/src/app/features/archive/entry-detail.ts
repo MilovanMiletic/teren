@@ -10,6 +10,7 @@ import {
   signal,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { Router } from '@angular/router';
 import { TranslocoDirective } from '@jsverse/transloco';
 import { switchMap } from 'rxjs';
 
@@ -22,7 +23,8 @@ import {
   parseEntryWeather,
 } from '../../core/archive/entry-structure';
 import { EntryStore } from '../../core/db/entry-store';
-import { GeoFix, LocalEntry, LocalMedia } from '../../core/db/models';
+import { GeoFix, LocalEntry, LocalMedia, canRevise, needsConfirmation } from '../../core/db/models';
+import { ReportFailure, ReportService } from '../../core/report/report.service';
 import { DurationPipe } from '../../ui/duration.pipe';
 import { entryStatusKey, entryStatusTone } from '../../ui/entry-status';
 import { Icon } from '../../ui/icon';
@@ -86,8 +88,10 @@ export type TranscriptState =
   host: { '(document:keydown.escape)': 'closeViewer()' },
 })
 export class EntryDetail {
+  private readonly router = inject(Router);
   private readonly entries = inject(EntryStore);
   private readonly archive = inject(ArchiveService);
+  private readonly reports = inject(ReportService);
 
   readonly entryId = input.required<string>();
 
@@ -359,9 +363,96 @@ export class EntryDetail {
    */
   protected readonly blocked = computed(() => this.local()?.status === 'blocked');
 
+  /**
+   * The server has finished with this entry and is waiting for a person (B5).
+   *
+   * The record itself stays read-only — nothing here is editable, which is what makes it evidence
+   * — but it must not be a dead end. An entry showing "Potrebna provera" with no route to the
+   * gate would be this screen naming the problem and hiding the control that fixes it, which is
+   * exactly the defect B5 fixed on Home.
+   */
+  protected readonly needsConfirming = computed(
+    () => !this.remote()?.reported_at && needsConfirmation(this.serverStatus()),
+  );
+
+  /**
+   * He already answered — and until the report goes out he is still allowed to change his answer.
+   *
+   * A different claim from {@link needsConfirming}, and the copy on screen has to keep them apart:
+   * that one is an entry the server has handed back to a person, this one is an entry he has
+   * already finished with. Nothing is outstanding here, so nothing on screen may suggest it is.
+   *
+   * What makes it worth showing at all is that the window shuts for good. `reported_at` seals the
+   * row (B6) and the only remedy afterwards is a whole new correction entry (C4, not built), so
+   * the cheap fix is available exactly now — and, before this, only by typing the URL by hand.
+   */
+  protected readonly revisable = computed(() =>
+    canRevise(this.serverStatus(), this.remote()?.reported_at ?? null),
+  );
+
   protected readonly audioDurationMs = computed(
     () => this.audio()?.durationMs ?? this.local()?.audioDurationMs ?? 0,
   );
+
+  /*
+   * ---- The report (PROJECT.md §11, ruling 5) ------------------------------------------------
+   *
+   * "The PDF is downloadable from the app, not only from the client's email." The record already
+   * shows the evidence a day was built from; this is the finished document that went out of it,
+   * and being able to hand it to somebody — a client on the phone, an engineer in a meeting — is
+   * the whole point.
+   */
+
+  /**
+   * Whether there is a report to ask for at all.
+   *
+   * `reported_at` from the **server's** answer, never the local `serverStatus` cache: that column
+   * is written once at upload time and never refreshed (the known Home/archive disagreement), so
+   * trusting it would put a download button on a day whose report does not exist. Offering an
+   * action that can only fail is the same class of lie as a screen claiming a record is missing
+   * because the wifi blipped.
+   */
+  protected readonly reported = computed(() => this.remote()?.reported_at != null);
+
+  protected readonly reportBusy = signal(false);
+  /** Fraction downloaded, or null while the total is unknown (no `Content-Length`). */
+  protected readonly reportProgress = signal<number | null>(null);
+  protected readonly reportFailure = signal<ReportFailure | null>(null);
+  protected readonly reportRetryable = signal(false);
+  protected readonly reportSaved = signal(false);
+
+  protected readonly reportPercent = computed(() => {
+    const fraction = this.reportProgress();
+    return fraction === null ? null : Math.min(100, Math.max(0, Math.round(fraction * 100)));
+  });
+
+  /** See {@link structureTitleKey} for why the concatenation lives beside the union it indexes. */
+  protected readonly reportErrorKey = computed(() => {
+    const failure = this.reportFailure();
+    return failure ? `archive.report.error.${failure}` : null;
+  });
+
+  /**
+   * How loudly to say it.
+   *
+   * The three outcomes are not equally bad and must not look it. "Not ready yet" and "the server
+   * could not be asked" are waiting states — nothing is wrong with the entry and nothing needs
+   * doing — while a missing entry or a refused token is a real problem with no cure on this
+   * screen. Painting all of them red would be the screen shouting at a foreman about a PDF that
+   * is simply thirty seconds away.
+   */
+  protected readonly reportErrorTone = computed<'warn' | 'err'>(() => {
+    switch (this.reportFailure()) {
+      case 'missing':
+      case 'unavailable':
+      case 'rejected':
+      case 'unauthorized':
+      case 'notConfigured':
+        return 'err';
+      default:
+        return 'warn';
+    }
+  });
 
   constructor() {
     // Local first, and rendered before the server is asked: the archive is readable in a basement
@@ -373,6 +464,7 @@ export class EntryDetail {
       this.remote.set(null);
       this.remoteMissing.set(false);
       this.viewerIndex.set(null);
+      this.resetReport();
 
       void this.entries.getEntry(id).then((entry) => {
         this.local.set(entry ?? null);
@@ -408,6 +500,73 @@ export class EntryDetail {
   protected audioUrl(): string | null {
     const audio = this.audio();
     return audio ? this.urls.get(audio.id, audio.blob) : null;
+  }
+
+  /**
+   * Fetch the report and hand it to the browser.
+   *
+   * **The first line is the whole guard against five downloads.** A report with photographs is a
+   * few megabytes, and on a site connection the button can look inert for ten seconds or more; a
+   * foreman taps a button that appears to do nothing. Disabling it in the template is the visible
+   * half of that, and this is the half that holds when the tap arrives anyway — a keyboard
+   * `Enter` repeat, a double-tap the browser delivers before the render.
+   */
+  protected async downloadReport(): Promise<void> {
+    if (this.reportBusy()) {
+      return;
+    }
+
+    const id = this.entryId();
+    this.reportBusy.set(true);
+    this.reportFailure.set(null);
+    this.reportRetryable.set(false);
+    this.reportSaved.set(false);
+    this.reportProgress.set(null);
+
+    const result = await this.reports.download(id, this.reportFileBase(), (fraction) => {
+      // A late progress tick for an entry the user has already left must not drive the bar on the
+      // one now on screen.
+      if (this.entryId() === id) {
+        this.reportProgress.set(fraction);
+      }
+    });
+
+    // Same rule for the outcome. The effect has already cleared this state for the new entry;
+    // writing an old entry's failure over it would put a red sentence on the wrong record.
+    if (this.entryId() !== id) {
+      return;
+    }
+
+    this.reportBusy.set(false);
+    this.reportProgress.set(null);
+    this.reportFailure.set(result.failure);
+    this.reportRetryable.set(result.retryable);
+    this.reportSaved.set(result.ok);
+  }
+
+  private resetReport(): void {
+    this.reportBusy.set(false);
+    this.reportProgress.set(null);
+    this.reportFailure.set(null);
+    this.reportRetryable.set(false);
+    this.reportSaved.set(false);
+  }
+
+  /**
+   * What the file is called when the server's own name cannot be read.
+   *
+   * Deliberately wordless: the report is written in the **project's** language, not the phone's
+   * (`ARCHITECTURE.md` §5), so a fallback built from the UI locale would be wrong precisely when
+   * it is used. A brand and a date are true in both.
+   */
+  private reportFileBase(): string {
+    const date = this.remote()?.entry_date;
+    return date ? `teren-${date}` : 'teren';
+  }
+
+  /** To the gate. The record does not edit; it hands over to the screen that does. */
+  protected openConfirm(): void {
+    void this.router.navigate(['/potvrda', this.entryId()]);
   }
 
   protected openViewer(index: number): void {

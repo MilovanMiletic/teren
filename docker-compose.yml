@@ -57,6 +57,38 @@ services:
       echo 'bucket teren-media ready'
       "
 
+  # Mail catcher. Reports are emailed over SMTP (MailKit behind IReportDelivery), and this is
+  # what makes that whole path provable on a laptop before any relay account exists: it accepts
+  # every message and shows it, with its PDF attachment, at http://localhost:8025.
+  #
+  # Mailpit rather than MailHog: same idea, but Mailpit is actively maintained (MailHog has had
+  # no release since 2020), it is MIT, it renders HTML and plain-text alternatives side by side —
+  # which is exactly what needs checking on a report that a client reads on a phone — and it can
+  # be told to require SMTP authentication, so the *authenticated relay* path this product will
+  # actually run on in production is exercised locally too, not just anonymous localhost SMTP.
+  #
+  # PRODUCTION IS NOT THIS. Never send direct from the VPS: Hetzner blocks outbound port 25 by
+  # default and a fresh VPS IP has no sending reputation, so the report that is the product would
+  # land in the client's spam folder. Use an authenticated relay, and publish SPF, DKIM and DMARC
+  # for the sending domain.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: teren-mailpit
+    environment:
+      # Accept whatever credentials are offered, over a plain connection: this is a laptop, and
+      # requiring a real certificate here would only stop the thing under test from running.
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+      MP_MAX_MESSAGES: 500
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # inbox — http://localhost:8025
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 volumes:
   postgres-data:
   minio-data:

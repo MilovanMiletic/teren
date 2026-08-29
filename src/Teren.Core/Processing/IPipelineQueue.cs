@@ -18,4 +18,16 @@ public interface IPipelineQueue
     /// </para>
     /// </summary>
     void EnqueueProcessing(Guid entryId, Guid companyId);
+
+    /// <summary>
+    /// Queues the report for a confirmed entry: render the PDF, hand it to the mail relay, seal
+    /// the entry. Called by <c>POST /entries/{id}/confirm</c>, which must not do any of that
+    /// work itself — the confirmation screen is a request a human is waiting on, and PDF
+    /// generation plus an SMTP conversation are exactly what principle 4 keeps out of one.
+    /// <para>
+    /// Enqueuing twice is harmless. The report row is the claim: its unique <c>entry_id</c> lets
+    /// exactly one pass own an entry's report, and the loser exits without sending anything.
+    /// </para>
+    /// </summary>
+    void EnqueueReport(Guid entryId, Guid companyId);
 }

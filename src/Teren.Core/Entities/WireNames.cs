@@ -119,3 +119,26 @@ public static class ReportKindNames
         _ => throw new ArgumentOutOfRangeException(nameof(value), value, null),
     };
 }
+
+public static class ReportStatusNames
+{
+    public const string Sending = "sending";
+    public const string Sent = "sent";
+    public const string Failed = "failed";
+
+    public static string ToWire(ReportStatus status) => status switch
+    {
+        ReportStatus.Sending => Sending,
+        ReportStatus.Sent => Sent,
+        ReportStatus.Failed => Failed,
+        _ => throw new ArgumentOutOfRangeException(nameof(status), status, null),
+    };
+
+    public static ReportStatus Parse(string value) => value switch
+    {
+        Sending => ReportStatus.Sending,
+        Sent => ReportStatus.Sent,
+        Failed => ReportStatus.Failed,
+        _ => throw new ArgumentOutOfRangeException(nameof(value), value, null),
+    };
+}

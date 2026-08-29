@@ -390,6 +390,93 @@ button {
   cursor: pointer;
 }
 
+/* ---- Notices -------------------------------------------------------------------------------
+ *
+ * A tinted row carrying an icon and two lines: a title in the semantic ink, and a sentence of
+ * plain explanation. Used wherever a screen has to say something it must not bury — the store
+ * will not open (Home), an entry is waiting for a person, extraction produced nothing, a
+ * confirmation landed (B5).
+ *
+ * Declared here rather than per feature because three screens now draw the same object, and
+ * because a notice is exactly the kind of element that must look identical everywhere: a foreman
+ * learns "orange box with a triangle means read this" once.
+ */
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-4) 18px;
+  border: 0;
+  box-shadow: none;
+  text-align: left;
+}
+
+.notice--warn {
+  background: var(--color-warn-bg);
+}
+
+.notice--err {
+  background: var(--color-err-bg);
+}
+
+.notice--ok {
+  background: var(--color-ok-bg);
+}
+
+.notice--accent {
+  background: var(--color-accent-tint-1);
+}
+
+.notice__icon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--color-ink-2);
+}
+
+.notice--warn .notice__icon {
+  color: var(--color-warn-icon);
+}
+
+.notice--err .notice__icon {
+  color: var(--color-err-icon);
+}
+
+.notice--ok .notice__icon {
+  color: var(--color-ok-icon);
+}
+
+.notice__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.notice__title {
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+
+.notice--warn .notice__title {
+  color: var(--color-warn);
+}
+
+.notice--err .notice__title {
+  color: var(--color-err);
+}
+
+/*
+ * A notice that is also a button — the confirmation gate on Home. Taller, vertically centred and
+ * tappable; its chevron is a `notice__icon` so it takes the notice's own tone for free.
+ */
+.notice--action {
+  align-items: center;
+  min-height: 64px;
+  cursor: pointer;
+}
+
 /* ---- Status chips ----------------------------------------------------------------------- */
 
 .chip {

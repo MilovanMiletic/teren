@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Teren.Core.Processing;
 using Teren.Infrastructure.Persistence;
 using Teren.Infrastructure.Processing;
+using Teren.Infrastructure.Reporting;
 
 namespace Teren.Api.Tests.Infrastructure;
 
@@ -141,6 +142,142 @@ public abstract class ApiTestBase(TerenTestApp app) : IAsyncLifetime
         await using var db = App.CreateDbContext(TestIds.CompanyA);
         var entry = await db.Entries.FirstAsync(e => e.Id == entryId, Ct);
         entry.ProcessingStartedAt = startedAt;
+        await db.SaveChangesAsync(Ct);
+    }
+
+    /// <summary>
+    /// Runs the real <see cref="EntryReporter"/> out of the host's container, exactly as the
+    /// Hangfire job would, in its own scope with its own DbContext.
+    /// </summary>
+    protected async Task<ReportOutcome> ReportAsync(Guid entryId, Guid? companyId = null)
+    {
+        await using var scope = App.Factory.Services.CreateAsyncScope();
+        var reporter = scope.ServiceProvider.GetRequiredService<EntryReporter>();
+        return await reporter.ReportAsync(entryId, companyId ?? TestIds.CompanyA, Ct);
+    }
+
+    /// <summary>An entry taken all the way to <c>confirmed</c> — the state B6 picks up — with
+    /// whatever photographs the test asked for, their real checksums declared and their real
+    /// bytes in storage.</summary>
+    protected async Task<Guid> GivenConfirmedEntryAsync(
+        Guid? id = null,
+        Guid? projectId = null,
+        int photos = 0,
+        JsonNode? corrected = null)
+    {
+        var entryId = id ?? Guid.NewGuid();
+        var audioBytes = Wire.AudioBytes();
+        var audioId = Guid.NewGuid();
+
+        await GivenEntryAsync(entryId, projectId);
+
+        var files = new List<JsonObject>
+        {
+            Wire.Audio(audioId, audioBytes.LongLength, sha256: Wire.Sha256OfBytes(audioBytes)),
+        };
+
+        var photoBytes = new Dictionary<Guid, byte[]>();
+        for (var index = 0; index < photos; index++)
+        {
+            var photoId = Guid.NewGuid();
+            var bytes = Wire.PhotoBytes(index);
+            photoBytes[photoId] = bytes;
+            files.Add(Wire.Photo(
+                photoId, bytes.LongLength, "image/png", Wire.Sha256OfBytes(bytes)));
+        }
+
+        await GivenMediaAsync(entryId, [.. files]);
+
+        foreach (var media in await LoadMediaAsync(entryId))
+        {
+            Storage.PutObject(
+                media.ObjectKey,
+                media.Kind == MediaKind.Audio ? audioBytes : photoBytes[media.Id]);
+        }
+
+        var completed = await CompleteAsync(entryId);
+        completed.StatusCode.ShouldBe(HttpStatusCode.OK, await completed.TextAsync());
+
+        await ProcessAsync(entryId);
+
+        var confirmed = await ConfirmAsync(entryId, corrected ?? DefaultCorrected());
+        confirmed.StatusCode.ShouldBe(HttpStatusCode.OK, await confirmed.TextAsync());
+
+        (await LoadEntryAsync(entryId))!.Status.ShouldBe(
+            EntryStatus.Confirmed, "the arrange did not reach a confirmed entry");
+
+        return entryId;
+    }
+
+    /// <summary>A plausible approved day, in the shape ARCHITECTURE §6 fixes for schema v1.</summary>
+    protected static JsonObject DefaultCorrected() => new()
+    {
+        ["schema_version"] = 1,
+        ["work_done"] = new JsonArray(
+            new JsonObject
+            {
+                ["description"] = "Razvod tople i hladne vode od kotla do kupatila",
+                ["location"] = "zapadno krilo, 2. sprat",
+                ["quantity"] = new JsonObject { ["value"] = 40, ["unit"] = "m" },
+            }),
+        ["headcount"] = new JsonObject
+        {
+            ["total"] = 3,
+            ["roles"] = new JsonArray(
+                new JsonObject { ["role"] = "vodoinstalater", ["count"] = 3 }),
+        },
+        ["materials"] = new JsonArray(
+            new JsonObject
+            {
+                ["name"] = "PPR cev 25mm",
+                ["quantity"] = new JsonObject { ["value"] = 40, ["unit"] = "m" },
+                ["delivered"] = true,
+            }),
+        ["blockers"] = new JsonArray(
+            new JsonObject
+            {
+                ["description"] = "čeka se štemovanje",
+                ["waiting_on"] = "električari",
+            }),
+        ["hidden_work"] = new JsonArray(
+            new JsonObject { ["description"] = "cevi u zidu pre zatvaranja" }),
+        ["notes"] = "Sutra nastavak na trećem spratu.",
+    };
+
+    protected async Task<Report?> LoadReportAsync(Guid entryId, Guid? companyId = null)
+    {
+        await using var db = App.CreateDbContext(companyId ?? TestIds.CompanyA);
+        return await db.Reports.AsNoTracking()
+            .FirstOrDefaultAsync(r => r.EntryId == entryId, Ct);
+    }
+
+    /// <summary>Writes a report row straight to the database — for arranging states the pass
+    /// will not produce on its own, such as a claim another worker already holds.</summary>
+    protected async Task InsertReportAsync(Report report)
+    {
+        await using var db = App.CreateDbContext(companyId: null);
+        db.Reports.Add(report);
+        await db.SaveChangesAsync(Ct);
+    }
+
+    /// <summary>Edits a project — its distribution list, its report language — without going
+    /// through an API that does not yet expose either.</summary>
+    protected async Task UpdateProjectAsync(Guid projectId, Action<Project> change)
+    {
+        await using var db = App.CreateDbContext(companyId: null);
+        var project = await db.Projects.IgnoreQueryFilters()
+            .FirstAsync(p => p.Id == projectId, Ct);
+        change(project);
+        await db.SaveChangesAsync(Ct);
+    }
+
+    /// <summary>Moves a report's claim timestamp back in time — the only way to say "this send
+    /// has been running longer than <c>Reporting:StaleAfter</c>" without waiting half an hour.</summary>
+    protected async Task SetReportAttemptStartedAsync(Guid reportId, DateTime startedAt)
+    {
+        await using var db = App.CreateDbContext(companyId: null);
+        var report = await db.Reports.IgnoreQueryFilters().FirstAsync(r => r.Id == reportId, Ct);
+        report.AttemptStartedAt = startedAt;
         await db.SaveChangesAsync(Ct);
     }
 

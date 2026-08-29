@@ -192,11 +192,23 @@ public sealed class FakeStructureExtractor : IStructureExtractor
 public sealed class RecordingPipelineQueue : IPipelineQueue
 {
     private readonly ConcurrentQueue<(Guid EntryId, Guid CompanyId)> _enqueued = new();
+    private readonly ConcurrentQueue<(Guid EntryId, Guid CompanyId)> _reports = new();
 
     public IReadOnlyList<(Guid EntryId, Guid CompanyId)> Enqueued => [.. _enqueued];
 
-    public void Reset() => _enqueued.Clear();
+    /// <summary>What /confirm handed to the report pipeline. The assertion that the confirmation
+    /// request enqueues rather than renders and emails inline — principle 4 in one list.</summary>
+    public IReadOnlyList<(Guid EntryId, Guid CompanyId)> Reports => [.. _reports];
+
+    public void Reset()
+    {
+        _enqueued.Clear();
+        _reports.Clear();
+    }
 
     public void EnqueueProcessing(Guid entryId, Guid companyId) =>
         _enqueued.Enqueue((entryId, companyId));
+
+    public void EnqueueReport(Guid entryId, Guid companyId) =>
+        _reports.Enqueue((entryId, companyId));
 }

@@ -293,7 +293,7 @@ public sealed class EntryProcessingTests(TerenTestApp app) : ApiTestBase(app)
 
         var entry = await LoadEntryAsync(entryId);
         entry!.Status.ShouldBe(EntryStatus.NeedsReview);
-        entry.RawTranscript.ShouldContain("Danas smo završili");
+        entry.RawTranscript!.ShouldContain("Danas smo završili");
         entry.Structure.ShouldBeNull();
         ProcessingFailure.CodeOf(entry.FailureReason).ShouldBe(ProcessingFailure.ExtractionFailed);
     }
@@ -311,7 +311,7 @@ public sealed class EntryProcessingTests(TerenTestApp app) : ApiTestBase(app)
         entry!.Status.ShouldBe(EntryStatus.NeedsReview);
         ProcessingFailure.CodeOf(entry.FailureReason)
             .ShouldBe(ProcessingFailure.TranscriptionNotConfigured);
-        entry.FailureReason.ShouldContain("Stt:Azure:Key");
+        entry.FailureReason!.ShouldContain("Stt:Azure:Key");
     }
 
     [Fact]
@@ -331,7 +331,7 @@ public sealed class EntryProcessingTests(TerenTestApp app) : ApiTestBase(app)
         entry.Structure.ShouldBeNull();
         ProcessingFailure.CodeOf(entry.FailureReason)
             .ShouldBe(ProcessingFailure.ExtractionNotConfigured);
-        entry.FailureReason.ShouldContain("Anthropic:ApiKey");
+        entry.FailureReason!.ShouldContain("Anthropic:ApiKey");
     }
 
     [Fact]
@@ -602,7 +602,7 @@ public sealed class EntryProcessingTests(TerenTestApp app) : ApiTestBase(app)
         entry!.Status.ShouldBe(EntryStatus.NeedsReview);
         ProcessingFailure.CodeOf(entry.FailureReason)
             .ShouldBe(ProcessingFailure.ProcessingInterrupted);
-        entry.RawTranscript.ShouldContain("Danas smo završili");
+        entry.RawTranscript!.ShouldContain("Danas smo završili");
     }
 
     // ------------------------------------------------------------ the enqueue seam

@@ -97,6 +97,11 @@ npx ng test --watch=false                 # PWA tests (vitest), run from web/ter
 docker compose exec postgres psql -U teren -d teren   # no local psql client
 ```
 
+`launchSettings.json` overrides `ASPNETCORE_URLS`, so an API started for verification binds to the
+default **5080** and collides with the founder's running instance — use
+`dotnet run --project src/Teren.Api --no-launch-profile -- --urls http://localhost:5099` (with
+`ASPNETCORE_ENVIRONMENT=Development`, which the profile would otherwise have set).
+
 Translation dictionaries live in `web/teren-pwa/public/i18n/{en,sr}.json` (Angular 22 serves
 static files from `public/`, not `src/assets/`).
 
@@ -110,7 +115,7 @@ before being presented as done; gating fixes go back to the implementer and are 
 
 ## Current state (update as it changes)
 
-- **Phase:** ROADMAP **B0 ☑ B1 ☑ B2 ☑ B3 ☑ B4 ☑ C3 ◐** (2026-08-29). Design system + 10 artboards in
+- **Phase:** ROADMAP **B0–B6 ☑, C3 ◐, B3a next** (2026-08-30). Design system + 10 artboards in
   `design/` (tokens.md is binding). B2 capture flow done incl. review fixes (Dexie v2, per-second
   chunk persistence, orphan rescue) **plus the adaptive-layout rework** (app header ≥768 with
   global language switcher, three device classes, layer/band tokens, `overflow:hidden` on base
@@ -153,19 +158,39 @@ before being presented as done; gating fixes go back to the implementer and are 
   declared object is in storage at the declared size. So the browser presigned PUT succeeded,
   OPTIONS preflight included. Caveat: proven against **local MinIO defaults** — Hetzner Object
   Storage may need its own CORS rules, so re-check once at B3a rather than assuming.
-- **Next: B5 (confirmation screen — the money path, and PROJECT.md principle 5 makes it mandatory)
-  then B6 (PDF + email).** B3a staging still owed and still unblocks the whole real-device debt.
+- **B5 ☑ and B6 ☑ (2026-08-29/30) — the money path is closed.** Speak → transcript → confirm →
+  PDF → email → sealed, proven end to end against real Postgres, MinIO and SMTP. Then, after the
+  founder used it on a real entry, four rounds of polish: the report lost its record id and
+  coordinates and gained a place name, project-local timestamps and a TEREN wordmark; the PDF
+  downloads from the app; a `confirmed`-but-unreported entry routes back to the gate; and a
+  verbatim day renders as prose.
+- **The floor is now "his own words", not "type it yourself".** `needs_review` no longer conflates
+  *recording unreadable* with *words fine, structuring failed* — that copy was live and false. When
+  there is a transcript and no structure, **one tap ("Pošalji moje reči") confirms the transcript as
+  the record**, sending `described_verbatim: true` with the transcript in `notes`; the report then
+  renders the day as prose, marked as his words rather than extracted data. `extracted` stays null
+  and `corrected` records approval-as-is, so the eval triple can still tell approval from typing.
+- **Next: B3a staging** — stable **https** origin, one-command deploy; still unblocks the whole
+  real-device debt. Then the founder's **welcome + login gate** (see below).
 - **Demo seed is now three sites** (`d3a0c1f0-5b8e-4f1a-9c62-` + `000000000002/3/4`), and those ids
   are a **contract** with `web/.../core/projects/project-source.ts`: if they drift, every
   `POST /api/entries` 404s and captured entries can never leave the phone. See ARCHITECTURE §6.
-- **Suites: 255 PWA specs** and **260 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 +
-  Testcontainers over real Postgres, ~45 s). `dotnet test` needs Docker running.
-- **Check at session start:** nothing is in flight — the tree is green (`dotnet build` clean,
-  260 backend tests, 255 PWA specs) and every increment is reviewed. Start with B5.
+- **Suites: 403 PWA specs** and **447 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
+  + Testcontainers over real Postgres, ~95 s; PdfPig in tests only, so report assertions read text
+  back out of the rendered PDF). `dotnet test` needs Docker running.
+- **Check at session start:** the tree is green (`dotnet build` clean, 447 backend tests, 403 PWA
+  specs). **Two increments still owe their reviewer**: the verbatim-transcript pair (confirm screen
+  + prose report) and the report-polish/download pair. Run those gates before building further.
   The adaptive-rework *delta review* verdict is **permanently lost** (its session closed mid-run),
   so that increment never passed its gate; the salvage bug found afterwards was traced to async
   state sequencing, not to the rework. Design canvas still owes the 1280 desktop artboard variants.
   **B4's own delta review was not re-run** — the implementer mutation-proved its fix instead.
+- **Migrations are not applied by running the API.** `dotnet run --project src/Teren.Api -- migrate`
+  is a separate step, and skipping it fails at runtime with a bare Npgsql `42703 column does not
+  exist` — it has now bitten twice, once silently killing the money path on the dev database.
+- **Confirming clears `failure_reason`** (`EntryEndpoints.cs`, deliberate — it is what makes "fix the
+  cause and confirm again" the retry path). Consequence: the record of *why the AI produced nothing*
+  is destroyed the moment a foreman confirms, so diagnose a pipeline failure **before** confirming.
 - **Committing:** the founder commits and pushes himself. Identity set repo-locally (Milovan
   Miletić <milovanmiletic230@gmail.com>); secrets audit passed 2026-08-29.
 - **Real-device debt:** mic behaviour (Android + iOS), offline cold-start of installed PWA, iOS

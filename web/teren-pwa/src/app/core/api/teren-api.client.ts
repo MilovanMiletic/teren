@@ -1,11 +1,18 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import {
+  HttpClient,
+  HttpEventType,
+  HttpHeaders,
+  HttpRequest,
+  HttpResponse,
+} from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { firstValueFrom, timeout } from 'rxjs';
+import { filter, firstValueFrom, tap, timeout } from 'rxjs';
 
 import { API_CONFIG } from './api-config';
 import { UploadFailure } from './api-failure';
 import {
   CompleteEntryResponse,
+  ConfirmEntryRequest,
   CreateEntryRequest,
   DeclareMediaRequest,
   DeclareMediaResponse,
@@ -14,6 +21,7 @@ import {
   ListEntriesQuery,
   MediaUploadTarget,
   ProjectResponse,
+  ReportDownload,
 } from './api-types';
 
 /**
@@ -51,6 +59,16 @@ const API_TIMEOUT_MS = 30_000;
  * genuinely stopped moving.
  */
 const STORAGE_TIMEOUT_MS = 180_000;
+
+/**
+ * How long the report download may go without a single byte arriving.
+ *
+ * Applied *per event* rather than to the whole transfer, because a report with photographs is a
+ * few megabytes and a foreman on a site connection may legitimately need minutes for it. What is
+ * never legitimate is a connection that has stopped moving, and progress events are exactly the
+ * evidence that tells the two apart: every chunk resets this clock.
+ */
+const REPORT_STALL_MS = 60_000;
 
 @Injectable({ providedIn: 'root' })
 export class TerenApiClient {
@@ -103,6 +121,20 @@ export class TerenApiClient {
   }
 
   /**
+   * Hand over what a human approved (B5).
+   *
+   * Sends `corrected` and nothing else — see {@link ConfirmEntryRequest} for why the route
+   * accepts only that. Re-confirming is allowed until the report goes out, so a retry after a
+   * timeout is free; a `409` here means either the entry is already reported or the pipeline has
+   * not finished with it, and which one it is has to be settled by re-reading the entry, never by
+   * reading the English detail string.
+   */
+  async confirmEntry(entryId: string, corrected: Record<string, unknown>): Promise<EntryResponse> {
+    const body: ConfirmEntryRequest = { corrected };
+    return this.post<EntryResponse>(`/api/entries/${encodeURIComponent(entryId)}/confirm`, body);
+  }
+
+  /**
    * The archive list (C3).
    *
    * `project_id` is spelled snake_case because that is this API's canonical spelling everywhere
@@ -125,6 +157,59 @@ export class TerenApiClient {
     }
     const suffix = params.size > 0 ? `?${params}` : '';
     return this.get<EntryListResponse>(`/api/entries${suffix}`);
+  }
+
+  /**
+   * Fetch the report PDF for an entry (`GET /api/entries/{id}/report`).
+   *
+   * **Inside the device-token group like every other call**, and that is the whole reason this
+   * method exists rather than an `<a href>` on the screen: a plain link cannot carry an
+   * `Authorization` header, and the report is deliberately *not* a presigned URL (`PROJECT.md`
+   * §11, ruling 5).
+   *
+   * `onProgress` receives a fraction in `[0, 1]`, or `null` when the response carries no
+   * `Content-Length` and the total is therefore unknown. It is a callback rather than a stream
+   * because exactly one screen consumes it and a promise is what the calling code already is.
+   *
+   * Errors are left entirely alone. Deciding what a `404` or a `409` *means* for the report is
+   * policy, and policy lives in `ReportService` — the same split the upload path uses. Note that
+   * with `responseType: 'blob'` an error body arrives as a `Blob`, so nothing downstream can read
+   * the server's problem document as JSON. That costs nothing here: this API's rule since B3 is
+   * that a `409` is settled by re-reading the entry, never by parsing prose.
+   */
+  async downloadReport(
+    entryId: string,
+    onProgress?: (fraction: number | null) => void,
+  ): Promise<ReportDownload> {
+    const request = new HttpRequest(
+      'GET',
+      this.url(`/api/entries/${encodeURIComponent(entryId)}/report`),
+      {
+        headers: this.authHeaders(),
+        responseType: 'blob' as const,
+        reportProgress: true,
+      },
+    );
+
+    const response = await firstValueFrom(
+      this.http.request<Blob>(request).pipe(
+        timeout({ first: API_TIMEOUT_MS, each: REPORT_STALL_MS }),
+        tap((event) => {
+          if (event.type === HttpEventType.DownloadProgress) {
+            onProgress?.(event.total ? event.loaded / event.total : null);
+          }
+        }),
+        filter((event): event is HttpResponse<Blob> => event.type === HttpEventType.Response),
+      ),
+    );
+
+    return {
+      body: response.body,
+      // Readable cross-origin only if the server also sends
+      // `Access-Control-Expose-Headers: Content-Disposition`. Null is an ordinary outcome, not a
+      // failure — see `report-filename.ts`.
+      contentDisposition: response.headers.get('Content-Disposition'),
+    };
   }
 
   /**

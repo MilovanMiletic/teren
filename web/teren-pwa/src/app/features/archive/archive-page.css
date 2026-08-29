@@ -162,6 +162,41 @@
   color: var(--color-ink-3);
 }
 
+/* ---- The way back into the gate ------------------------------------------------------------
+ *
+ * A confirmed entry may still be corrected until its report goes out, and this is the affordance
+ * that says so. Deliberately quiet — a tertiary pill under the row, not a call to action beside
+ * it: the work is done, and a loud button here would read as "you still owe me something".
+ *
+ * Under the row rather than inside it because the row is itself a `<button>`. It also keeps the
+ * row's own geometry untouched at every width, which matters most in the expanded rail, where a
+ * second control on the row's own line would fight the status chip for a five-column space that
+ * is already tight.
+ */
+.revise {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 var(--space-4) var(--space-3);
+}
+
+.revise__action {
+  /* `.btn` is full-width by default; this one is a pill that fits its label. */
+  width: auto;
+  padding: 0 18px;
+  color: var(--color-ink-2);
+}
+
+/*
+ * Medium and up: the same gutter as the row above it — the two edges must line up, and the row's
+ * padding does not change at this breakpoint — with a little more room beneath, because a tablet
+ * has it and a stack of days reads better with it.
+ */
+@media (min-width: 768px) {
+  .revise {
+    padding-bottom: var(--space-4);
+  }
+}
+
 /* The open record, marked in the rail. Below expanded nothing is ever selected on screen. */
 .row--selected {
   background: var(--color-accent-tint-1);

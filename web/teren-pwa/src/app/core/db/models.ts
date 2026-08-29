@@ -215,3 +215,70 @@ export interface CaptureSession {
   lastChunkAt: string | null;
   updatedAt: string;
 }
+
+/**
+ * What a person has typed on the confirmation screen and not yet sent.
+ *
+ * The confirmation screen is a *typing* screen — often the only place a record's content is
+ * produced at all, because an entry whose extraction failed arrives with nothing but a
+ * transcript. Holding that typing in a component's memory would mean a locked phone, a tab the
+ * OS discarded, or a tap on "back" silently destroying it, which is principle 3 broken on the one
+ * screen where the human, not the recorder, is the source.
+ *
+ * So it is written here on every change and removed only once the server has answered. The stored
+ * value is the *editing* shape (`EntryDraft` in `core/confirm/entry-draft.ts`), not the wire
+ * shape: a half-typed quantity and an empty row the foreman is about to fill in are exactly what
+ * must survive, and both are gone by the time a payload is built. Typed as `unknown` so the local
+ * store stays free of the confirmation layer's model, and narrowed by `readStoredDraft` on the
+ * way out — a draft written by an older build must never be able to throw on restore.
+ */
+export interface ConfirmDraft {
+  /** Same id as the entry: one entry, one draft. */
+  entryId: string;
+  draft: unknown;
+  updatedAt: string;
+}
+
+/**
+ * Whether the server is waiting for a *person*, not for the machine.
+ *
+ * Two statuses, and they are the same news to the foreman even though they are opposite news to
+ * the pipeline: `awaiting_confirmation` means extraction succeeded and its answer needs checking,
+ * `needs_review` means it failed and the day has to be typed from the transcript. Either way the
+ * entry stops moving until he opens it, and nothing downstream — no report, no email — happens
+ * without him.
+ *
+ * Written once, here, because every screen that has to say "this needs you" asks the same
+ * question, and a screen that answered it differently would send him to a gate that is not there.
+ */
+export function needsConfirmation(serverStatus: string | null | undefined): boolean {
+  return serverStatus === 'awaiting_confirmation' || serverStatus === 'needs_review';
+}
+
+/**
+ * Whether a confirmed entry can still be corrected — the last cheap chance to fix a mistake.
+ *
+ * `POST /api/entries/{id}/confirm` accepts a second call: confirming is not a one-way door until
+ * the report goes out. The moment it does, `reported_at` fires the trigger that makes the row
+ * immutable and undeletable for ever (B6), and the only remedy left is a correction entry
+ * referring back to this one (C4, not built). So the window between `confirmed` and `reported` is
+ * narrow, it closes on its own, and a foreman who spots a typo after walking away must be able to
+ * find his way back into the gate — which is what this predicate exists to answer.
+ *
+ * **Both halves are load-bearing.** `confirmed` alone is not enough: a row whose status this
+ * device last heard about hours ago may since have been reported, and `reported_at` is the field
+ * that says so — the same field `ConfirmService` re-reads to decide what a `409` meant, never the
+ * server's English prose. When it is unknown (the server could not be asked) the gate itself is
+ * the backstop: `ConfirmPage` re-reads the entry and refuses to render a form over a reported one.
+ *
+ * This is deliberately **not** {@link needsConfirmation}. That question is "does this entry need a
+ * person?", and Home's attention row is built on it — a confirmed entry needs nobody, and nagging
+ * a foreman about work he has already done is noise. This one is "may he change his mind?", which
+ * only the archive asks, because the archive is where a person goes *looking* for a past entry.
+ */
+export function canRevise(
+  serverStatus: string | null | undefined,
+  reportedAt: string | null | undefined,
+): boolean {
+  return serverStatus === 'confirmed' && !reportedAt;
+}

@@ -7,7 +7,9 @@ using Microsoft.Extensions.Options;
 using Serilog;
 using Teren.Api.Hangfire;
 using Teren.Core.Ai;
+using Teren.Core.Reporting;
 using Teren.Infrastructure.Processing;
+using Teren.Infrastructure.Reporting;
 using Teren.Api.Contracts;
 using Microsoft.EntityFrameworkCore;
 using Teren.Api.Auth;
@@ -102,7 +104,19 @@ builder.Services.AddSingleton<IValidator<ConfirmEntryRequest>, ConfirmEntryReque
 var corsOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [];
 builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy =>
-        policy.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod()));
+        policy.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod()
+            // Content-Disposition is **not** on the CORS-safelist, so a browser hides it from
+            // JavaScript unless it is named here. Without this line the report download
+            // (GET /api/entries/{id}/report) still works, but the app cannot read the file name
+            // the API went to some trouble to build — the site and the date, folded to ASCII —
+            // and every saved report lands under a generic fallback instead.
+            //
+            // It is not a theoretical cross-origin case: in development the PWA is served from
+            // localhost:4200 and the API from localhost:5080, which are different origins, and in
+            // production the app and the API need not share one either.
+            //
+            // Content-Length is already safelisted and needs no entry; Content-Type likewise.
+            .WithExposedHeaders("Content-Disposition")));
 
 var app = builder.Build();
 
@@ -198,6 +212,32 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", defaultValue: true))
         jobsLogger.LogWarning(
             "Structure extraction ({Provider}) has no key configured: entries will keep their "
             + "transcript and park in needs_review. Set Anthropic:ApiKey.", extractor.Name);
+    }
+
+    var reportDelivery = app.Services.GetRequiredService<IReportDelivery>();
+    var reportingOptions = app.Services.GetRequiredService<IOptions<ReportingOptions>>().Value;
+
+    if (!reportDelivery.IsConfigured)
+    {
+        jobsLogger.LogWarning(
+            "Report delivery ({Transport}) has no relay configured: confirmed entries will keep "
+            + "their PDF but stop with delivery_not_configured. Set Reporting:Smtp:Host and "
+            + "Reporting:FromAddress — locally, `docker compose up -d` runs Mailpit on "
+            + "localhost:1025 with its inbox at http://localhost:8025.", reportDelivery.Name);
+    }
+    else
+    {
+        // Says what it is actually pointed at, and at what port — because the one configuration
+        // that must never appear here is a direct send on port 25 from the VPS (ARCHITECTURE
+        // §10). A start-up line naming the relay is how that gets noticed.
+        jobsLogger.LogInformation(
+            "Report delivery ({Transport}) via {Host}:{Port} ({Security}), from {From}; reports "
+            + "go out in each project's own language.",
+            reportDelivery.Name,
+            reportingOptions.Smtp.Host,
+            reportingOptions.Smtp.Port,
+            reportingOptions.Smtp.Security,
+            reportingOptions.FromAddress);
     }
 
     // The cron string, not the configured interval: this line states what the scheduler was

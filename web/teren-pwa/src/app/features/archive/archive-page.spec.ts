@@ -239,6 +239,95 @@ describe('ArchivePage', () => {
     expect(element.querySelector('.partial')!.textContent).not.toContain('samo ono što je na ovom telefonu');
   });
 
+  // ------------------------------------------------- the way back, while the window is open
+
+  it('offers a confirmed entry a way back into the gate, and sends the tap straight there', async () => {
+    // The window between `confirmed` and `reported` is the last cheap chance to fix a mistake:
+    // afterwards the row is sealed for ever and the only remedy is a whole new correction entry.
+    // Before this the way back existed only by typing the URL.
+    archive.listEntries.mockResolvedValue({
+      status: 'ok',
+      items: [listItem({ id: 'srv-open', status: 'confirmed', reported_at: null })],
+    });
+
+    const element = await render();
+    await waitForRows(element, 1);
+    // Spied rather than routed: `/potvrda/:entryId` is a lazy route of its own, and what this
+    // screen owes is the correct destination.
+    const navigate = vi.spyOn(router, 'navigate');
+
+    const action = element.querySelector<HTMLButtonElement>('.revise__action')!;
+    expect(action).not.toBeNull();
+    // Worded as a second chance at an answer already given, never as an outstanding task.
+    expect(action.textContent).toContain('Ispravi');
+    expect(element.textContent).not.toContain('Proverite i potvrdite');
+
+    action.click();
+
+    // Straight to the gate, not to the read-only record first.
+    expect(navigate).toHaveBeenCalledWith(['/potvrda', 'srv-open']);
+  });
+
+  it('offers nothing at all on a reported entry, which the server has sealed', async () => {
+    archive.listEntries.mockResolvedValue({ status: 'ok', items: [listItem({ id: 'srv-sent' })] });
+
+    const element = await render();
+    await waitForRows(element, 1);
+
+    expect(element.querySelector('.revise__action')).toBeNull();
+  });
+
+  it('withdraws the offer the moment the server stamps a report, whatever the status says', async () => {
+    // Two things at once, and both are how this goes wrong in the field. The phone stores a
+    // status and never a `reported_at`, so a stale local `confirmed` would keep offering a
+    // correction on an entry that can no longer take one. And `reported_at` — not the status —
+    // is the field that seals the row: it is stamped by the report pass, it is what the trigger
+    // fires on, and it is what `ConfirmService` re-reads to judge a 409. A row that waited for
+    // the status to catch up would offer an edit the server has already refused.
+    const entry = await captureEntry(store, { project: PROJECT });
+    await store.setServerStatus(entry.id, 'confirmed');
+    archive.listEntries.mockResolvedValue({ status: 'ok', items: [] });
+
+    const element = await render();
+    await waitUntil(() => element.querySelector('.revise__action') !== null, {
+      onTick: () => fixture.detectChanges(),
+      describe: 'the way back on a locally confirmed entry',
+    });
+
+    archive.listEntries.mockResolvedValue({
+      status: 'ok',
+      items: [
+        listItem({
+          id: entry.id,
+          entry_date: entry.localDay,
+          // Deliberately still `confirmed`: the stamp is what counts, not the label.
+          status: 'confirmed',
+          reported_at: '2026-08-29T18:00:00.000Z',
+        }),
+      ],
+    });
+    online.set(false);
+
+    await waitUntil(() => element.querySelector('.revise__action') === null, {
+      onTick: () => fixture.detectChanges(),
+      describe: 'the way back to be withdrawn',
+    });
+  });
+
+  it('never nests the way back inside the row button, which would make it unreachable', async () => {
+    // A `<button>` inside a `<button>` is invalid HTML: browsers hoist it out of the row and the
+    // keyboard can never reach it, which is precisely the "no discoverable way back" this fixes.
+    archive.listEntries.mockResolvedValue({
+      status: 'ok',
+      items: [listItem({ id: 'srv-open', status: 'confirmed', reported_at: null })],
+    });
+
+    const element = await render();
+    await waitForRows(element, 1);
+
+    expect(element.querySelector('.row')!.querySelector('button')).toBeNull();
+  });
+
   it('names itself in Serbian, the default runtime locale', async () => {
     const element = await render();
 

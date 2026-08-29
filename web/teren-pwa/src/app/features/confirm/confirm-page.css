@@ -1,0 +1,429 @@
+/*
+ * The confirmation screen, in three deliberate layouts.
+ *
+ *   compact   <768      one column: evidence, then the day, with the gate pinned to the bottom
+ *   medium    768–1023  the same order, proportioned — fields pair up instead of stacking
+ *   expanded  ≥1024     two panes: a sticky evidence rail beside the editable day
+ *
+ * No artboard exists for this screen; every value comes from `design/tokens.md`. Form fields are
+ * the one place the token contract allows a stroke (`field-line`, 16 px radius) — everything else
+ * is white on warm canvas with `shadow-card`.
+ */
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+
+.head__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.head__title {
+  min-width: 0;
+}
+
+/* From medium up the app header carries the back affordance; one is enough. */
+@media (min-width: 768px) {
+  .head {
+    padding-top: var(--space-6);
+    padding-bottom: 0;
+  }
+
+  .head__back {
+    display: none;
+  }
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-6);
+}
+
+/* ---- Expanded: evidence rail beside the day ---------------------------------------------- */
+
+@media (min-width: 1024px) {
+  .content--form {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: var(--space-6);
+    align-items: start;
+    padding-top: var(--space-5);
+  }
+
+  /*
+   * Five columns and sticky. Reading the transcript while correcting the line it produced is the
+   * entire activity of this screen, so the evidence stays put while the day scrolls beside it.
+   */
+  .pane--evidence {
+    grid-column: span 5;
+    position: sticky;
+    top: calc(var(--header-height) + var(--space-6));
+    max-height: calc(100dvh - var(--header-height) - var(--space-8));
+    overflow-y: auto;
+    /* A scroll container clips its children's shadows; the padding gives the cards room. */
+    padding: 2px;
+    margin: -2px;
+  }
+
+  .pane--form {
+    grid-column: span 7;
+  }
+}
+
+/* ---- States (processing, not sent, reported…) --------------------------------------------- */
+
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-5);
+}
+
+.state__icon {
+  color: var(--color-ink-2);
+}
+
+.state__icon--warn {
+  color: var(--color-warn-icon);
+}
+
+.state__icon--err {
+  color: var(--color-err-icon);
+}
+
+.state__icon--ok {
+  color: var(--color-ok-icon);
+}
+
+.state__body {
+  margin: 0;
+}
+
+.state__action {
+  width: auto;
+  margin-top: var(--space-2);
+}
+
+/* ---- Evidence ----------------------------------------------------------------------------- */
+
+.evidence {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+}
+
+.evidence__label {
+  margin: 0;
+}
+
+/*
+ * The transcript. `pre-wrap` because the words are evidence: line breaks the pipeline produced
+ * are part of what was said, and collapsing them is editing.
+ */
+.evidence__text {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.55;
+}
+
+.evidence__hint {
+  margin: 0;
+}
+
+.evidence__action {
+  width: auto;
+  align-self: flex-start;
+  margin-top: var(--space-1);
+}
+
+.evidence__audio {
+  width: 100%;
+  margin-top: var(--space-1);
+}
+
+/* ---- "These are my words — send them" ------------------------------------------------------
+ *
+ * Deliberately not styled like the ordinary banner. The system failed at its job on this entry,
+ * and the one-tap way out must read as the floor of the product rather than as the product
+ * working: warn ground, warn rule down the edge, the failure stated before the action is offered.
+ * The button inside it is still `btn--primary`, because it *is* the primary action here — what
+ * marks the path is the frame around it and the words, not a demoted control he might not find.
+ */
+
+.verbatim {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) 18px var(--space-5);
+  background: var(--color-warn-bg);
+  border-left: 3px solid var(--color-warn-icon);
+}
+
+.verbatim__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.verbatim__icon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--color-warn-icon);
+}
+
+.verbatim__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  color: var(--color-warn);
+}
+
+.verbatim__title {
+  font-weight: 600;
+}
+
+.verbatim__or {
+  margin: 0;
+  color: var(--color-warn);
+  text-align: center;
+}
+
+/*
+ * Compact: full-width action under the thumb, the hint centred beneath it — the same shape as
+ * every other primary on a phone. Medium and expanded put the action at its natural width and
+ * align both to the start, because a button stretched across a 7-column pane reads as a banner,
+ * not as a choice.
+ */
+@media (min-width: 768px) {
+  .verbatim {
+    padding: var(--space-5) var(--space-5) var(--space-5) 18px;
+  }
+
+  .verbatim__action {
+    width: auto;
+    min-width: 260px;
+    align-self: flex-start;
+  }
+
+  .verbatim__or {
+    text-align: start;
+  }
+}
+
+/* ---- A section of the day ------------------------------------------------------------------ */
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+}
+
+.group__label {
+  margin: 0;
+}
+
+.group__empty {
+  margin: 0;
+}
+
+.group__add {
+  width: auto;
+  align-self: flex-start;
+}
+
+/* The highest-value evidence in the product gets the accent, here as in the archive. */
+.group--hidden {
+  border-left: 3px solid var(--color-accent);
+}
+
+/* ---- An editable line ---------------------------------------------------------------------- */
+
+.row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-card-line);
+}
+
+.row:last-of-type {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.row__fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.row__remove {
+  flex: none;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  background: var(--color-canvas);
+  box-shadow: none;
+  color: var(--color-ink-2);
+}
+
+/* ---- Fields --------------------------------------------------------------------------------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+/*
+ * A description or a material name takes the whole row on a phone; the small fields — quantity,
+ * unit, count — pair up beside it. Flex basis rather than a media query, so the seam at 768/834
+ * has nothing to get wrong.
+ */
+.field--wide {
+  flex: 1 1 100%;
+}
+
+.field--narrow {
+  flex: 1 1 90px;
+}
+
+.field__label {
+  margin: 0;
+}
+
+.field__input {
+  width: 100%;
+  min-height: var(--tap-row);
+  padding: 0 14px;
+  border: 1px solid var(--color-field-line);
+  border-radius: var(--radius-field);
+  background: var(--color-card);
+  font-family: var(--font-family);
+  font-size: var(--text-body);
+  color: var(--color-ink);
+}
+
+.field__textarea {
+  min-height: 96px;
+  padding: 12px 14px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.field__input::placeholder {
+  color: var(--color-ink-3);
+}
+
+/* The three-state delivery control: a chip that is a button, at a real touch target. */
+.field__toggle {
+  min-height: var(--tap-min);
+  padding: 0 14px;
+  border: 0;
+  cursor: pointer;
+}
+
+@media (min-width: 768px) {
+  .field--wide {
+    flex: 3 1 260px;
+  }
+}
+
+/* ---- The gate ------------------------------------------------------------------------------- */
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+}
+
+/*
+ * Compact and medium: the one action that matters stays reachable without scrolling a long day
+ * back down. Sticky rather than fixed, so it never covers the last field, and it carries the
+ * canvas with it so the form does not read through it.
+ */
+@media (max-width: 1023px) {
+  .actions {
+    position: sticky;
+    bottom: 0;
+    z-index: var(--z-content);
+    padding-bottom: var(--space-3);
+    background: linear-gradient(to bottom, rgba(239, 237, 232, 0), var(--color-canvas) 20%);
+  }
+}
+
+.actions__hint {
+  margin: 0;
+  text-align: center;
+}
+
+/*
+ * The retracted "kept on this phone" promise. Warn rather than error: the typing is still on
+ * screen and confirming now still saves it, so this is a thing to act on, not a thing that has
+ * already gone wrong beyond repair.
+ */
+.actions__hint--warn {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--color-warn-bg);
+  color: var(--color-warn);
+  text-align: start;
+}
+
+.actions__hint--warn .actions__error-icon {
+  color: var(--color-warn-icon);
+}
+
+.actions__error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--color-err-bg);
+  color: var(--color-err);
+  font-size: var(--text-meta);
+  font-weight: 500;
+}
+
+.actions__error-icon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--color-err-icon);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .row__remove:hover {
+    background: var(--color-err-bg);
+    color: var(--color-err);
+  }
+
+  .field__input:hover {
+    border-color: var(--color-ink-3);
+  }
+}

@@ -96,6 +96,30 @@
                       <span class="chip chip--{{ statusTone(row) }}">{{ t(statusKey(row)) }}</span>
                       <app-icon name="chevron-right" [size]="18" class="row__chevron" />
                     </button>
+
+                    @if (revisable(row)) {
+                      <!--
+                        A confirmed entry is not an outstanding task — he did the work and said
+                        yes. But until the report goes out he is still allowed to change his
+                        answer, and after it goes out he never is again (B6 seals the row). So
+                        the row offers the way back, quietly, as a second chance rather than as a
+                        chore. A sibling of the row button, never nested inside it: a button
+                        within a button is invalid and unreachable by keyboard.
+                      -->
+                      <div class="revise">
+                        <button
+                          type="button"
+                          class="btn btn--tertiary btn--row revise__action"
+                          [attr.aria-label]="
+                            t('archive.revise.rowLabel', { time: row.capturedAt | date: 'HH:mm' })
+                          "
+                          (click)="revise(row)"
+                        >
+                          <app-icon name="pencil" [size]="16" />
+                          {{ t('archive.revise.row') }}
+                        </button>
+                      </div>
+                    }
                   </li>
                 }
               </ul>

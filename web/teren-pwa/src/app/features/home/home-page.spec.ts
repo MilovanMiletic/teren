@@ -1,7 +1,10 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { TranslocoTestingModule } from '@jsverse/transloco';
 
+import { EntryListItemResponse, EntryListResponse } from '../../core/api/api-types';
+import { TerenApiClient } from '../../core/api/teren-api.client';
 import { EntryStore } from '../../core/db/entry-store';
 import { captureEntry } from '../../testing/capture-fixture';
 import { TEREN_DB, TerenDb } from '../../core/db/teren-db';
@@ -12,10 +15,30 @@ import en from '../../../../public/i18n/en.json';
 import sr from '../../../../public/i18n/sr.json';
 import { HomePage } from './home-page';
 
+/**
+ * The server, as far as Home is concerned: one list call, carrying the live status of every entry
+ * this project has. Everything else Home does is local.
+ */
+class FakeApi {
+  configured = true;
+  entries: EntryListItemResponse[] = [];
+  listCalls = 0;
+  fail: unknown = null;
+
+  async listEntries(): Promise<EntryListResponse> {
+    this.listCalls += 1;
+    if (this.fail) {
+      throw this.fail;
+    }
+    return { entries: this.entries, count: this.entries.length };
+  }
+}
+
 describe('HomePage', () => {
   let db: TerenDb;
   let fixture: ComponentFixture<HomePage>;
   let store: EntryStore;
+  let api: FakeApi;
 
   async function render(): Promise<HTMLElement> {
     await TestBed.inject(ProjectService).load();
@@ -28,6 +51,7 @@ describe('HomePage', () => {
 
   beforeEach(() => {
     localStorage.clear();
+    api = new FakeApi();
     db = new TerenDb(`teren-test-${crypto.randomUUID()}`);
     TestBed.configureTestingModule({
       imports: [
@@ -44,7 +68,14 @@ describe('HomePage', () => {
           preloadLangs: true,
         }),
       ],
-      providers: [provideRouter([]), { provide: TEREN_DB, useValue: db }],
+      providers: [
+        provideRouter([]),
+        { provide: TEREN_DB, useValue: db },
+        // Home now re-reads the server's view of this project's entries (B5). The real
+        // `ArchiveService` runs on top of this, so the status refresh is exercised rather than
+        // stubbed out one layer too high.
+        { provide: TerenApiClient, useValue: api as unknown as TerenApiClient },
+      ],
     });
     store = TestBed.inject(EntryStore);
   });
@@ -132,6 +163,111 @@ describe('HomePage', () => {
     // A recent row reading "Čeka mrežu" beside a sync row reading "Ne prolazi" would leave the
     // foreman to work out which of his own screens to believe.
     expect(element.querySelector('.chip--err')).not.toBeNull();
+  });
+
+  // ---------------------------------------------------------- the confirmation gate (B5)
+
+  /** An entry as the upload path leaves it: the server has it, and nobody has re-read it since. */
+  async function givenUploadedEntry(serverStatus = 'received'): Promise<string> {
+    const id = await captureToday();
+    await store.markConfirmedByServer(id, { serverStatus });
+    return id;
+  }
+
+  function serverSays(id: string, status: string): EntryListItemResponse {
+    return {
+      id,
+      project_id: DEMO_PROJECTS[0].id,
+      entry_date: '2026-08-29',
+      status,
+      created_at: '2026-08-29T10:00:00.000Z',
+      received_at: '2026-08-29T10:05:00.000Z',
+      reported_at: null,
+      photo_count: 0,
+      has_audio: true,
+    };
+  }
+
+  it('stops calling an entry "Primljen" once the server is waiting for the foreman', async () => {
+    // The defect B5 had to fix. `serverStatus` was written once, at upload time, and never
+    // refreshed — so Home said "Primljen" over entries parked in `needs_review`. "Primljen"
+    // reads as *done, nothing to do*, so the entry that needed him was the one he never opened,
+    // and the day's evidence never became a report.
+    const id = await givenUploadedEntry();
+    api.entries = [serverSays(id, 'needs_review')];
+
+    const element = await render();
+    await waitUntil(() => element.textContent!.includes('Potrebna provera'), {
+      onTick: () => fixture.detectChanges(),
+      describe: 'Home to pick up the live status',
+    });
+
+    expect(element.textContent).not.toContain('Primljen');
+  });
+
+  it('says out loud how many entries are waiting for him', async () => {
+    const id = await givenUploadedEntry();
+    api.entries = [serverSays(id, 'awaiting_confirmation')];
+
+    const element = await render();
+    await waitUntil(() => element.querySelector('.notice--action') !== null, {
+      onTick: () => fixture.detectChanges(),
+      describe: 'the attention row to appear',
+    });
+
+    expect(element.textContent).toContain('1 unos čeka na vas');
+    expect(element.textContent).toContain('Proverite šta je sistem razumeo');
+  });
+
+  it('keeps the attention row off the screen when nothing is waiting', async () => {
+    const id = await givenUploadedEntry();
+    api.entries = [serverSays(id, 'confirmed')];
+
+    const element = await render();
+    await waitUntil(() => element.textContent!.includes('Potvrđen'), {
+      onTick: () => fixture.detectChanges(),
+      describe: 'Home to pick up the live status',
+    });
+
+    expect(element.querySelector('.notice--action')).toBeNull();
+  });
+
+  it('sends a recent row that needs a person to the gate, and every other row to the record', async () => {
+    const waiting = await givenUploadedEntry('needs_review');
+    const done = await givenUploadedEntry('reported');
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate');
+    const element = await render();
+    await waitUntil(() => element.querySelectorAll('.recent__row').length === 2, {
+      onTick: () => fixture.detectChanges(),
+      describe: 'both recent rows to render',
+    });
+
+    const rows = [...element.querySelectorAll<HTMLButtonElement>('.recent__row')];
+    // Newest first, and `done` was captured second.
+    rows[0].click();
+    expect(navigate).toHaveBeenCalledWith(['/dnevnik'], { queryParams: { unos: done } });
+
+    rows[1].click();
+    // The archive is a read-only record: sending him there over an entry that is waiting for him
+    // would show the problem and hide the only control that fixes it.
+    expect(navigate).toHaveBeenCalledWith(['/potvrda', waiting]);
+  });
+
+  it('keeps what it knew when the server cannot be reached', async () => {
+    // A refresh reports; it never erases. Blanking a status because the wifi blipped would make
+    // Home forget something it correctly knew.
+    const id = await givenUploadedEntry('needs_review');
+    api.fail = new HttpErrorResponse({ status: 0, statusText: 'offline' });
+
+    const element = await render();
+    await waitUntil(() => api.listCalls > 0, {
+      onTick: () => fixture.detectChanges(),
+      describe: 'the refresh to be attempted',
+    });
+    fixture.detectChanges();
+
+    expect(element.textContent).toContain('Potrebna provera');
   });
 
   it('reaches the language switcher from Home, and the choice persists', async () => {

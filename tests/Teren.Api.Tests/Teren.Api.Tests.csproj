@@ -23,6 +23,11 @@
          database and would silently pass against a provider that does not have them. -->
     <PackageReference Include="Testcontainers.PostgreSql" Version="4.14.0" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
+    <!-- PdfPig (Apache-2.0), test-only: reads the text back out of a rendered report. Without
+         it every assertion about the page is a byte count, and "the transcript is on the
+         document a client reads" is exactly the claim a byte count cannot make. Not referenced
+         by anything under src/. -->
+    <PackageReference Include="PdfPig" Version="0.1.16" />
     <!-- Pinned to the version the API resolves: Npgsql 10.0.3 would otherwise drag EF Core
          10.0.4 into this project and the test host would load a different EF than the app. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.11" />

@@ -32,9 +32,22 @@ by its exit code: a check that reads only the exit status reports a broken suite
 ### Licensing to keep an eye on (this is a commercial product)
 
 - **Hangfire Core** — LGPL, free. Hangfire Pro is paid; we do not need it.
-- **QuestPDF** — dual-licensed. The Community licence is free below a revenue threshold
-  (~$1M USD); above that it needs a paid licence. Fine for years, but verify the current terms
-  when adopting, and record the licence choice in the project file. `[to verify]`
+- **QuestPDF 2026.8.0** — **terms re-read at adoption, 2026-08-29 (B6), and the previous note here
+  was wrong in kind.** It is *not* dual-licensed with an OSI licence: QuestPDF's own LICENSE.md
+  says "This is a source-available commercial license. It is not an OSI-approved open-source
+  license, and the MIT License does not govern use." Three tiers — Community (free),
+  Professional, Enterprise. The threshold the old note recorded does hold: Community is free for
+  "an organisation with annual gross revenue under USD 1,000,000 in its most recently completed
+  fiscal year, measured on a consolidated basis across entities under common control". Teren
+  qualifies, and will for years. **The tier must be declared in code** or the library throws at
+  document generation; the declaration lives in `QuestPdfReportRenderer`'s static constructor so
+  no start-up refactor can drop it. **Revisit before the company's first million** — at that
+  point this is a paid licence, not a re-read.
+- **MailKit / MimeKit 4.17** — MIT, no threshold. Chosen as a protocol client rather than a
+  vendor SDK (§10).
+- **Mailpit** — MIT, and a dev-only container in `docker-compose.yml`; nothing ships with it.
+- **Lato** — the font the report is set in, shipped inside the QuestPDF package (its `LatoFont`
+  folder) under the SIL Open Font License. Covers Serbian Latin in full (§14 decision 6).
 - **Dexie** — Apache 2.0, no issue.
 - **Test stack** — xunit.v3 (Apache-2.0), Shouldly (BSD-3-Clause), Testcontainers (MIT): all
   permissive, no commercial threshold. **FluentAssertions is deliberately excluded** — from v8 it
@@ -123,7 +136,8 @@ problem proves it necessary.
 `appsettings.json` for shape, **user-secrets** in development, **environment variables** in
 production. Secrets needed: `Anthropic__ApiKey`, `Stt__Azure__Key`, `Stt__Azure__Region`,
 `Storage__{Endpoint,AccessKey,SecretKey,Bucket}`, `Auth__DeviceToken`,
-`Hangfire__{DashboardUser,DashboardPassword}`, `Email__ApiKey`. No secret is ever committed.
+`Hangfire__{DashboardUser,DashboardPassword}`, `Reporting__Smtp__{Username,Password}`.
+No secret is ever committed.
 
 **Config sections added by B4** (shape in `appsettings.json`, real values from the above):
 
@@ -133,8 +147,9 @@ production. Secrets needed: `Anthropic__ApiKey`, `Stt__Azure__Key`, `Stt__Azure_
 | `Anthropic` | `ApiKey`, `Model`, `MaxTokens`, `RequestTimeout` | `Model` is validated at start-up, `ApiKey` is not (see below). |
 | `Pipeline` | `MaxAttempts`, `RetryDelay`, `StaleProcessingAfter`, `SweepInterval`, `SweepBatchSize`, `TranscriptionLocale` | `SweepInterval` is rendered to a cron expression and that expression is what both the scheduler and the start-up log get. |
 | `Hangfire` | `Enabled`, `WorkerCount`, `DashboardUser`, `DashboardPassword` | `Enabled: false` runs the whole upload path with no job server — that is how the test host works. |
+| `Reporting` (B6) | `FromAddress`, `FromName`, `ReplyToAddress`, `Smtp:{Host,Port,Security,Username,Password,Timeout}`, `RenderBudget`, `StaleAfter`, `PhotoRasterDpi`, `AttachmentSizeWarningBytes` | Username/password are secrets. **An empty `Smtp:Host` does not stop the host booting** — same policy as the AI keys. `StaleAfter` must outlast `RenderBudget + MaxAttempts x Smtp:Timeout`; `ReportingContractTests` recomputes that rather than trusting the comment. |
 
-**The two AI keys deliberately do not stop the host from booting.** Most machines that build this
+**The two AI keys, and the mail relay, deliberately do not stop the host from booting.** Most machines that build this
 have neither, and an API that refused to start without them would make the entire upload path —
 which needs neither — impossible to run or test. A missing key is logged loudly once at start-up
 and then parks entries in `needs_review` with an honest reason, never a silent success. Everything
@@ -282,9 +297,16 @@ media (id uuid PRIMARY KEY,            -- generated on the phone, like entry.id
        created_at)
 
 report (id uuid PK, company_id → company, project_id → project,
+        entry_id uuid null → entry,    -- B6: the daily report's subject. UNIQUE where not null
         kind,                          -- CHECK: daily | weekly
         period_start date, period_end date,
-        pdf_object_key text, recipients jsonb, sent_at timestamptz null,
+        pdf_object_key text, recipients jsonb,
+        status text NOT NULL,          -- CHECK: sending | sent | failed
+        sent_at timestamptz null,      -- CHECK: (status = 'sent') = (sent_at IS NOT NULL)
+        delivery_detail text null,     -- what the relay actually said when it took custody
+        attempts integer NOT NULL DEFAULT 0,
+        attempt_started_at timestamptz null,   -- the claim, like entry.processing_started_at
+        failure_reason text null,
         created_at)
 ```
 
@@ -304,6 +326,9 @@ adding a Postgres extension the `postgres:17-alpine` dev image does not carry.
   callers fail fast with a clear exception, but the trigger is what makes the promise hold
   against any SQL.
 - All FKs are `ON DELETE RESTRICT` — evidence is never cascade-deleted.
+- `ux_report_entry_id` is **unique where `entry_id IS NOT NULL`** and it is not an ordinary
+  index: it is the mechanism that makes one entry produce at most one report. See the report
+  state machine below.
 
 **Indexes:** `entry(project_id, entry_date desc)`, `entry(status)` for the job sweeper,
 `media(entry_id)`, `media(object_key) unique`, `report(project_id, period_start desc)`, plus
@@ -367,6 +392,30 @@ updated.
 migration. `hidden_work` is called out separately because it is the highest-value evidence in the
 product — the thing that cannot be proven after the wall closes.
 
+**`described_verbatim` — one extra top-level key, only ever in `corrected`.** When extraction has
+failed and the foreman confirms his own transcript as the day's record (founder, 2026-08-29,
+PROJECT.md §11), the confirmation screen sends `"described_verbatim": true` at the top level with
+the transcript **verbatim in `notes`** and every structured section empty. It is not in
+`EntryStructureSchema` and never will be: that schema is the shape the *model* must answer in, and
+this is a human's statement that the model's answer is absent. Consequences, all deliberate:
+
+- **`/confirm` accepts it.** Validation checks only that `corrected` is a JSON object carrying
+  `schema_version` (Postgres CHECKs the same), so an unknown top-level key passes through and is
+  stored untouched. Nothing strips it — the report generator keys on it, and a validator that
+  quietly dropped it would give the client an empty page and the server a 200.
+- **The report renders the day as prose instead of as sections**, under its own heading, with a
+  printed statement that the text is a verbatim transcript and was not broken down into items,
+  and a `Vrsta zapisa` line repeating that in the evidence block. Without this the template lays
+  out an empty structured day — no work, no materials — which reads as "nothing happened".
+- **It is a rendering difference, not a pipeline difference.** Photos, GPS, timestamps, the
+  photo-checksum verification and the whole B6 report state machine are untouched.
+- **The flag alone is a claim, not content.** `described_verbatim` with a blank `notes` is still
+  `nothing_to_report` and the page announces no transcript it does not have. Only a real JSON
+  `true` counts — this key is read strictly while the rest of the document is read forgivingly,
+  because it changes what the document claims about its own provenance.
+- The eval triple stays honest: `raw_transcript` and `structure` are untouched, and `corrected`
+  recording approval-as-is is distinguishable from a foreman having typed the day.
+
 ### Entry state machine
 
 Client-side (Dexie) and server-side states are **deliberately different vocabularies**; conflating
@@ -409,12 +458,84 @@ Rules that fall out of this:
   `Skipped`. `StaleProcessingAfter` must therefore always exceed the worst-case pass; the
   arithmetic is spelled out on the option and checked by a test.
 
+### Report state machine (B6)
+
+```
+report:  (no row) ──► sending ──► sent      (entry becomes `reported`, and is sealed)
+                         │
+                         └──────► failed    (nothing left the building, or the relay refused)
+                                     │
+                                     └──► sending   (a later pass reclaims it)
+```
+
+**The row is the claim, and it is created as late as possible.** Everything reversible happens
+first — read the entry, verify every photograph's SHA-256, lay out the PDF, store it. Only then
+is the row inserted, and only then is the relay called. `ux_report_entry_id` means two concurrent
+passes cannot both get there: the loser takes a unique violation and sends nothing, having wasted
+a render. This is why there is no `rendering` state — until the PDF exists, nothing has happened
+that anyone outside the process could observe, and a claim guarding nothing is a row that strands.
+
+Rules that fall out of it:
+
+- **`reported_at` is stamped only after the PDF is in storage *and* a relay has accepted the
+  message**, and it is stamped conditionally (`WHERE status = 'confirmed' AND reported_at IS
+  NULL`). The stamp is irreversible — the trigger makes the row immutable and undeletable — so
+  nothing may stamp it on the strength of an intention. A refused delivery leaves the entry
+  `confirmed` and therefore still correctable.
+- **Every terminal write in the report pass is claim-conditional**, exactly as in B4: the report
+  row must still be `sending`, the entry must still be `confirmed` and unreported. A pass that
+  lost its claim writes nothing.
+- `sent_at` means **the relay took custody**, never that a person received it. SMTP gives no
+  bounce and no delivery telemetry (§10); `delivery_detail` holds the relay's own response line,
+  which is the strongest claim this system can honestly make.
+- **A report abandoned mid-send is never re-sent automatically.** The sweeper moves it to
+  `failed` with `report_interrupted` after `Reporting:StaleAfter` and stops. Because SMTP tells us
+  nothing, the server genuinely cannot say whether the client has that report; guessing "no" puts
+  a second copy of a site diary in an investor's inbox and guessing "yes" seals an entry that was
+  never sent. It says what it knows and a person decides.
+- **Custody-unknown is a class, not a single state, and nothing automatic may resolve it** (B6
+  review G1/G1b). Two reasons carry it: `report_interrupted` (the pass died anywhere) and
+  `delivery_custody_unknown` (the SMTP conversation broke *after transmission began* and the relay
+  never answered — a content scanner slower than the budget, a reset after acceptance). Both are
+  refused by three independent guards, because the promise above was previously enforced only
+  against the sweeper: **(1)** a replayed `/confirm` neither clears such a reason nor re-queues —
+  a wire retry is not a person; **(2)** the report pass refuses before it renders and writes the
+  reason back onto the entry, so a *changed* re-confirmation cannot launder it into a resend
+  either; **(3)** the reclaim UPDATE excludes those reasons in the same statement as the claim, so
+  the check cannot be raced. An explicit resend must therefore take a gesture no network retry can
+  carry — **the founder owns that decision and it is not built**.
+- **A changed confirmation is refused (409) while a report row is `sending`**, and a pass that
+  finds `corrected` changed after taking its claim releases the claim (`superseded`) and sends
+  nothing (B6 review G3). "A person can revise his answer up until the report goes out" is only
+  true if enforced: without this, a foreman correcting his own typo twenty seconds after
+  confirming ends with v1 in the client's inbox and v2 sealed in the archive — the contractor's
+  own record contradicting the report he sent. The endpoint check alone is not enough: the claim
+  is created as late as possible, so the whole render is a window it cannot see.
+  **Trade-off, accepted:** if a pass dies holding the claim, that 409 stands until the sweeper
+  marks the row failed — up to `Reporting:StaleAfter` (30 min) — during which a correction is
+  told to come back later. A rare crash window against a routine correctness hazard.
+- **A `sent` report whose entry was never sealed is swept up.** The report-enqueue predicate is
+  `r.id IS NULL OR r.status IN ('failed','sent')`; without `sent`, a crash between recording the
+  hand-over and stamping `reported_at` left the client holding a report the contractor's archive
+  said was never sent, permanently and silently (B6 review G2). The pass seals such a report, it
+  never re-sends it.
+- **The report sweep only picks up entries with no `failure_reason` at all** — i.e. nothing has
+  gone wrong that anyone was told about, so the only explanation is a lost enqueue. Anything that
+  failed with a reason waits for a person, the same call B4 made for `needs_review`. The retry
+  path is fixing the cause and confirming again: **`/confirm` clears `failure_reason` and
+  re-queues the report even on a replayed, byte-identical confirmation**, because the realistic
+  retry (a recipient added, a relay configured) changes nothing about the entry itself.
+
 ### Verification obligations B3 hands to B4 and reporting (review F3 — binding)
 
 `/complete` verifies existence + byte size only; the API never reads media bytes. Therefore:
 - **B4 must verify the audio's sha256** when it downloads it for transcription; mismatch parks the
   entry in `needs_review` — never silent.
-- **Report generation must verify each photo's sha256** before embedding it in a PDF.
+- **Report generation must verify each photo's sha256** before embedding it in a PDF. **Done at
+  B6**, and a mismatch refuses the *whole* report rather than dropping the one exhibit — this
+  document is what a contractor hands a client in a dispute, and quietly omitting an image would
+  make every other page less trustworthy. One implementation serves both obligations
+  (`VerifiedMediaReader`), so the promise cannot hold for audio and lapse for photographs.
 - **B4 must handle entries with zero media** (allowed at `/complete` to keep the typed-shorthand
   fallback open): an entry with no audio and no text parks in `needs_review`, never flows into a
   report empty.
@@ -483,11 +604,23 @@ the cheaper option and keeps bytes out of the API, consistent with the topology 
 by **M1-C3** for the owner view and by **M2** for the client-facing web view; the report generator
 (B6) reads bytes server-side and is unaffected.
 
+**There is one write path, added at B6, and it is not media.** `IObjectStorage.PutAsync` stores
+the generated report PDF. A report is the one artefact the server *produces* rather than receives,
+so there is no presigned PUT to hand anybody; it is written from a Hangfire job, never from a
+request the phone is waiting on, and the §2 rule that media never passes through the API is
+untouched. The key is derived from the entry rather than from the report row's id, so a pass that
+failed before delivery and is run again overwrites its own output instead of leaving an orphan
+object nobody will fetch and everybody pays to store.
+
 **Object key layout** (no personal data in keys, ever):
 
 ```
 company/{companyId}/project/{projectId}/entry/{entryId}/{mediaId}.{ext}
+company/{companyId}/project/{projectId}/entry/{entryId}/report.pdf
 ```
+
+(The PDF's *attachment file name* does carry the site and the date, folded to ASCII — that is for
+a human who already has the report, and is a different thing from a key.)
 
 **Upload order:** entry JSON → audio → photos one at a time. The report only needs the audio, so
 processing can start while photos are still climbing over a bad connection.
@@ -581,6 +714,46 @@ changes safe later.
 | Object storage | MinIO locally, Hetzner Object Storage in production | S3-compatible both sides, so one client and no code difference |
 
 Each sits behind an interface (`IWeatherProvider`, `IReportDelivery`) for the same reason as STT.
+
+**Built at B6.** `SmtpReportDelivery` (MailKit) behind `IReportDelivery`, configured from a
+`Reporting` section: `Reporting:FromAddress`, `FromName`, `ReplyToAddress`,
+`Reporting:Smtp:{Host,Port,Security,Username,Password,Timeout,ConversationBudget}`, plus
+`RenderBudget`, `StaleAfter`, `PhotoRasterDpi` and `AttachmentSizeWarningBytes`.
+
+**`Smtp:Timeout` bounds one protocol operation; `Smtp:ConversationBudget` bounds one attempt**
+(B6 review N1). MailKit's timeout applies per command — greeting, AUTH, MAIL FROM, one RCPT TO per
+recipient, DATA, the content upload — so multiplying it by the attempt count described a healthy
+pass rather than bounding any pass, and three slow attempts could outrun `StaleAfter`.
+`SmtpReportDelivery` enforces the conversation budget (3 min, vs a 1 min per-command timeout) with
+a linked `CancellationTokenSource`, and `WorstCasePass` is computed from it: 5 min render + 3 × 3
+min delivery + backoff ≈ 14.1 min against a 30 min `StaleAfter`. An **absent relay host does not stop the host
+booting** — capture and upload need no mail server — it stops confirmed entries with a visible
+`delivery_not_configured`, exactly the policy the AI keys get. Failures are classified on the
+exception's **type and SMTP status code**, never on the relay's banner: 5xx and an unusable
+address are terminal (`delivery_rejected`), a refused credential is terminal
+(`delivery_unauthorized`), 4xx / socket / TLS / timeout are retryable.
+
+**The relay host is still the open sub-decision** (Resend vs Postmark vs other). Locally,
+`docker compose` runs **Mailpit** on `localhost:1025` with its inbox at `http://localhost:8025`,
+which makes the whole PDF-and-email path provable before any relay account exists. Mailpit rather
+than MailHog: actively maintained (MailHog's last release was 2020), MIT, it shows the HTML and
+text alternatives side by side — which is what needs checking on a report read on a phone — and it
+can be told to require SMTP authentication, so the *authenticated relay* shape production will
+run on is exercised locally rather than only anonymous localhost SMTP. Swapping in a real relay is
+`Reporting:Smtp:*` and nothing else.
+
+**Failures are classified on where in the conversation they happened, not only on their type**
+(B6 review G1b). A relay that answers — any `SmtpCommandException` — is never ambiguous: 5xx is
+`delivery_rejected`, 4xx is retryable, a refused credential is `delivery_unauthorized`. A relay
+that *stops answering* is judged by position: before the message transaction begins (connect,
+greeting, AUTH) it is retryable; once transmission has begun it is `delivery_custody_unknown` and
+the pass stops, because a relay may have taken the message and failed to say so, and every retry
+of that is another copy in a real inbox. The rule is deliberately over-inclusive — a protocol
+fault at MAIL FROM is caught by it too — because the cost of over-caution is a person clicking
+resend and the cost of under-caution is an investor holding three copies of the same day.
+Every message also carries a **stable `Message-ID` derived from the report row**
+(`report.{report_id}@{sending domain}`), identical across retries and reclaims, so a receiving
+server can collapse duplicates. That is the only duplicate suppression SMTP offers.
 
 **Config for the two services B4 wired up** — full key list in §4. `Stt:Azure:{Key,Region}` and
 `Anthropic:ApiKey` are secrets and are the only settings whose absence is tolerated at start-up.
@@ -724,9 +897,9 @@ environment before device binding (C5) and production hardening (C7).
 |---|---|---|---|
 | 1 | ~~STT provider~~ **Decided 2026-08-29: Azure AI Speech, `sr-RS`, fast-transcription REST** | — | See `docs/stt-evaluation.md`. Note the basis is one 18 s test clip, not real site audio (A2 deferred). Phrase-list hinting proved **inert for `sr-RS`**, so the original reason for preferring Azure over Whisper did not hold; `sr-RS` first-class support is the surviving ground |
 | 8 | ~~Transcript script~~ **Decided 2026-08-29: Latin everywhere.** Azure returns Cyrillic, so the pipeline transliterates once at ingestion and stores `raw_transcript` in Latin | — | Cyrillic→Latin is lossless and deterministic **in that direction** (the reverse is not — `nadživeti` is ambiguous). One tested pure function, idempotent on text that is already Latin, correct on the digraphs љ→lj, њ→nj, џ→dž. **The audio remains the untouched raw evidence** and the transcript can always be regenerated from it, which is what keeps principle 2 honest |
-| 2 | ~~Email provider~~ **Decided 2026-08-29: SMTP (MailKit) behind `IReportDelivery`** | — | Remaining sub-decision: **which relay**, needed by B6. Not direct-from-VPS — see §10 |
+| 2 | ~~Email provider~~ **Decided 2026-08-29: SMTP (MailKit) behind `IReportDelivery`**; built at B6 | B3a | Remaining sub-decision: **which relay**. B6 no longer blocks on it — Mailpit locally proves the path, and swapping in a relay is `Reporting:Smtp:*` only. Needed for real before staging sends anything to a real address. Not direct-from-VPS — see §10 |
 | 3 | ~~Extraction model (Sonnet 5 vs Opus 5)~~ **Now a config switch, not an open question (B4)** | after first evals | `Anthropic:Model`, never hardcoded. Ships on `claude-sonnet-5`; moving to Opus 5 is one environment variable and no code. What remains open is only *which* — decided by measured quality on the correction triples (§9.3), never by price |
 | 4 | Audio container on iOS | B2 | Verify what a real iPhone actually records; server-side normalisation if needed |
-| 5 | QuestPDF licence tier | before first paying customer | Community licence terms and threshold |
-| 6 | PDF typography | B6 | Embed a font with full Serbian Latin diacritic coverage (č, ć, š, ž, đ); the same font must serve the English template |
+| 5 | ~~QuestPDF licence tier~~ **Decided 2026-08-29 (B6): Community**, declared in code (`QuestPDF.Settings.License`) | revisit before USD 1M revenue | Terms re-read at adoption and the old note here was wrong in kind — it is a source-available *commercial* licence, not MIT. Free under USD 1M annual gross revenue, consolidated. See §1 |
+| 6 | ~~PDF typography~~ **Decided 2026-08-29 (B6): Lato**, which ships inside the QuestPDF package and therefore travels with the app | — | Covers Serbian Latin in full and serves the English template unchanged. `UseEnvironmentFonts` is **off** so the founder's Windows machine and a Hetzner container render identically, and `CheckIfAllTextGlyphsAreAvailable` is forced **on** (QuestPDF enables it only under a debugger) so a glyph the font cannot draw throws instead of becoming a placeholder box in a PDF already in an investor's inbox |
 | 7 | Serbian copy review | B5 | Translations are written by Claude and **must be reviewed by the founder** — a native check on trade vocabulary, not just grammar |

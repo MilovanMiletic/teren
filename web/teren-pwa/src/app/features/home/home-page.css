@@ -17,6 +17,7 @@
     align-items: start;
   }
 
+  /* The storage warning is about the whole app, not about one pane. */
   .storage-warning {
     grid-column: 1 / -1;
   }
@@ -28,33 +29,6 @@
   .pane--secondary {
     grid-column: span 5;
   }
-}
-
-.storage-warning {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-4) 18px;
-  background: var(--color-err-bg);
-  box-shadow: none;
-}
-
-.storage-warning__icon {
-  flex: none;
-  margin-top: 1px;
-  color: var(--color-err-icon);
-}
-
-.storage-warning__text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.storage-warning__title {
-  font-size: var(--text-body);
-  font-weight: 600;
-  color: var(--color-err);
 }
 
 /* ---- Project picker ---------------------------------------------------------------------- */

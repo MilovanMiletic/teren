@@ -39,6 +39,29 @@ public sealed class EntryProcessingJob(
     }
 }
 
+/// <summary>
+/// The B6 report pass as a Hangfire job. Same reasoning about retries as
+/// <see cref="EntryProcessingJob"/>, and here it matters more: this job sends email, and a
+/// scheduler retry on top of a pass that already reached a verdict is how a client receives the
+/// same site report twice. The report row's unique <c>entry_id</c> is what makes even a
+/// duplicate enqueue free.
+/// </summary>
+public sealed class EntryReportJob(
+    Reporting.EntryReporter reporter, ILogger<EntryReportJob> logger)
+{
+    [AutomaticRetry(Attempts = 0)]
+    [Queue(EntryProcessingJob.QueueName)]
+    [JobDisplayName("Report entry {0}")]
+    public async Task RunAsync(Guid entryId, Guid companyId, IJobCancellationToken cancellation)
+    {
+        var outcome = await reporter.ReportAsync(
+            entryId, companyId, cancellation.ShutdownToken);
+
+        logger.LogInformation(
+            "Entry {EntryId} report finished with outcome {Outcome}.", entryId, outcome);
+    }
+}
+
 /// <summary>The recurring sweep. Same reasoning about retries as above.</summary>
 public sealed class PipelineSweepJob(PipelineSweeper sweeper)
 {

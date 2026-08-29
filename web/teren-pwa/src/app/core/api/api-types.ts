@@ -192,6 +192,24 @@ export interface MediaUploadTarget {
   expires_at: string | null;
 }
 
+/**
+ * `POST /api/entries/{id}/confirm` — the mandatory gate before any report is sent
+ * (PROJECT.md principle 5).
+ *
+ * **One field, and that is the whole design.** `raw_transcript` is evidence and write-once,
+ * `structure` is what the model said, and `corrected` is what the person signed off; the three
+ * together are the eval set and the only record of what extraction actually got wrong
+ * (ARCHITECTURE §9.3). The API accepts nothing else on this route precisely so that no client can
+ * make one of them overwrite another, and this interface is the client half of that promise.
+ *
+ * The payload must carry `schema_version`: the server's validator requires it and a Postgres
+ * CHECK enforces it. It is built by `toCorrectedPayload` in `core/confirm/entry-draft.ts` and
+ * never assembled by hand.
+ */
+export interface ConfirmEntryRequest {
+  corrected: Record<string, unknown>;
+}
+
 /** `POST /api/entries/{id}/complete` */
 export interface CompleteEntryResponse {
   /** True when the server holds the whole entry. Also true on a replay of an already-sealed entry. */
@@ -203,4 +221,29 @@ export interface CompleteEntryResponse {
   /** Media present in storage at the wrong size. A real failure — the bytes must go up again. */
   failed_media: string[];
   entry: EntryResponse;
+}
+
+/**
+ * `GET /api/entries/{id}/report` — the report PDF, as it comes off the wire.
+ *
+ * Not a JSON shape like the rest of this file, but it belongs beside them: it is what one route
+ * answers. Deliberately raw — the bytes and the one header that names them — because turning
+ * either into something a screen can use (a filename, a saved file) is policy, and policy lives
+ * in `core/report/`.
+ */
+export interface ReportDownload {
+  /**
+   * The PDF. `null` is possible: `HttpClient` reports an empty 200 body that way, and an empty
+   * body is a broken report rather than a report — the caller must not save it.
+   */
+  body: Blob | null;
+
+  /**
+   * The raw `Content-Disposition` header, carrying the server's human-readable Serbian filename.
+   *
+   * `null` when the browser would not expose it — it is not CORS-safelisted, so a cross-origin
+   * API must send `Access-Control-Expose-Headers: Content-Disposition` for it to be readable at
+   * all. That is a naming inconvenience, never a failed download.
+   */
+  contentDisposition: string | null;
 }

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Teren.Core.Entities;
+using Teren.Core.Reporting;
 
 namespace Teren.Infrastructure.Persistence.Configurations;
 
@@ -23,6 +24,15 @@ public sealed class ProjectConfiguration : IEntityTypeConfiguration<Project>
             .HasColumnName("report_language")
             .IsRequired()
             .HasDefaultValue("sr");
+        // Deliberately the same shape as report_language above: both answer "whose report is
+        // this", and both belong to the project rather than to a device. NOT NULL with a default
+        // so no project can exist without a zone — an unset zone means a report that cannot print
+        // a timestamp at all, because ReportTimeZone refuses to guess one.
+        builder.Property(p => p.TimeZone)
+            .HasColumnName("time_zone")
+            .IsRequired()
+            .HasDefaultValue(ReportTimeZone.Default);
+
         builder.Property(p => p.CreatedAt).HasColumnName("created_at").IsRequired();
 
         builder.HasOne<Company>()

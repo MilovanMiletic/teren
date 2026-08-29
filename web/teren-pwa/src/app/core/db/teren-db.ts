@@ -2,7 +2,14 @@ import { InjectionToken } from '@angular/core';
 import Dexie, { Table } from 'dexie';
 
 import { canonicalProject } from '../projects/legacy-project-ids';
-import { AudioChunk, CaptureSession, LocalEntry, LocalMedia, OutboxItem } from './models';
+import {
+  AudioChunk,
+  CaptureSession,
+  ConfirmDraft,
+  LocalEntry,
+  LocalMedia,
+  OutboxItem,
+} from './models';
 
 export const TEREN_DB_NAME = 'teren';
 
@@ -19,6 +26,7 @@ export class TerenDb extends Dexie {
   readonly outbox!: Table<OutboxItem, string>;
   readonly chunks!: Table<AudioChunk, [string, number]>;
   readonly captures!: Table<CaptureSession, string>;
+  readonly confirmDrafts!: Table<ConfirmDraft, string>;
 
   constructor(name: string = TEREN_DB_NAME) {
     super(name);
@@ -87,6 +95,20 @@ export class TerenDb extends Dexie {
     //    paid per file, once, off the critical path, by the code that already has to handle
     //    `crypto.subtle` being missing.
     this.version(4).stores({});
+
+    // v5 — B5: the confirmation screen. One new table, no change to any existing one.
+    //
+    // A draft is what a person has typed and not yet sent, and it is the one thing on this
+    // device that no recording can reproduce: an entry whose extraction failed reaches the
+    // confirmation screen with nothing but a transcript, and everything that then becomes the
+    // record is typed. Keeping it in a component would mean a locked screen or a discarded tab
+    // destroying it silently — principle 3, broken on the screen where the human *is* the source.
+    //
+    // Keyed by the entry id and nothing else: one entry has one draft, a re-save overwrites in
+    // place, and there is no secondary lookup — the screen always knows which entry it is on. The
+    // row is deleted when the server accepts the confirmation, never before, for the same reason
+    // the outbox row survives until `/complete` answers.
+    this.version(5).stores({ confirmDrafts: 'entryId' });
   }
 }
 

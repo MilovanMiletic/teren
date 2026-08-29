@@ -10,10 +10,10 @@
   <div class="column content band-top">
     @if (!status.storageAvailable()) {
       <!-- The app booted, but it cannot hold evidence. Say so instead of recording into a void. -->
-      <div class="card storage-warning" role="alert">
-        <app-icon name="alert-triangle" [size]="20" class="storage-warning__icon" />
-        <div class="storage-warning__text">
-          <span class="storage-warning__title">{{ t('app.storage.unavailable.title') }}</span>
+      <div class="card notice notice--err storage-warning" role="alert">
+        <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
+        <div class="notice__text">
+          <span class="notice__title">{{ t('app.storage.unavailable.title') }}</span>
           <span class="t-meta">{{ t('app.storage.unavailable.body') }}</span>
         </div>
       </div>
@@ -68,6 +68,29 @@
 
     <!-- Right pane at expanded: where the work stands. -->
     <div class="pane pane--secondary">
+      @if (awaitingCount() > 0) {
+        <!--
+          The confirmation gate, admitted on the front door. An entry the server has handed back
+          stops moving until a person opens it — no report, no email — and this row is the only
+          thing on the screen he actually looks at that says so. Above the sync row on purpose:
+          "waiting to upload" is the phone's job, this is his.
+        -->
+        <button
+          type="button"
+          class="card card-interactive notice notice--warn notice--action"
+          (click)="openOldestAwaiting()"
+        >
+          <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
+          <span class="notice__text">
+            <span class="notice__title t-num">
+              {{ t(attentionKey(awaitingCount()), { count: awaitingCount() }) }}
+            </span>
+            <span class="t-meta">{{ t('home.attention.hint') }}</span>
+          </span>
+          <app-icon name="chevron-right" [size]="18" class="notice__icon" />
+        </button>
+      }
+
       <!-- Sync state is a permanent row, never a toast (PROJECT.md principle 3). -->
       <button type="button" class="card card-interactive sync" (click)="openPending()">
         @if (stuckCount() > 0) {
@@ -115,31 +138,31 @@
                   [attr.aria-label]="t('archive.detail.open')"
                   (click)="openEntry(entry)"
                 >
-                <div class="recent__text">
-                  <span class="recent__title t-num">
-                    @switch (dayLabel(entry)) {
-                      @case ('today') {
-                        {{ t('common.today') }}
+                  <div class="recent__text">
+                    <span class="recent__title t-num">
+                      @switch (dayLabel(entry)) {
+                        @case ('today') {
+                          {{ t('common.today') }}
+                        }
+                        @case ('yesterday') {
+                          {{ t('common.yesterday') }}
+                        }
+                        @default {
+                          {{ entry.capturedAt | date: 'EEEE, d. M.' }}
+                        }
                       }
-                      @case ('yesterday') {
-                        {{ t('common.yesterday') }}
-                      }
-                      @default {
-                        {{ entry.capturedAt | date: 'EEEE, d. M.' }}
-                      }
-                    }
-                    {{ entry.capturedAt | date: 'HH:mm' }}
-                  </span>
-                  <span class="t-meta t-num">
-                    {{
-                      t('pending.meta', {
-                        duration: entry.audioDurationMs | duration,
-                        photos: t(plural.photos(entry.photoCount), { count: entry.photoCount }),
-                      })
-                    }}
-                  </span>
-                </div>
-                <span class="chip chip--{{ statusTone(entry) }}">{{ t(statusKey(entry)) }}</span>
+                      {{ entry.capturedAt | date: 'HH:mm' }}
+                    </span>
+                    <span class="t-meta t-num">
+                      {{
+                        t('pending.meta', {
+                          duration: entry.audioDurationMs | duration,
+                          photos: t(plural.photos(entry.photoCount), { count: entry.photoCount }),
+                        })
+                      }}
+                    </span>
+                  </div>
+                  <span class="chip chip--{{ statusTone(entry) }}">{{ t(statusKey(entry)) }}</span>
                   <app-icon name="chevron-right" [size]="18" class="recent__chevron" />
                 </button>
               </li>
