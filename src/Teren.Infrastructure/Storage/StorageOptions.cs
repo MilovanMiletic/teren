@@ -68,4 +68,30 @@ public sealed class StorageOptions
     /// </summary>
     [Range(typeof(TimeSpan), "00:00:02", "00:02:00")]
     public TimeSpan VerificationBudget { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Per-call ceiling on a media <em>download</em>, which only the B4 pipeline does. Separate
+    /// from <see cref="RequestTimeout"/> on purpose: that number exists to keep a phone-facing
+    /// request short, and applying it to a 25 MB voice note would abort the read mid-stream on
+    /// a slow link. A background job can afford to wait; nobody is watching it.
+    /// </summary>
+    [Range(typeof(TimeSpan), "00:00:05", "00:10:00")]
+    public TimeSpan DownloadTimeout { get; set; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// Retries the AWS SDK performs inside one media download. Zero, like
+    /// <see cref="MaxRetries"/> — and for a reason that only became visible when the pipeline's
+    /// worst-case wall-clock was added up.
+    /// <para>
+    /// The pipeline already retries a failed download <c>Pipeline:MaxAttempts</c> times, so an
+    /// SDK retry loop underneath it does not make an entry more likely to survive a blip; it
+    /// multiplies the time before the pass ends, silently. At the old default of 2 the download
+    /// step alone could occupy <c>DownloadTimeout x 3 x MaxAttempts</c> = 18 minutes, which is
+    /// how a live pass came to outrun <c>Pipeline:StaleProcessingAfter</c>. Retry policy belongs
+    /// to the processor, which owns the entry's state machine and can say so in
+    /// <c>failure_reason</c>; nothing under it should have an opinion.
+    /// </para>
+    /// </summary>
+    [Range(0, 5)]
+    public int DownloadRetries { get; set; }
 }

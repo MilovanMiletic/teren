@@ -43,6 +43,11 @@ public sealed record EntryResponse(
     DateTimeOffset? ConfirmedAt,
     DateTimeOffset? ReportedAt,
     string? FailureReason,
+    // The transcript, in the language it was spoken and transliterated to Latin at ingestion.
+    // The confirmation screen cannot exist without it — a human approving what the system
+    // understood has to be able to read what it heard — and on a needs_review entry it is often
+    // the only thing the pipeline produced.
+    string? RawTranscript,
     double? Latitude,
     double? Longitude,
     double? GpsAccuracyM,
@@ -80,3 +85,18 @@ public sealed record CompleteEntryResponse(
     IReadOnlyList<Guid> PendingMedia,
     IReadOnlyList<Guid> FailedMedia,
     EntryResponse Entry);
+
+/// <summary>
+/// What the human approved on the confirmation screen (ARCHITECTURE §7).
+/// <para>
+/// Only <c>corrected</c> is accepted, and that is the point: <c>raw_transcript</c> is evidence
+/// and write-once, <c>structure</c> is what the model said and must stay exactly that, and
+/// <c>corrected</c> is what the person signed off. The three together are the eval set (§9.3),
+/// so no request is ever allowed to make one of them overwrite another.
+/// </para>
+/// </summary>
+public sealed record ConfirmEntryRequest
+{
+    /// <summary>The approved v1 entry structure. Must carry <c>schema_version</c>.</summary>
+    public JsonNode? Corrected { get; init; }
+}

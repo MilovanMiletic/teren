@@ -80,6 +80,7 @@ founder action; vi-form throughout, see open question 1).
 "capture.record.recording":     { "sr": "Snimanje", "en": "Recording" }
 "capture.record.mention":       { "sr": "Pomenite: radove · ljude · materijal · zastoje", "en": "Mention: work · people · material · blockers" }
 "capture.record.stop":          { "sr": "Završi snimanje", "en": "Finish recording" }
+"capture.record.salvaging":     { "sr": "Čuvanje snimljenog…", "en": "Saving what was recorded…" }   // interrupted take being assembled
 "capture.record.cancel":        { "sr": "Otkaži", "en": "Cancel" }
 "capture.photos.add":           { "sr": "Dodaj fotografije", "en": "Add photos" }
 "capture.photos.addOne":        { "sr": "Dodaj", "en": "Add" }
@@ -165,6 +166,12 @@ founder action; vi-form throughout, see open question 1).
    disabled until M2 — confirm it should even appear in the M0/M1 build.
 6. **Serbian copy review** (roadmap B5 founder action): trade vocabulary is lifted from the
    seeded transcripts, the rest is Claude's Serbian — needs the native ear.
+
+7. **Interrupted-recording copy is now wrong on two branches** (raised 2026-08-29). The card body
+   says *"Sve što je snimljeno do tog trenutka je sačuvano"* — past tense, an unconditional promise.
+   Since the salvage fix it renders while saving is still in progress, and it stays on screen when
+   assembling **failed**, where it is simply untrue. On the evidence path a false reassurance is
+   worse than an error. Needs three states of copy: saving in progress, saved, could not save.
 
 ## Figma
 

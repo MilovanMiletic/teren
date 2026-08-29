@@ -354,6 +354,25 @@ button {
   font-size: var(--text-body);
 }
 
+/*
+ * A whole list row that is a button.
+ *
+ * Every card list in the app — recent entries, the archive's days — is a stack of rows that open
+ * something, and each one needs the same six-line reset before it can look like a row rather than
+ * like a form control. Declared once here; the feature stylesheets add only what is theirs
+ * (height, padding, divider).
+ */
+.row-button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 /* A round chrome button (back, etc.) — 44 px minimum touch target. */
 .btn-icon {
   flex: none;

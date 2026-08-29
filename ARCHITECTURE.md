@@ -9,19 +9,25 @@ Last updated: 2026-08-29.
 
 ---
 
-## 1. Toolchain (verified on the dev machine, 2026-08-29)
+## 1. Toolchain (re-verified on the dev machine, 2026-08-29)
 
 | Tool | Version | Note |
 |---|---|---|
-| .NET SDK | 10.0.111 | LTS — target `net10.0` |
+| .NET SDK | 10.0.300 | LTS — target `net10.0` |
 | Angular CLI | 22.1.6 | current major |
-| Node | 24.19.0 | |
-| npm | 11.17.0 | |
-| Docker | 29.7.2 | |
-| Docker Compose | v5.4.0 | `docker compose`, not `docker-compose` |
+| Node | 24.19.0 | Installed 2026-08-29; the machine was on 22.12.0, below Angular CLI 22 minimum |
+| npm | 11.17.0 | As Angular resolves it. A stale shim in `%APPDATA%\npm` makes a bare `npm --version` report 10.8.3 |
+| Docker | 29.4.3 | |
+| Docker Compose | v5.1.3 | `docker compose`, not `docker-compose` |
 | PostgreSQL | via container | no local `psql` client — use `docker compose exec` |
 
-The git repository exists but nothing is committed yet, and git identity is unset.
+These versions are read off the machine, not carried over from an earlier note. A previous
+version of this table recorded versions that did not match reality — Node in particular was
+never 24.19.0 here until it was installed — which left the PWA unbuildable while the docs
+claimed a verified toolchain. Re-read the versions before trusting this table again.
+
+**`ng test` exits with code 0 even when specs fail.** Judge the suite by its summary line, never
+by its exit code: a check that reads only the exit status reports a broken suite as green.
 
 ### Licensing to keep an eye on (this is a commercial product)
 
@@ -30,6 +36,9 @@ The git repository exists but nothing is committed yet, and git identity is unse
   (~$1M USD); above that it needs a paid licence. Fine for years, but verify the current terms
   when adopting, and record the licence choice in the project file. `[to verify]`
 - **Dexie** — Apache 2.0, no issue.
+- **Test stack** — xunit.v3 (Apache-2.0), Shouldly (BSD-3-Clause), Testcontainers (MIT): all
+  permissive, no commercial threshold. **FluentAssertions is deliberately excluded** — from v8 it
+  requires a paid licence for commercial use, which this product would trip.
 
 ---
 
@@ -76,9 +85,11 @@ teren/
 │   └── Teren.Infrastructure/   # EF Core + Npgsql, S3 client, STT/LLM/weather/email adapters
 ├── web/
 │   └── teren-pwa/              # Angular 22 PWA
-├── design/                     # planned (A1-era) — screen artboards, design tokens
+├── tests/
+│   └── Teren.Api.Tests/        # xunit.v3 + Testcontainers — endpoints and the invariants
+├── design/                     # screen artboards, design tokens (tokens.md is binding)
 ├── tools/
-│   └── SttSpike/               # planned (A1) — throwaway transcription benchmark
+│   └── SttSpike/               # A1 — throwaway transcription benchmark (delete after A3)
 ├── evals/                      # planned (B4) — extraction fixtures from correction triples
 ├── deploy/                     # planned (B3a) — compose files, Caddyfile, backup scripts
 ├── docker-compose.yml          # Postgres + MinIO for local dev
@@ -110,8 +121,31 @@ problem proves it necessary.
 **Configuration and secrets**
 
 `appsettings.json` for shape, **user-secrets** in development, **environment variables** in
-production. Secrets needed: `Anthropic__ApiKey`, `Stt__ApiKey`,
-`Storage__{Endpoint,AccessKey,SecretKey,Bucket}`, `Email__ApiKey`. No secret is ever committed.
+production. Secrets needed: `Anthropic__ApiKey`, `Stt__Azure__Key`, `Stt__Azure__Region`,
+`Storage__{Endpoint,AccessKey,SecretKey,Bucket}`, `Auth__DeviceToken`,
+`Hangfire__{DashboardUser,DashboardPassword}`, `Email__ApiKey`. No secret is ever committed.
+
+**Config sections added by B4** (shape in `appsettings.json`, real values from the above):
+
+| Section | Keys | Notes |
+|---|---|---|
+| `Stt` | `Azure:Key`, `Azure:Region`, `Azure:FastApiVersion`, `Azure:RequestTimeout` | Key and region are secrets. There is deliberately **no** `Stt:Azure:Locale` — the locale is `Pipeline:TranscriptionLocale` and one setting gets one knob. |
+| `Anthropic` | `ApiKey`, `Model`, `MaxTokens`, `RequestTimeout` | `Model` is validated at start-up, `ApiKey` is not (see below). |
+| `Pipeline` | `MaxAttempts`, `RetryDelay`, `StaleProcessingAfter`, `SweepInterval`, `SweepBatchSize`, `TranscriptionLocale` | `SweepInterval` is rendered to a cron expression and that expression is what both the scheduler and the start-up log get. |
+| `Hangfire` | `Enabled`, `WorkerCount`, `DashboardUser`, `DashboardPassword` | `Enabled: false` runs the whole upload path with no job server — that is how the test host works. |
+
+**The two AI keys deliberately do not stop the host from booting.** Most machines that build this
+have neither, and an API that refused to start without them would make the entire upload path —
+which needs neither — impossible to run or test. A missing key is logged loudly once at start-up
+and then parks entries in `needs_review` with an honest reason, never a silent success. Everything
+else required (`Storage`, `Auth`) still refuses to boot when empty (`ValidateOnStart`).
+
+**Two traps worth writing down.** `Newtonsoft.Json` is pinned to 13.0.4 in both `Teren.Api` and
+`Teren.Infrastructure`: Hangfire pulls in 11.0.1 transitively, which trips NU1903 (a known
+vulnerability). The pin is the fix; do not drop it when tidying package references. And .NET's
+JSON encoder escapes `&` as the six characters `\u0026` — so a presigned URL pulled out of an
+API response **by grep or by eye** is not the URL, and it will fail to authenticate on use.
+Parse the JSON (`jq -r`) instead. This is a standing trap, not a one-off.
 One deliberate exception class: **local-dev throwaway credentials** live in
 `appsettings.Development.json` — the Postgres connection string, the MinIO keys, and the static
 dev device token, all matching `docker-compose.yml` (`teren/teren_dev_only`) and worthless outside
@@ -234,6 +268,7 @@ entry (id uuid PRIMARY KEY,            -- generated on the phone; the idempotenc
        supersedes_entry_id uuid null → entry,
        device_id uuid null,
        created_at, received_at, confirmed_at, reported_at,   -- all timestamptz, UTC
+       processing_started_at timestamptz null,  -- B4: when the pipeline claimed this entry
        failure_reason text null)
 
 media (id uuid PRIMARY KEY,            -- generated on the phone, like entry.id
@@ -281,9 +316,28 @@ treats them as opaque payloads; Postgres validates what must be validated). `dot
 **local** tool (`.config/dotnet-tools.json`), so the repo is self-contained.
 
 **Demo seed:** `dotnet run --project src/Teren.Api -- seed` (idempotent; `-- migrate` applies
-migrations only). Seeds the demo company *Vodoinstal Petrović d.o.o.*, one Belgrade
-plumbing/heating site and three realistic Serbian entries (reported / confirmed /
-awaiting_confirmation) dated relative to the first seed run.
+migrations only). Seeds the demo company *Vodoinstal Petrović d.o.o.* and **three sites**:
+
+| Id suffix | Site | Entries |
+|---|---|---|
+| `…000000000002` | Stambena zgrada Vojvode Stepe 212, Voždovac, Beograd | 3 |
+| `…000000000003` | Poslovni prostor Bulevar oslobođenja 84, Novi Sad | 0 |
+| `…000000000004` | Kuća Miloša Obrenovića 17, Zemun, Beograd | 0 |
+
+(full ids share the prefix `d3a0c1f0-5b8e-4f1a-9c62-`; the company is `…000000000001`)
+
+Three sites rather than one because the Home project picker is a dead control with a single item
+and the buyer runs 3–20 active sites (PROJECT.md §2). Only site 1 carries entries — three
+realistic Serbian ones (reported / confirmed / awaiting_confirmation) dated relative to the first
+seed run; an empty site is realistic and keeps the demo narrative on one site. Site 2 carries two
+recipients (investor + `nadzorni organ`), which is how commercial jobs run in Serbia and gives B6
+a real multi-recipient case rather than discovering the array shape late.
+
+**These ids are a contract with the PWA.** `web/teren-pwa/src/app/core/projects/project-source.ts`
+mirrors them as its offline fallback list; if the two ever drift, every `POST /api/entries` 404s
+and locally captured entries become unsendable. Seeding is **idempotent per row, not per run**: a
+database seeded at an earlier state gains exactly the rows it lacks and existing rows are never
+updated.
 
 ### Entry structure JSONB (v1)
 
@@ -342,6 +396,18 @@ Rules that fall out of this:
 - `media.upload_status` vocabulary: `pending` (declared, not yet seen in storage) → `verified`
   (present with the declared size) or `failed` (present but wrong size). `uploaded` is reserved
   for a future client-reported hint and is currently unused.
+- **`processing_started_at` is the claim, and the claim is the authority** (B4). The move
+  `received → processing` is one conditional UPDATE that stamps it; a second worker handed the
+  same entry sees zero rows affected and goes away. The sweeper parks anything still `processing`
+  after `Pipeline:StaleProcessingAfter`, which is the only way an entry abandoned by a crash or a
+  deploy becomes visible again.
+  **Every terminal write in the pipeline is conditional on the row still being `processing`**
+  (B4 review, F1). Without that, a pass that outlived the stale window — one provider brownout is
+  enough — would be parked by the sweeper, confirmed by the foreman, and then dragged back to
+  `awaiting_confirmation` by its own late worker, silently dropping a confirmed entry out of the
+  set reporting draws from. A pass that no longer holds the claim writes nothing and reports
+  `Skipped`. `StaleProcessingAfter` must therefore always exceed the worst-case pass; the
+  arithmetic is spelled out on the option and checked by a test.
 
 ### Verification obligations B3 hands to B4 and reporting (review F3 — binding)
 
@@ -363,7 +429,7 @@ Rules that fall out of this:
 | `POST` | `/api/entries` | create entry from client UUID → **202**, returns upload targets. Idempotent |
 | `POST` | `/api/entries/{id}/media` | request presigned PUT URLs for audio/photos |
 | `POST` | `/api/entries/{id}/complete` | all uploads finished → enqueue processing |
-| `GET` | `/api/entries/{id}` | status + extracted structure (client polls this) |
+| `GET` | `/api/entries/{id}` | status, `raw_transcript`, extracted structure, `failure_reason` (client polls this) |
 | `POST` | `/api/entries/{id}/confirm` | human-approved structure → enqueue report |
 | `GET` | `/api/entries` | archive list, filtered by project and date range |
 | `GET` | `/health` | liveness for the deploy |
@@ -372,6 +438,16 @@ Rules that fall out of this:
 **Polling, not SignalR.** Processing takes roughly 20–60 seconds and exactly one screen cares.
 A 3-second poll is a handful of lines; a realtime transport is a dependency. Revisit only if the
 UX proves it.
+
+**`raw_transcript` is on the poll response** (B4). It is what makes "extraction failed" survivable
+rather than a dead end: the foreman still gets his own words back on the confirmation screen and
+can type the rest himself. It is never overwritten by anything the human does — `raw_transcript`,
+`structure` and `corrected` stay three separate columns (§9.3).
+
+**`/hangfire` auth.** Basic auth from `Hangfire:DashboardUser` / `Hangfire:DashboardPassword`.
+With **no credentials configured the dashboard serves loopback requests only** — which is exactly
+the laptop case, and means a staging box that forgets to set them gets an unreachable dashboard
+rather than an open one. Set both in staging (B3a).
 
 ---
 
@@ -396,6 +472,16 @@ an invariant guard so raising a per-kind cap can never silently unbound verifica
 `Storage:VerificationBudget` (10 s default) with per-call timeout and `Storage:MaxRetries = 0`;
 unreachable storage returns **503 + Retry-After** and never writes a verdict on any media row.
 These knobs live beside `Storage:UploadUrlTtl` (15 min) in configuration.
+
+**There is no read path for media, and that is now a known gap (found at C3, 2026-08-29).** §8
+describes uploads only: the phone gets a presigned **PUT** and the API never serves bytes. So a
+device that did not capture an entry cannot display its photos at all — the archive can report the
+count and say the files are on the server, but an owner opening the diary on a tablet sees no
+evidence. That is precisely the buyer's reason to pay (PROJECT.md §2). Closing it needs a presigned
+**GET** (short TTL, exact key, same tenancy check) or a media proxy endpoint; the presigned GET is
+the cheaper option and keeps bytes out of the API, consistent with the topology rule in §2. Needed
+by **M1-C3** for the owner view and by **M2** for the client-facing web view; the report generator
+(B6) reads bytes server-side and is unaffected.
 
 **Object key layout** (no personal data in keys, ever):
 
@@ -491,10 +577,21 @@ changes safe later.
 | Service | Choice | Rationale |
 |---|---|---|
 | Weather | **Open-Meteo** | Free, no API key, historical archive by lat/lon/date — exactly the shape we need |
-| Email | Resend or Postmark `[decision pending, needed by B6]` | Both give clean SPF/DKIM setup on a `.rs` domain; deliverability matters because the report is the product's face to the client |
+| Email | **SMTP via MailKit** (decided 2026-08-29; MIT licence) behind `IReportDelivery` | Protocol, not a vendor SDK — the relay stays swappable, and every transactional provider offers an SMTP endpoint if one is wanted later. **The relay host is still open**, and it matters: sending straight from the VPS is the one option to avoid (Hetzner blocks outbound port 25 by default and fresh VPS IPs have poor reputation, so reports land in spam). Use an authenticated relay, and configure SPF + DKIM + DMARC on the sending domain. Note SMTP gives no bounce or delivery telemetry — for an evidence product, *sent* is not *received* |
 | Object storage | MinIO locally, Hetzner Object Storage in production | S3-compatible both sides, so one client and no code difference |
 
 Each sits behind an interface (`IWeatherProvider`, `IReportDelivery`) for the same reason as STT.
+
+**Config for the two services B4 wired up** — full key list in §4. `Stt:Azure:{Key,Region}` and
+`Anthropic:ApiKey` are secrets and are the only settings whose absence is tolerated at start-up.
+`Anthropic:Model` is configuration, never a constant in code (§14 decision 3).
+
+**No SDK retries under the pipeline.** Both adapters run with their client's own retry loop
+turned off — `AnthropicClient.MaxRetries = 0`, `Storage:DownloadRetries = 0` — because the
+processor already owns retry policy through `Pipeline:MaxAttempts` and is the only layer that can
+write an honest `failure_reason`. Two stacked retry loops do not make a call more likely to
+succeed; they multiply the worst-case wall-clock of a pass, invisibly, until it outruns
+`Pipeline:StaleProcessingAfter` (§6). Any new external adapter follows the same rule.
 
 ---
 
@@ -585,7 +682,13 @@ compiles; only a phone tells you the product works.
 | **Staging** | Small VPS running the same compose stack at a stable subdomain | B3a | Runs continuously without the laptop; where background jobs, email and the demo actually get exercised |
 | **Production** | Same stack, `teren.rs`, backups and alerting | C7 | Real customers |
 
-**The tunnel needs a stable hostname, not a random one.** IndexedDB, the service-worker
+**The tunnel needs a stable *https* hostname, not a random one — and https is not optional.**
+Uploads compute a SHA-256 per file with `crypto.subtle`, which exists **only in a secure context**.
+`https://`, `http://localhost` and `http://127.0.0.1` qualify; a plain-http tunnel or
+`http://192.168.1.x` does **not**, and it fails by being `undefined` rather than throwing — so on a
+plain-http origin nothing uploads and the cause is nowhere near the symptom. The PWA detects this
+up front and reports it as a terminal `insecure_context` state rather than a mystery. Beyond the
+scheme, the hostname must also be stable: IndexedDB, the service-worker
 registration and the installed home-screen app are all scoped to the origin, so a tunnel URL that
 changes on every restart silently wipes local state between sessions — which makes testing the
 offline queue meaningless, since that is precisely the thing that must survive. Use a tool that
@@ -619,9 +722,10 @@ environment before device binding (C5) and production hardening (C7).
 
 | # | Decision | Needed by | Note |
 |---|---|---|---|
-| 1 | STT provider | B4 | Settled by the A3 spike on real audio, not by opinion |
-| 2 | Email provider | B6 | Resend vs Postmark |
-| 3 | Extraction model (Sonnet 5 vs Opus 5) | after first evals | Config switch; decided by measured quality |
+| 1 | ~~STT provider~~ **Decided 2026-08-29: Azure AI Speech, `sr-RS`, fast-transcription REST** | — | See `docs/stt-evaluation.md`. Note the basis is one 18 s test clip, not real site audio (A2 deferred). Phrase-list hinting proved **inert for `sr-RS`**, so the original reason for preferring Azure over Whisper did not hold; `sr-RS` first-class support is the surviving ground |
+| 8 | ~~Transcript script~~ **Decided 2026-08-29: Latin everywhere.** Azure returns Cyrillic, so the pipeline transliterates once at ingestion and stores `raw_transcript` in Latin | — | Cyrillic→Latin is lossless and deterministic **in that direction** (the reverse is not — `nadživeti` is ambiguous). One tested pure function, idempotent on text that is already Latin, correct on the digraphs љ→lj, њ→nj, џ→dž. **The audio remains the untouched raw evidence** and the transcript can always be regenerated from it, which is what keeps principle 2 honest |
+| 2 | ~~Email provider~~ **Decided 2026-08-29: SMTP (MailKit) behind `IReportDelivery`** | — | Remaining sub-decision: **which relay**, needed by B6. Not direct-from-VPS — see §10 |
+| 3 | ~~Extraction model (Sonnet 5 vs Opus 5)~~ **Now a config switch, not an open question (B4)** | after first evals | `Anthropic:Model`, never hardcoded. Ships on `claude-sonnet-5`; moving to Opus 5 is one environment variable and no code. What remains open is only *which* — decided by measured quality on the correction triples (§9.3), never by price |
 | 4 | Audio container on iOS | B2 | Verify what a real iPhone actually records; server-side normalisation if needed |
 | 5 | QuestPDF licence tier | before first paying customer | Community licence terms and threshold |
 | 6 | PDF typography | B6 | Embed a font with full Serbian Latin diacritic coverage (č, ć, š, ž, đ); the same font must serve the English template |

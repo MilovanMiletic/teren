@@ -1,0 +1,125 @@
+<div class="screen" *transloco="let t">
+  <app-header [project]="project()?.address ?? null" [showBack]="true" (back)="back()" />
+
+  <header class="column head band-top">
+    <button
+      type="button"
+      class="btn-icon head__back"
+      [attr.aria-label]="t('common.back')"
+      (click)="back()"
+    >
+      <app-icon name="chevron-left" [size]="20" />
+    </button>
+    <h1 class="t-h1 head__title">{{ t('archive.title') }}</h1>
+    <span class="t-h1 t-num head__count" [class.head__count--zero]="rows().length === 0">
+      {{ rows().length }}
+    </span>
+  </header>
+
+  <div class="column content">
+    @if (showList()) {
+      <div class="pane pane--list">
+        @if (partial()) {
+          <!--
+            A short archive and a truncated one look identical, and only one of them is the
+            truth. Whenever the server could not be asked, the list says what it is showing.
+          -->
+          <p class="partial t-meta" role="status">
+            <app-icon name="wifi-off" [size]="16" class="partial__icon" />
+            <!--
+              Rows fetched before the failure are still standing, so "only what is on this
+              phone" would be false. Two states, two sentences.
+            -->
+            <span>{{ stale() ? t('archive.partial.stale') : t(remoteReasonKey()) }}</span>
+          </p>
+        }
+
+        @if (rows().length === 0) {
+          <div class="empty">
+            <span class="empty__mark" aria-hidden="true">
+              <app-icon name="book" [size]="36" />
+            </span>
+            <h2 class="t-h1">{{ t('archive.empty.title') }}</h2>
+            <p class="t-body empty__body">
+              {{ emptyAndOffline() ? t(remoteReasonKey()) : t('archive.empty.body') }}
+            </p>
+          </div>
+        } @else {
+          @for (group of groups(); track group.day) {
+            <section class="day">
+              <h2 class="t-label day__label t-num">
+                @switch (label(group.rows[0])) {
+                  @case ('today') {
+                    {{ t('common.today') }}
+                  }
+                  @case ('yesterday') {
+                    {{ t('common.yesterday') }}
+                  }
+                  @default {
+                    {{ group.date | date: 'EEEE, d. M. y.' }}
+                  }
+                }
+              </h2>
+
+              <ul class="card day__list">
+                @for (row of group.rows; track row.id) {
+                  <li>
+                    <button
+                      type="button"
+                      class="row-button row"
+                      [class.row--selected]="row.id === selectedId()"
+                      [attr.aria-current]="row.id === selectedId() ? 'true' : null"
+                      (click)="open(row)"
+                    >
+                      <span class="row__text">
+                        <!--
+                          The day is already the group heading, so the row carries the time —
+                          which is what tells two entries on the same day apart, and which day
+                          the afternoon correction belongs to.
+                        -->
+                        <span class="row__title t-num">
+                          {{ row.capturedAt | date: 'HH:mm' }}
+                        </span>
+                        <span class="t-meta t-num row__meta">
+                          @if (row.audioDurationMs !== null) {
+                            {{
+                              t('pending.meta', {
+                                duration: row.audioDurationMs | duration,
+                                photos: t(plural.photos(row.photoCount), { count: row.photoCount }),
+                              })
+                            }}
+                          } @else {
+                            {{ t(plural.photos(row.photoCount), { count: row.photoCount }) }}
+                          }
+                        </span>
+                      </span>
+                      <span class="chip chip--{{ statusTone(row) }}">{{ t(statusKey(row)) }}</span>
+                      <app-icon name="chevron-right" [size]="18" class="row__chevron" />
+                    </button>
+                  </li>
+                }
+              </ul>
+            </section>
+          }
+        }
+      </div>
+    }
+
+    @if (showRecord()) {
+      <div class="pane pane--record">
+        <app-entry-detail [entryId]="selectedId()!" />
+      </div>
+    } @else if (expanded()) {
+      <!-- Expanded only: the right-hand pane says which record to open rather than sitting blank. -->
+      <div class="pane pane--record">
+        <div class="card prompt">
+          <span class="prompt__mark" aria-hidden="true">
+            <app-icon name="book" [size]="32" />
+          </span>
+          <h2 class="t-h2">{{ t('archive.select.title') }}</h2>
+          <p class="t-meta prompt__body">{{ t('archive.select.body') }}</p>
+        </div>
+      </div>
+    }
+  </div>
+</div>

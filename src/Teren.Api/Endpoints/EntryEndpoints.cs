@@ -6,6 +6,7 @@ using Teren.Api.Auth;
 using Teren.Api.Contracts;
 using Teren.Api.Validation;
 using Teren.Core.Entities;
+using Teren.Core.Processing;
 using Teren.Core.Storage;
 using Teren.Infrastructure.Persistence;
 using Teren.Infrastructure.Storage;
@@ -40,6 +41,12 @@ public static class EntryEndpoints
             .WithName("CompleteEntry")
             .WithSummary("Uploads finished: verify each object in storage and close the entry.")
             .Produces<CompleteEntryResponse>();
+
+        group.MapPost("/{id}/confirm", ConfirmEntryAsync)
+            .AddEndpointFilter<ValidationFilter<ConfirmEntryRequest>>()
+            .WithName("ConfirmEntry")
+            .WithSummary("Store the structure a human approved and mark the entry confirmed.")
+            .Produces<EntryResponse>();
 
         group.MapGet("/{id}", GetEntryAsync)
             .WithName("GetEntry")
@@ -287,13 +294,47 @@ public static class EntryEndpoints
             declared.Add(media);
         }
 
+        // Ids this request tried to insert, as opposed to ones it merely re-declared. Only these
+        // can collide on the primary key, and telling the two apart is what makes the catch below
+        // able to distinguish a race from another tenant's id.
+        var insertedIds = declared.Where(m => !byId.ContainsKey(m.Id)).Select(m => m.Id).ToList();
+
         try
         {
             await db.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException ex) when (IsUniqueViolation(ex, "pk_media")
-                                           || IsUniqueViolation(ex, "ux_media_object_key"))
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex, "pk_media"))
         {
+            db.ChangeTracker.Clear();
+
+            // At least one id already exists, and from here two causes look identical: the
+            // phone's retry racing its own first attempt (that row is this company's, so it is
+            // visible again now the insert rolled back), or an id owned by another company
+            // (never visible through the tenant filter, at any point). The second must answer
+            // exactly as any other foreign id does — the plain 404 this route already returns
+            // for an entry that does not exist — because a distinct answer would confirm that
+            // someone else's media id is real. Same treatment as the pk_entry catch above.
+            var visible = await db.Media
+                .AsNoTracking()
+                .Where(m => insertedIds.Contains(m.Id))
+                .Select(m => m.Id)
+                .ToListAsync(ct);
+
+            if (visible.Count == 0)
+            {
+                logger.LogWarning(
+                    "Entry {EntryId}: a declared media id exists outside the calling company; "
+                    + "reporting not found.", entryId);
+                return ApiProblems.NotFound($"Entry {entryId} was not found.");
+            }
+
+            return ApiProblems.Conflict(
+                "One of the declared media ids was created concurrently; re-request the URLs.");
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex, "ux_media_object_key"))
+        {
+            // The key carries the company id, so this constraint can only be hit by this
+            // company's own concurrent insert — never by another tenant's row.
             db.ChangeTracker.Clear();
             return ApiProblems.Conflict(
                 "One of the declared media ids was created concurrently; re-request the URLs.");
@@ -341,6 +382,7 @@ public static class EntryEndpoints
         string id,
         TerenDbContext db,
         IObjectStorage storage,
+        IPipelineQueue pipeline,
         IOptions<StorageOptions> storageOptions,
         ILogger<Entry> logger,
         CancellationToken ct)
@@ -361,14 +403,29 @@ public static class EntryEndpoints
             .OrderBy(m => m.CreatedAt)
             .ToListAsync(ct);
 
-        if (entry.Status != EntryStatus.Received || entry.ReceivedAt is not null)
+        if (entry.ReceivedAt is not null)
         {
-            // Sealed: either the pipeline already took the entry, or a previous /complete
-            // certified its evidence set. Re-verifying would be pointless work against objects
-            // that have already been vouched for, and — worse — could re-open a settled verdict
+            // Sealed by receipt: a previous /complete certified this evidence set, and the
+            // pipeline may have taken the entry since. Re-verifying would be pointless work
+            // against objects already vouched for, and — worse — could re-open a settled verdict
             // if storage were briefly unreachable. Report what is on record.
             return TypedResults.Ok(new CompleteEntryResponse(
                 true, null, [], [], ToResponse(entry, media)));
+        }
+
+        if (entry.Status != EntryStatus.Received)
+        {
+            // Status advanced past `received` with no receipt. Unreachable as the API stands —
+            // only creation writes Status and only the line below stamps ReceivedAt — and it
+            // must stay that way, because B4's pickup predicate is
+            // `status = received AND received_at IS NOT NULL` (ARCHITECTURE §6). Answering
+            // `ready` here would certify an entry the server never recorded receiving, and
+            // answering "not ready" would send the phone into a retry loop it can never win
+            // (past `received`, /media refuses fresh upload URLs). So neither: this is a broken
+            // row, it is reported as a server fault, and B4 cannot inherit the lie quietly.
+            throw new InvalidOperationException(
+                $"Entry {entryId} has status {EntryStatusNames.ToWire(entry.Status)} but no "
+                + "received_at; only a successful /complete may advance an entry past receipt.");
         }
 
         // Storage-bound work inside a phone-facing request, and the one place in B3 where that
@@ -434,6 +491,16 @@ public static class EntryEndpoints
 
         await db.SaveChangesAsync(ct);
 
+        if (ready)
+        {
+            // Enqueue only after the receipt is durable, and never do the work here: STT and the
+            // model call are external services, and this is a request a foreman is waiting on
+            // (PROJECT.md principle 4). If this enqueue is lost — the process dies in the next
+            // millisecond, Hangfire storage blinks — the entry is still `received` with a
+            // receipt, which is exactly what the pipeline sweeper picks up.
+            pipeline.EnqueueProcessing(entry.Id, entry.CompanyId);
+        }
+
         logger.LogInformation(
             "Entry {EntryId} completion: ready={Ready}, {MediaCount} media, {FailedCount} failed.",
             entryId, ready, media.Count, failed.Count);
@@ -476,6 +543,88 @@ public static class EntryEndpoints
                     entryId, item.Id, item.ByteSize, stored!.ByteSize);
             }
         }
+    }
+
+    // ----------------------------------------------- POST /api/entries/{id}/confirm
+
+    /// <summary>
+    /// The mandatory gate before any report is sent (PROJECT.md principle 5). It writes exactly
+    /// one column — <c>corrected</c> — and stamps <c>confirmed_at</c>.
+    /// </summary>
+    private static async Task<IResult> ConfirmEntryAsync(
+        string id,
+        ConfirmEntryRequest request,
+        TerenDbContext db,
+        ILogger<Entry> logger,
+        CancellationToken ct)
+    {
+        if (!Guid.TryParse(id, out var entryId))
+        {
+            return ApiProblems.BadRequest("The entry id in the path is not a valid UUID.");
+        }
+
+        var entry = await db.Entries.FirstOrDefaultAsync(e => e.Id == entryId, ct);
+        if (entry is null)
+        {
+            return ApiProblems.NotFound($"Entry {entryId} was not found.");
+        }
+
+        if (entry.ReportedAt is not null)
+        {
+            // Immutable, and this is the application half of that promise; the Postgres trigger
+            // is the half that holds against any SQL. A correction is a new entry pointing back
+            // via supersedes_entry_id, never an edit to the one already sent.
+            return ApiProblems.Conflict(
+                $"Entry {entryId} was reported at {entry.ReportedAt:O} and is immutable. "
+                + "Create a correction entry with supersedes_entry_id instead.");
+        }
+
+        // What may be confirmed: something the pipeline has finished with. `awaiting_confirmation`
+        // is the ordinary path; `needs_review` is deliberately allowed, because that is the
+        // typed-shorthand fallback — an entry whose transcription or extraction failed still has
+        // to be completable by a human typing what happened. `confirmed` is allowed so a person
+        // can revise his own answer up until the report goes out.
+        if (entry.Status is not (EntryStatus.AwaitingConfirmation
+            or EntryStatus.NeedsReview
+            or EntryStatus.Confirmed))
+        {
+            return ApiProblems.Conflict(
+                $"Entry {entryId} is {EntryStatusNames.ToWire(entry.Status)}; there is nothing to "
+                + "confirm until the pipeline has finished with it.");
+        }
+
+        var corrected = request.Corrected!.ToJsonString();
+
+        // Compared as JSON, not as text. Postgres normalises jsonb on the way in — keys
+        // reordered, whitespace dropped — so what comes back out is never byte-identical to what
+        // the client sent, and a string comparison here would silently miss every replay and
+        // re-stamp confirmed_at each time the phone retried.
+        if (entry.Status == EntryStatus.Confirmed
+            && JsonNode.DeepEquals(ParseJson(entry.Corrected), request.Corrected))
+        {
+            // A replay: same entry, same approved structure. Free, and confirmed_at keeps the
+            // moment the human actually decided rather than the moment his phone retried.
+            logger.LogInformation(
+                "Entry {EntryId} confirmation replayed; nothing changed.", entryId);
+            return TypedResults.Ok(await ToResponseAsync(db, entry, ct));
+        }
+
+        // raw_transcript and structure are not touched here, by construction. They are two thirds
+        // of the (transcript, extracted, corrected) triple that is this product's eval set and
+        // training signal (ARCHITECTURE §9.3); overwriting either with the human's answer would
+        // destroy the only record of what the model actually got wrong.
+        entry.Corrected = corrected;
+        entry.Status = EntryStatus.Confirmed;
+        entry.ConfirmedAt = DateTime.UtcNow;
+        entry.FailureReason = null;
+
+        await db.SaveChangesAsync(ct);
+
+        logger.LogInformation(
+            "Entry {EntryId} confirmed (structure {StructureState}).",
+            entryId, entry.Structure is null ? "absent" : "present");
+
+        return TypedResults.Ok(await ToResponseAsync(db, entry, ct));
     }
 
     // ------------------------------------------------------- GET /api/entries/{id}
@@ -602,6 +751,7 @@ public static class EntryEndpoints
         Utc(entry.ConfirmedAt),
         Utc(entry.ReportedAt),
         entry.FailureReason,
+        entry.RawTranscript,
         entry.Latitude,
         entry.Longitude,
         entry.GpsAccuracyM,

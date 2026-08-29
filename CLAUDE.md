@@ -91,6 +91,8 @@ docker compose up -d                      # Postgres + MinIO
 dotnet run --project src/Teren.Api        # API on http://localhost:5080 (/health)
 npm start --prefix web/teren-pwa          # PWA on http://localhost:4200
 dotnet build                              # whole solution
+dotnet test                               # backend tests (needs Docker; plain `dotnet test` — the
+                                          # --nologo flag is forwarded to the runner and rejected)
 npx ng test --watch=false                 # PWA tests (vitest), run from web/teren-pwa
 docker compose exec postgres psql -U teren -d teren   # no local psql client
 ```
@@ -108,27 +110,84 @@ before being presented as done; gating fixes go back to the implementer and are 
 
 ## Current state (update as it changes)
 
-- **Phase:** ROADMAP **B0 ☑ B1 ☑ B2 ☑ B3 ◐** (2026-08-29). Design system + 10 artboards in
+- **Phase:** ROADMAP **B0 ☑ B1 ☑ B2 ☑ B3 ☑ B4 ☑ C3 ◐** (2026-08-29). Design system + 10 artboards in
   `design/` (tokens.md is binding). B2 capture flow done incl. review fixes (Dexie v2, per-second
   chunk persistence, orphan rescue) **plus the adaptive-layout rework** (app header ≥768 with
   global language switcher, three device classes, layer/band tokens, `overflow:hidden` on base
   card, 91 specs) — founder-approved on desktop and tablet. B3 server side done incl. review
   fixes (idempotent entries, presigned PUTs, sealed evidence at `/complete`, media caps, storage
   time-budget). Wire format is **snake_case**.
-- **Remaining for B3:** wire the PWA outbox to the API (upload loop, retry/backoff,
-  `confirmed_by_server`).
-- **Check at session start:** the adaptive-rework *delta review* verdict (was still running when
-  the session closed) — handle any findings first. Design canvas still owes the 1280 desktop
-  artboard variants (design agent retrofit).
+- **B3 is DONE (2026-08-29), both halves reviewed.** Client side: `environments/`, API client, lazy
+  SHA-256 on Dexie **v4**, capped jittered backoff (5 s ×2, 10 min ceiling, ±30%),
+  terminal-vs-retryable classification, stranded-`in_flight` recovery on start-up, real Serbian
+  stuck-state UI. Proven end to end against the live API and MinIO, failure paths included.
+- **B4 is DONE (2026-08-29), reviewed, gating race closed.** `received` → Azure STT → Claude
+  extraction → `awaiting_confirmation`, else parked in `needs_review` with the evidence intact.
+  Hangfire + a minutely sweeper; `[AutomaticRetry(Attempts = 0)]` because the processor owns retry
+  policy — and for the same reason **the Anthropic and S3 SDK internal retries are now 0**. The
+  reviewer's find worth remembering: a live pass could outlive `StaleProcessingAfter`, the sweeper
+  would park it, the foreman would confirm it, and the late worker's *unconditional* write dragged
+  a `confirmed` entry back to `awaiting_confirmation` — silently out of the set B6 reports from.
+  Terminal writes are now `ExecuteUpdateAsync ... WHERE status = 'processing'`; 0 rows means the
+  sweeper took it. `StaleProcessingAfter` is **45 min** against a ~21.5 min worst case, and
+  `PipelineOptionsTests` recomputes that budget from the shipped defaults — restore a retry count
+  and a test fails instead of a foreman's afternoon.
+- **C3 archive + entry detail built (2026-08-29, founder request, pulled ahead of M1)** and its
+  review fixes are in. **Still ◐: there is no read path for media** — no presigned GET, so photos of
+  an entry captured on another device cannot be displayed at all. That is the owner-on-a-tablet
+  case, i.e. the buyer's reason to pay. See ARCHITECTURE §8.
+- **Known defect, in scope for B5:** Home and the archive disagree about an entry's status. Home
+  reads `entry.serverStatus` from Dexie, written **once** at upload time from `/complete`
+  (`received`) and never refreshed; the archive merges live `GET /api/entries`. So Home says
+  "Primljen" while the entry actually sits in `needs_review`. Home is the screen the foreman looks
+  at, so this is how a day's evidence quietly fails to become a report.
+- **Failure taxonomy (binding for B4+):** terminal = `rejected` (400/404/422, refusing 409),
+  `unauthorized`, `not_configured`, `insecure_context`. **All 5xx including 500 are retryable** —
+  the entry stays in the outbox and heals unattended after a server-side repair; a terminal 4xx
+  would make the phone abandon an entry the server holds. A 409 is never judged alone: re-read
+  `GET /api/entries/{id}` and decide on `received_at`, never on the English detail string.
+- **`crypto.subtle` needs a secure context** — so the phone-test tunnel must be **https**, not just
+  a stable hostname. See ARCHITECTURE §13.
+- **Browser CORS to MinIO: VERIFIED 2026-08-29.** The founder captured an entry in Chrome at
+  `localhost:4200`; it reached `received_at`, which is stamped only when `/complete` confirms every
+  declared object is in storage at the declared size. So the browser presigned PUT succeeded,
+  OPTIONS preflight included. Caveat: proven against **local MinIO defaults** — Hetzner Object
+  Storage may need its own CORS rules, so re-check once at B3a rather than assuming.
+- **Next: B5 (confirmation screen — the money path, and PROJECT.md principle 5 makes it mandatory)
+  then B6 (PDF + email).** B3a staging still owed and still unblocks the whole real-device debt.
+- **Demo seed is now three sites** (`d3a0c1f0-5b8e-4f1a-9c62-` + `000000000002/3/4`), and those ids
+  are a **contract** with `web/.../core/projects/project-source.ts`: if they drift, every
+  `POST /api/entries` 404s and captured entries can never leave the phone. See ARCHITECTURE §6.
+- **Suites: 255 PWA specs** and **260 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 +
+  Testcontainers over real Postgres, ~45 s). `dotnet test` needs Docker running.
+- **Check at session start:** nothing is in flight — the tree is green (`dotnet build` clean,
+  260 backend tests, 255 PWA specs) and every increment is reviewed. Start with B5.
+  The adaptive-rework *delta review* verdict is **permanently lost** (its session closed mid-run),
+  so that increment never passed its gate; the salvage bug found afterwards was traced to async
+  state sequencing, not to the rework. Design canvas still owes the 1280 desktop artboard variants.
+  **B4's own delta review was not re-run** — the implementer mutation-proved its fix instead.
 - **Committing:** the founder commits and pushes himself. Identity set repo-locally (Milovan
   Miletić <milovanmiletic230@gmail.com>); secrets audit passed 2026-08-29.
 - **Real-device debt:** mic behaviour (Android + iOS), offline cold-start of installed PWA, iOS
   camera/HEIC, GPS — blocked on the HTTPS tunnel (founder's ngrok signup) or B3a staging.
-- **Only real blocker:** ROADMAP A2 — founder records 3–5 real site voice notes. Track B proceeds
-  regardless (transcription sits behind `ITranscriptionProvider`).
-- **Top open risk:** Serbian transcription accuracy on real site audio (A3 decides the provider).
+- **No blockers.** A2 (real site audio) is **deferred by founder decision**, not waiting on anyone;
+  A3 is decided (Azure AI Speech, `sr-RS`, fast REST — `docs/stt-evaluation.md`). B4 has its
+  provider. Track A is parked; the harness stays for the day real audio exists.
+- **STT proven end to end in a browser (2026-08-29):** the founder captured an entry in Chrome; it
+  reached `needs_review` with `raw_transcript` populated **in Latin**, failing only at
+  `extraction_not_configured` (no Anthropic key yet). The transcript is written and made write-once
+  *before* extraction is attempted, so a missing downstream key cannot cost the evidence.
+- **Top open risk (now an *accepted* risk):** Serbian transcription accuracy on real site audio is
+  still unmeasured — the provider was chosen on one 18 s clip in a quiet room. Known failure mode:
+  compressed material codes (`PPR cev 25` → *pipr cevi dvaes 5*). The mitigation is downstream —
+  canonical-name mapping in the Claude extraction call (ARCHITECTURE §9.2), which is now
+  **load-bearing**, plus the mandatory confirmation screen.
 - **Founder-veto queue:** "Gotovo" as queue moment; recording-as-route; zero-chunk = no entry;
   noiseSuppression on; Tailwind dropped for token CSS (§5 mismatch); ti vs vi; "Prijavi se"
-  visibility pre-M2; recent-entry titles; email provider (Resend vs Postmark, needed by B6).
-- **Verified toolchain (2026-08-29):** .NET 10.0.111, Angular CLI 22.1.6, Node 24.19.0,
-  Docker 29.7.2, Compose v5.4.0. No local `psql`.
+  visibility pre-M2; recent-entry titles; **which SMTP relay** (transport decided, relay not —
+  needed by B6; do not send direct from the VPS: port 25 blocks and IP reputation, and the report
+  is the product's face).
+- **Verified toolchain (re-read off the machine 2026-08-29):** .NET 10.0.300, Angular CLI 22.1.6,
+  Node 24.19.0, npm 11.17.0, Docker 29.4.3, Compose v5.1.3. No local `psql`. Node was 22.12.0 —
+  below Angular CLI 22 minimum, so the PWA could not build or test at all — and was installed this
+  session. **`ng test` exits 0 even when specs fail; read the summary line, never the exit code.**

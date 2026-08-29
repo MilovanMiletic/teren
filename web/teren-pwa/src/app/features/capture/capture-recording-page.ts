@@ -7,6 +7,7 @@ import {
   effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { TranslocoDirective } from '@jsverse/transloco';
@@ -23,6 +24,25 @@ import { Icon } from '../../ui/icon';
 
 /** What is stopping this screen from recording, if anything. */
 type Blocker = 'no-project' | 'no-storage' | null;
+
+/**
+ * How far the rescue of an interrupted take has got.
+ *
+ * The screen may not offer *any* action while this is unresolved: "Pokušaj ponovo" starts a new
+ * recording, and offering it over chunks that have not yet become a draft would strand the take
+ * the foreman just lost behind a screen he has no route back to.
+ */
+type SalvageState =
+  /** Not interrupted, or interrupted and not yet looked at. */
+  | 'none'
+  /** Assembling the chunks into a draft right now. */
+  | 'running'
+  /** A draft exists; `salvagedEntryId` points at it. */
+  | 'saved'
+  /** The take held no audio at all, so there is nothing to open and a retry is the right offer. */
+  | 'empty'
+  /** Assembling failed. The chunks are untouched on disk, so it is worth another attempt. */
+  | 'failed';
 
 /**
  * Recording (`design/CaptureRecording.dc.html`).
@@ -66,6 +86,25 @@ export class CaptureRecordingPage implements OnDestroy {
   protected readonly saveFailed = signal(false);
   /** Set once an interrupted take has been salvaged, so the user can open it. */
   protected readonly salvagedEntryId = signal<string | null>(null);
+  /** How far the rescue of an interrupted take has got. */
+  protected readonly salvage = signal<SalvageState>('none');
+
+  /**
+   * True from the instant the take is interrupted until the salvage has resolved one way or the
+   * other — derived from `state()` rather than from the effect that starts the salvage, so it is
+   * already true on the very first render of the interrupted card no matter when the effect runs.
+   * While it holds, the screen shows a disabled placeholder in the action slot: no layout jump,
+   * and nothing tappable that would abandon the take.
+   */
+  protected readonly salvagePending = computed(
+    () =>
+      this.state() === 'interrupted' && (this.salvage() === 'none' || this.salvage() === 'running'),
+  );
+
+  /** Assembling the interrupted take failed; the chunks are still on disk, so offer another go. */
+  protected readonly salvageFailed = computed(
+    () => this.state() === 'interrupted' && this.salvage() === 'failed',
+  );
 
   /** Why recording cannot start, if it cannot. */
   protected readonly blocker = computed<Blocker>(() => {
@@ -81,14 +120,31 @@ export class CaptureRecordingPage implements OnDestroy {
    */
   private entryId: string | null = null;
   private leaving = false;
+  /**
+   * Bumped whenever a take takes over the screen, so a salvage still in flight from the previous
+   * one can tell that it no longer owns this component and write nothing.
+   */
+  private salvageGeneration = 0;
 
   constructor() {
     // The recorder can lose the microphone at any moment — an incoming call, the OS reclaiming
-    // the device. Whatever was captured is on disk; turn it into a draft and say so.
+    // the device. Whatever was captured is on disk; turn it into a draft and say so. The effect
+    // depends on the recorder state alone: the salvage's own progress is read untracked, so a
+    // rescue is started once per interruption and never re-entered by its own writes.
     effect(() => {
-      if (this.state() === 'interrupted' && this.entryId && !this.salvagedEntryId()) {
+      const state = this.state();
+      untracked(() => {
+        if (state !== 'interrupted' || this.salvage() !== 'none') {
+          return;
+        }
+        if (!this.entryId) {
+          // Interrupted before a session existed: there is nothing on disk to rescue, so the
+          // screen may go straight to offering another attempt.
+          this.salvage.set('empty');
+          return;
+        }
         void this.salvageInterrupted();
-      }
+      });
     });
 
     void this.begin();
@@ -113,9 +169,14 @@ export class CaptureRecordingPage implements OnDestroy {
   }
 
   protected async begin(): Promise<void> {
+    // This take owns the screen from here on. A salvage of the previous one that is still
+    // assembling must not write over its state — least of all null its entry id, which would
+    // leave the new recording with a stop button that does nothing.
+    this.salvageGeneration += 1;
     this.tooShort.set(false);
     this.saveFailed.set(false);
     this.salvagedEntryId.set(null);
+    this.salvage.set('none');
     this.recorder.reset();
 
     const project = this.project();
@@ -270,19 +331,59 @@ export class CaptureRecordingPage implements OnDestroy {
     return blocker === null && state !== 'unsupported';
   }
 
+  /** Assemble the interrupted take again after the first attempt failed. Nothing was lost. */
+  protected async retrySalvage(): Promise<void> {
+    if (this.salvage() === 'failed') {
+      await this.salvageInterrupted();
+    }
+  }
+
+  /**
+   * Turn what the recorder managed to capture before the interruption into a draft.
+   *
+   * Runs while the screen shows the interrupted card with no action offered, so the foreman
+   * cannot start a second take on top of it — and the guards below hold even if he leaves and
+   * something else changes `entryId` underneath: a salvage that no longer owns the screen writes
+   * nothing.
+   */
   private async salvageInterrupted(): Promise<void> {
     const entryId = this.entryId;
     if (!entryId) {
+      this.salvage.set('empty');
       return;
     }
-    await this.recorder.flush();
-    const entry = await this.entries.finishCapture(entryId, {
-      durationMs: this.recorder.lastDurationMs(),
-    });
+    const generation = (this.salvageGeneration += 1);
+    const stillMine = () => generation === this.salvageGeneration;
+    this.salvage.set('running');
+
+    let entry: Awaited<ReturnType<typeof this.entries.finishCapture>>;
+    try {
+      await this.recorder.flush();
+      entry = await this.entries.finishCapture(entryId, {
+        durationMs: this.recorder.lastDurationMs(),
+      });
+    } catch {
+      // The chunks are still on disk under this entry id, so this is worth retrying — and the
+      // next app start assembles them even if the foreman walks away from the screen.
+      if (stillMine()) {
+        this.salvage.set('failed');
+      }
+      return;
+    }
+
+    if (!stillMine()) {
+      // Another take has taken the screen over. The draft assembled above is already on disk and
+      // reachable from the home screen; touching this component's state now would corrupt the
+      // take that is running.
+      return;
+    }
+
     if (entry) {
       this.salvagedEntryId.set(entry.id);
+      this.salvage.set('saved');
     } else {
       await this.entries.discardCapture(entryId);
+      this.salvage.set('empty');
     }
     this.entryId = null;
   }

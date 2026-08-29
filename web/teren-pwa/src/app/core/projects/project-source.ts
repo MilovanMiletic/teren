@@ -13,20 +13,33 @@ export interface ProjectSource {
   listProjects(): Promise<Project[]>;
 }
 
-/** The real seeded demo site (`src/Teren.Infrastructure/Seeding/DemoSeeder.cs`) first. */
+/**
+ * The demo sites, carrying the ids the server actually seeds.
+ *
+ * **These ids are a contract with the backend seeder** (`src/Teren.Infrastructure/Seeding/
+ * DemoSeeder.cs`; ARCHITECTURE.md §6 records the same contract from the server side). An entry is
+ * uploaded under the project id the phone recorded it with, and `POST /api/entries` answers an id
+ * it does not know with `404 Project not found` — which is not a retryable error. Drift between
+ * this list and the seeder therefore does not slow the upload path down, it closes it: the outbox
+ * retries forever and the evidence never leaves the phone.
+ *
+ * So: change an id here only together with the seeder, and add a `teren-db.ts` version that
+ * remaps whatever is already on disk under the old one (v3 is exactly that, for the ids this
+ * file carried before they were checked against a live `GET /api/projects`).
+ */
 export const DEMO_PROJECTS: readonly Project[] = [
   {
-    id: '6f7a1c1e-3a4b-4f2e-9c1d-000000000001',
+    id: 'd3a0c1f0-5b8e-4f1a-9c62-000000000002',
     name: 'Stambena zgrada Vojvode Stepe 212',
     address: 'Vojvode Stepe 212, Voždovac, Beograd',
   },
   {
-    id: '6f7a1c1e-3a4b-4f2e-9c1d-000000000002',
+    id: 'd3a0c1f0-5b8e-4f1a-9c62-000000000003',
     name: 'Poslovni prostor Bulevar oslobođenja 84',
     address: 'Bulevar oslobođenja 84, Novi Sad',
   },
   {
-    id: '6f7a1c1e-3a4b-4f2e-9c1d-000000000003',
+    id: 'd3a0c1f0-5b8e-4f1a-9c62-000000000004',
     name: 'Kuća Miloša Obrenovića 17',
     address: 'Miloša Obrenovića 17, Zemun, Beograd',
   },

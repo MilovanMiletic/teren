@@ -43,3 +43,6 @@ docs/stt-output/
 
 # Claude Code: project settings are shared, local overrides are not
 .claude/settings.local.json
+
+# Test runner output
+TestResults/

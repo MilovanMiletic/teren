@@ -282,13 +282,20 @@
   color: var(--color-ok-icon);
 }
 
+/* Something in the queue is not getting through — the one sync state worth a red mark. */
+.sync__icon--err {
+  color: var(--color-err-icon);
+}
+
 .sync__text {
   flex-grow: 1;
   font-size: var(--text-body);
   font-weight: 600;
 }
 
-.sync__chevron {
+.sync__chevron,
+.recent__chevron {
+  flex: none;
   color: var(--color-ink-2);
 }
 
@@ -301,9 +308,31 @@
   margin-top: var(--space-1);
 }
 
+/* The row's height comes from `.recent__all`, which carries the 44 px touch target. */
+.recent__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
 .recent__label {
   margin: 0;
   padding-left: var(--space-1);
+}
+
+/* A quiet text affordance, not a fourth card: the record button stays the screen's one primary. */
+.recent__all {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--tap-min);
+  padding: 0 var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--color-accent-deep);
+  font: 600 var(--text-meta) / 1.4 var(--font-family);
+  cursor: pointer;
 }
 
 .recent__empty {
@@ -319,9 +348,8 @@
   list-style: none;
 }
 
+/* The reset lives on `.row-button` in styles.css; this is only what is Home's. */
 .recent__row {
-  display: flex;
-  align-items: center;
   justify-content: space-between;
   gap: 10px;
   min-height: 62px;
@@ -329,7 +357,7 @@
   border-bottom: 1px solid var(--color-card-line);
 }
 
-.recent__row:last-child {
+.recent__list li:last-child .recent__row {
   border-bottom: 0;
 }
 
@@ -460,5 +488,14 @@
 @media (hover: hover) and (pointer: fine) {
   .sheet__option:hover {
     background: var(--color-accent-tint-1);
+  }
+
+  .recent__row:hover {
+    background: var(--color-canvas);
+  }
+
+  /* A text affordance darkens; it does not grow a pill under the pointer. */
+  .recent__all:hover {
+    color: var(--color-accent-deep-hover);
   }
 }

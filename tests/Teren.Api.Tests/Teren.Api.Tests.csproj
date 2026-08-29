@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- xunit.v3 defaults to its own in-process console runner. The .NET 10 SDK only drives
+         test projects through Microsoft.Testing.Platform, so switch xunit to that entry point;
+         global.json selects the same runner for `dotnet test`. -->
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="4.0.0" />
+    <!-- Shouldly: BSD-3-Clause, free for commercial use. FluentAssertions is deliberately not
+         used: from v8 it requires a paid licence for commercial projects. -->
+    <PackageReference Include="Shouldly" Version="4.3.0" />
+    <!-- Real Postgres, not InMemory: half the invariants under test (the entry guard triggers,
+         the CHECK constraints, the unique constraints the idempotency path catches) live in the
+         database and would silently pass against a provider that does not have them. -->
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.14.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
+    <!-- Pinned to the version the API resolves: Npgsql 10.0.3 would otherwise drag EF Core
+         10.0.4 into this project and the test host would load a different EF than the app. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Teren.Api\Teren.Api.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Shouldly" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

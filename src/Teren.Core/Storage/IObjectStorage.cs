@@ -24,6 +24,18 @@ public interface IObjectStorage
     /// only call it where an extra round trip is acceptable.
     /// </summary>
     Task<StoredObject?> HeadAsync(string objectKey, CancellationToken ct = default);
+
+    /// <summary>
+    /// Opens an object for reading, or returns null when there is nothing at that key.
+    /// <para>
+    /// The one place the server reads media bytes, and it exists for B4: the pipeline downloads
+    /// the voice note to transcribe it and, while it holds the bytes, verifies the SHA-256 the
+    /// phone declared — <c>/complete</c> verified size only, deliberately (ARCHITECTURE §6).
+    /// Because it moves whole files, it is only ever called from a Hangfire job, never from a
+    /// request the phone is waiting on.
+    /// </para>
+    /// </summary>
+    Task<Stream?> OpenReadAsync(string objectKey, CancellationToken ct = default);
 }
 
 /// <summary>

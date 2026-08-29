@@ -128,3 +128,18 @@ This product is **not**:
     reserved in the meantime. Staging until then runs on a tunnel or VPS hostname.
 - **Hosting:** Hetzner VPS + Postgres + S3-compatible object storage. Boring on purpose;
   revisit only when scale forces it.
+- **STT provider: Azure AI Speech** (2026-08-29), `sr-RS`, fast-transcription REST endpoint.
+  Chosen for first-class `sr-RS` support. Two things to be honest about: the decision rests on a
+  single 18-second test clip because **A2 (real site audio) was deferred**, and the phrase-list
+  hinting that originally made Azure the favourite over Whisper turned out to be **inert for
+  Serbian**. No non-Azure provider was ever benchmarked. Accepted deliberately: the mandatory
+  confirmation screen (principle 5) is the safety net, with typed correction for whatever
+  transcription misses. Full write-up and the re-open conditions in `docs/stt-evaluation.md`.
+- **Transcripts are stored in Latin** (2026-08-29). Azure returns Cyrillic; the pipeline
+  transliterates once at ingestion. Serbian Cyrillic to Latin is lossless and deterministic in that
+  direction, and the **audio stays the untouched raw evidence** — the transcript can always be
+  regenerated — so principle 2 holds.
+- **Email delivery: SMTP** (2026-08-29), via MailKit behind `IReportDelivery`. A protocol rather
+  than a vendor SDK, so the relay stays swappable. Still to decide by B6: which relay. **Not**
+  direct from the VPS — outbound port 25 is blocked by default and fresh VPS IPs get filtered,
+  which would put the report that *is* the product in the client spam folder.

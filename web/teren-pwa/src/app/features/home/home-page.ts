@@ -12,6 +12,7 @@ import { LocalEntry, Project } from '../../core/db/models';
 import { ProjectService } from '../../core/projects/project.service';
 import { AppHeader } from '../../ui/app-header';
 import { DurationPipe } from '../../ui/duration.pipe';
+import { StatusTone, entryStatusKey, entryStatusTone } from '../../ui/entry-status';
 import { Icon } from '../../ui/icon';
 import { LanguageSwitcher } from '../../ui/language-switcher';
 import { PluralService } from '../../ui/plural.service';
@@ -71,6 +72,16 @@ export class HomePage {
 
   protected readonly pendingCount = toSignal(this.entries.watchPendingCount(), { initialValue: 0 });
 
+  /**
+   * How many of those are not merely waiting but stuck — blocked outright, or retrying long past
+   * the point where "any moment now" is credible.
+   *
+   * The sync row changes its words when this is non-zero. "Čekaju slanje: 2" over an entry the
+   * server has refused is true and still misleading, and this is the screen the foreman actually
+   * looks at.
+   */
+  protected readonly stuckCount = toSignal(this.entries.watchStuckCount(), { initialValue: 0 });
+
   /** The first entry recorded today, which is what the today card reports on. */
   protected readonly todayEntry = computed<LocalEntry | null>(() => this.todayEntries()[0] ?? null);
 
@@ -104,34 +115,27 @@ export class HomePage {
     void this.router.navigate(['/cekaju']);
   }
 
-  /** The chip on a recent row: the server's word if we have it, otherwise the phone's own. */
-  protected statusKey(entry: LocalEntry): string {
-    switch (entry.serverStatus) {
-      case 'awaiting_confirmation':
-      case 'needs_review':
-        return 'entry.status.awaitingReview';
-      case 'confirmed':
-        return 'entry.status.confirmed';
-      case 'reported':
-        return 'entry.status.reported';
-      default:
-        break;
-    }
-    // A draft says the same thing a queued entry says, because it is the same thing to the person
-    // holding the phone: this has not reached the server yet.
-    return entry.status === 'failed' ? 'pending.status.failed' : 'pending.status.queued';
+  /** Open the record. C3's archive is where a finished entry actually lives. */
+  protected openEntry(entry: LocalEntry): void {
+    void this.router.navigate(['/dnevnik'], { queryParams: { unos: entry.id } });
   }
 
-  protected statusTone(entry: LocalEntry): 'ok' | 'warn' | 'err' | 'neutral' {
-    if (entry.serverStatus === 'reported') {
-      return 'ok';
-    }
-    if (entry.serverStatus === 'confirmed') {
-      return 'neutral';
-    }
-    if (entry.status === 'failed') {
-      return 'err';
-    }
-    return 'warn';
+  protected openArchive(): void {
+    void this.router.navigate(['/dnevnik']);
+  }
+
+  /**
+   * The chip on a recent row: the server's word if we have it, otherwise the phone's own.
+   *
+   * Shared with the archive list and the entry record (`ui/entry-status.ts`) rather than repeated
+   * per screen — a recent row and the archive row for the same entry disagreeing about its state
+   * would leave the foreman to work out which of his own screens to believe.
+   */
+  protected statusKey(entry: LocalEntry): string {
+    return entryStatusKey(entry.serverStatus, entry.status);
+  }
+
+  protected statusTone(entry: LocalEntry): StatusTone {
+    return entryStatusTone(entry.serverStatus, entry.status);
   }
 }

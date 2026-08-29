@@ -52,6 +52,7 @@ public sealed class EntryConfiguration : IEntityTypeConfiguration<Entry>
         builder.Property(e => e.ConfirmedAt).HasColumnName("confirmed_at");
         builder.Property(e => e.ReportedAt).HasColumnName("reported_at");
         builder.Property(e => e.FailureReason).HasColumnName("failure_reason");
+        builder.Property(e => e.ProcessingStartedAt).HasColumnName("processing_started_at");
 
         builder.HasOne<Company>()
             .WithMany()

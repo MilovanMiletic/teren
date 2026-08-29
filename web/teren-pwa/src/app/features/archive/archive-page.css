@@ -1,0 +1,245 @@
+/*
+ * The archive, in three deliberate layouts.
+ *
+ *   compact   <768   one screen at a time: the list, or the record the route names
+ *   medium    768–1023  the same, on a wider column — a split here would starve both halves
+ *   expanded  ≥1024  master–detail: a list rail beside the open record, both live
+ *
+ * No artboard exists for this screen; every value below comes from `design/tokens.md`.
+ */
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+
+.head__title {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.head__count {
+  padding-right: 6px;
+}
+
+.head__count--zero {
+  color: var(--color-ink-2);
+}
+
+/* From medium up the app header carries the back affordance; one is enough. */
+@media (min-width: 768px) {
+  .head {
+    padding-top: var(--space-6);
+    padding-bottom: 0;
+  }
+
+  .head__back {
+    display: none;
+  }
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-6);
+}
+
+/* ---- Expanded: the two panes ------------------------------------------------------------- */
+
+@media (min-width: 1024px) {
+  .content {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: var(--space-6);
+    align-items: start;
+    padding-top: var(--space-5);
+  }
+
+  /*
+   * The list is a rail, not half the window: it holds a time, a status and a chevron, and any
+   * more width than this is width spent on nothing. It sticks, so scrolling a long record does
+   * not scroll the days out from under the person comparing them.
+   */
+  .pane--list {
+    /*
+     * Five columns, not four. A row carries a time, a status chip and a chevron, and the longest
+     * chip in the set ("Ne može da se pošalje") is ~190 px on its own — at four columns the meta
+     * line wraps to three lines on every row and the rail reads as a mistake.
+     */
+    grid-column: span 5;
+    position: sticky;
+    top: calc(var(--header-height) + var(--space-6));
+    max-height: calc(100dvh - var(--header-height) - var(--space-8));
+    overflow-y: auto;
+    /* The sticky rail is its own scroll container; its shadowless edge must not clip cards. */
+    padding-right: var(--space-1);
+  }
+
+  .pane--record {
+    grid-column: span 7;
+    /* A record is read, so it keeps a measure a person can actually read. */
+    max-width: 760px;
+  }
+}
+
+/* ---- Partial-archive note ----------------------------------------------------------------- */
+
+.partial {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3) 14px;
+  border-radius: var(--radius-field);
+  background: var(--color-warn-bg);
+  color: var(--color-warn);
+  line-height: 1.4;
+}
+
+.partial__icon {
+  flex: none;
+  color: var(--color-warn-icon);
+}
+
+/* ---- Days --------------------------------------------------------------------------------- */
+
+.day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.day__label {
+  margin: 0;
+  padding-left: var(--space-1);
+}
+
+.day__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The reset lives on `.row-button` in styles.css; this is only what is the archive's. */
+.row {
+  gap: var(--space-3);
+  min-height: 64px;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-card-line);
+}
+
+.day__list li:first-child .row {
+  border-top: 0;
+}
+
+.row__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.row__title {
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+
+.row__meta {
+  overflow-wrap: anywhere;
+}
+
+.row__chevron {
+  flex: none;
+  color: var(--color-ink-3);
+}
+
+/* The open record, marked in the rail. Below expanded nothing is ever selected on screen. */
+.row--selected {
+  background: var(--color-accent-tint-1);
+}
+
+@media (max-width: 1023px) {
+  .row--selected {
+    background: transparent;
+  }
+}
+
+/* ---- Empty state --------------------------------------------------------------------------- */
+
+.empty {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-3);
+  padding-top: var(--space-8);
+  padding-bottom: var(--space-8);
+  text-align: center;
+}
+
+.empty__mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--color-card);
+  box-shadow: var(--shadow-card);
+  color: var(--color-ink-3);
+}
+
+.empty__body {
+  margin: 0;
+  max-width: 32ch;
+  line-height: 1.5;
+  color: var(--color-ink-2);
+}
+
+/* ---- Expanded: "pick a day" ----------------------------------------------------------------- */
+
+.prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8) var(--space-6);
+  text-align: center;
+}
+
+.prompt__mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--color-canvas);
+  color: var(--color-ink-3);
+}
+
+.prompt__body {
+  margin: 0;
+  max-width: 34ch;
+  line-height: 1.5;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .row:hover {
+    background: var(--color-canvas);
+  }
+
+  .row--selected:hover {
+    background: var(--color-accent-tint-1);
+  }
+}

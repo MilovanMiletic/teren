@@ -4,16 +4,26 @@ using Teren.Core.Entities;
 namespace Teren.Infrastructure.Seeding;
 
 /// <summary>
-/// Seeds the demo company, project and entries the distributor demos from his phone.
-/// This is a sales asset, not test data: everything must look like a real Serbian
-/// plumbing/heating site. Idempotent — rows are keyed by fixed ids and never touched
-/// once they exist (reported entries are immutable anyway).
+/// Seeds the demo company, its three sites and the entries the distributor demos from his
+/// phone. This is a sales asset, not test data: everything must look like a real Serbian
+/// plumbing/heating contractor's book of work.
+///
+/// Three sites, because the Home screen's project picker is a dead control with a single item
+/// and the buyer runs 3–20 active sites (PROJECT.md §2). Only site 1 carries entries: an empty
+/// site is realistic, and it keeps the demo narrative on one site while the picker still
+/// behaves like the real thing.
+///
+/// Idempotent per row, not per run: every row is guarded by its own fixed id, so a database
+/// seeded at an earlier state gains exactly the rows it is missing and nothing else. Existing
+/// rows are never updated (reported entries are immutable anyway).
 /// </summary>
 public static class DemoSeeder
 {
     // Fixed ids so re-running the seed can recognise its own rows.
     public static readonly Guid CompanyId = Guid.Parse("d3a0c1f0-5b8e-4f1a-9c62-000000000001");
-    public static readonly Guid ProjectId = Guid.Parse("d3a0c1f0-5b8e-4f1a-9c62-000000000002");
+    public static readonly Guid Project1Id = Guid.Parse("d3a0c1f0-5b8e-4f1a-9c62-000000000002");
+    public static readonly Guid Project2Id = Guid.Parse("d3a0c1f0-5b8e-4f1a-9c62-000000000003");
+    public static readonly Guid Project3Id = Guid.Parse("d3a0c1f0-5b8e-4f1a-9c62-000000000004");
     public static readonly Guid Entry1Id = Guid.Parse("d3a0c1f0-5b8e-4f1a-9c62-000000000011");
     public static readonly Guid Entry2Id = Guid.Parse("d3a0c1f0-5b8e-4f1a-9c62-000000000012");
     public static readonly Guid Entry3Id = Guid.Parse("d3a0c1f0-5b8e-4f1a-9c62-000000000013");
@@ -42,34 +52,101 @@ public static class DemoSeeder
         }
 
         var projects = db.Set<Project>();
-        if (!await projects.IgnoreQueryFilters().AnyAsync(p => p.Id == ProjectId, ct))
+
+        // Each site is guarded by its own id, so an already-seeded database picks up only the
+        // sites it lacks. Never an upsert: a site the founder has edited by hand stays edited.
+        async Task AddProjectAsync(Project project)
         {
-            projects.Add(new Project
+            if (await projects.IgnoreQueryFilters().AnyAsync(p => p.Id == project.Id, ct))
             {
-                Id = ProjectId,
-                CompanyId = CompanyId,
-                Name = "Stambena zgrada Vojvode Stepe 212",
-                Address = "Vojvode Stepe 212, Voždovac, Beograd",
-                // Voždovac, Belgrade.
-                Latitude = 44.7692,
-                Longitude = 20.4787,
-                Recipients =
-                    """
-                    [{"name": "Dragan Obradović", "email": "dragan.obradovic@example.com", "role": "investitor"}]
-                    """,
-                Vocabulary =
-                    """
-                    {
-                      "work_items": ["razvod tople i hladne vode", "montaža vodokotlića", "montaža kotla", "štemovanje", "tlačna proba", "izolacija cevi"],
-                      "materials": ["PPR cev 25mm", "PPR cev 32mm", "PPR fiting", "ugradni vodokotlić Geberit Duofix", "kotao Bosch Condens 4300i", "kuglasti ventil 1\""],
-                      "workers": ["Nenad", "Zoran", "Miloš", "Ivan"]
-                    }
-                    """,
-                ReportLanguage = "sr",
-                CreatedAt = now,
-            });
+                return;
+            }
+
+            projects.Add(project);
             inserted++;
         }
+
+        // Site 1 — the demo's narrative: the residential block all three entries belong to.
+        await AddProjectAsync(new Project
+        {
+            Id = Project1Id,
+            CompanyId = CompanyId,
+            Name = "Stambena zgrada Vojvode Stepe 212",
+            Address = "Vojvode Stepe 212, Voždovac, Beograd",
+            // Voždovac, Belgrade.
+            Latitude = 44.7692,
+            Longitude = 20.4787,
+            Recipients =
+                """
+                [{"name": "Dragan Obradović", "email": "dragan.obradovic@example.com", "role": "investitor"}]
+                """,
+            Vocabulary =
+                """
+                {
+                  "work_items": ["razvod tople i hladne vode", "montaža vodokotlića", "montaža kotla", "štemovanje", "tlačna proba", "izolacija cevi"],
+                  "materials": ["PPR cev 25mm", "PPR cev 32mm", "PPR fiting", "ugradni vodokotlić Geberit Duofix", "kotao Bosch Condens 4300i", "kuglasti ventil 1\""],
+                  "workers": ["Nenad", "Zoran", "Miloš", "Ivan"]
+                }
+                """,
+            ReportLanguage = "sr",
+            CreatedAt = now,
+        });
+
+        // Site 2 — a second active site with no entries yet, so the picker has somewhere to go.
+        // Business premises: sanitary blocks, fan-coils, a hydrant line, and a nadzorni organ
+        // on the distribution list next to the investor, the way commercial jobs actually run.
+        await AddProjectAsync(new Project
+        {
+            Id = Project2Id,
+            CompanyId = CompanyId,
+            Name = "Poslovni prostor Bulevar oslobođenja 84",
+            Address = "Bulevar oslobođenja 84, Novi Sad",
+            // Bulevar oslobođenja, Novi Sad.
+            Latitude = 45.2512,
+            Longitude = 19.8399,
+            Recipients =
+                """
+                [{"name": "Jelena Marković", "email": "jelena.markovic@example.com", "role": "investitor"},
+                 {"name": "Aleksandar Stanković", "email": "aleksandar.stankovic@example.com", "role": "nadzorni organ"}]
+                """,
+            Vocabulary =
+                """
+                {
+                  "work_items": ["razvod sanitarne vode", "kanalizacioni razvod", "montaža sanitarije", "montaža fan-coil jedinica", "hidrantska mreža", "probijanje prodora", "tlačna proba"],
+                  "materials": ["PPR cev 40mm", "kanalizaciona cev PVC 110mm", "bakarna cev 18mm", "fan-coil jedinica Daikin FWM", "hidrantski ormarić sa crevom 15m", "izolacija Armaflex 13mm", "kuglasti ventil 3/4\""],
+                  "workers": ["Nenad", "Ivan", "Saša"]
+                }
+                """,
+            ReportLanguage = "sr",
+            CreatedAt = now,
+        });
+
+        // Site 3 — a small private job, the other half of a real contractor's book: a family
+        // house on underfloor heating and a heat pump, one owner on the distribution list.
+        await AddProjectAsync(new Project
+        {
+            Id = Project3Id,
+            CompanyId = CompanyId,
+            Name = "Kuća Miloša Obrenovića 17",
+            Address = "Miloša Obrenovića 17, Zemun, Beograd",
+            // Zemun, Belgrade.
+            Latitude = 44.8452,
+            Longitude = 20.4131,
+            Recipients =
+                """
+                [{"name": "Milica Jovanović", "email": "milica.jovanovic@example.com", "role": "vlasnik"}]
+                """,
+            Vocabulary =
+                """
+                {
+                  "work_items": ["podno grejanje", "razvod vode u kupatilima", "montaža toplotne pumpe", "montaža sanitarije", "izolacija cevi", "tlačna proba"],
+                  "materials": ["Pex-Al-Pex cev 16mm", "razdelnik podnog grejanja 6 krugova", "toplotna pumpa Vaillant aroTHERM plus", "PPR cev 20mm", "sifon za tuš kadu", "termostatska glava"],
+                  "workers": ["Zoran", "Miloš"]
+                }
+                """,
+            ReportLanguage = "sr",
+            CreatedAt = now,
+        });
 
         var entries = db.Set<Entry>();
 
@@ -81,7 +158,7 @@ public static class DemoSeeder
             {
                 Id = Entry1Id,
                 CompanyId = CompanyId,
-                ProjectId = ProjectId,
+                ProjectId = Project1Id,
                 EntryDate = day1,
                 Status = EntryStatus.Reported,
                 RawTranscript =
@@ -152,7 +229,7 @@ public static class DemoSeeder
             {
                 Id = Entry2Id,
                 CompanyId = CompanyId,
-                ProjectId = ProjectId,
+                ProjectId = Project1Id,
                 EntryDate = day2,
                 Status = EntryStatus.Confirmed,
                 RawTranscript =
@@ -222,7 +299,7 @@ public static class DemoSeeder
             {
                 Id = Entry3Id,
                 CompanyId = CompanyId,
-                ProjectId = ProjectId,
+                ProjectId = Project1Id,
                 EntryDate = day3,
                 Status = EntryStatus.AwaitingConfirmation,
                 RawTranscript =

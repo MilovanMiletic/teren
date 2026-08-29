@@ -51,4 +51,13 @@ public sealed class Entry
 
     /// <summary>Why the pipeline parked it in needs_review, if it did.</summary>
     public string? FailureReason { get; set; }
+
+    /// <summary>
+    /// When the pipeline claimed this entry (server clock, UTC). Set by the atomic claim that
+    /// moves <c>received</c> to <c>processing</c>, and the only way to tell an entry that is
+    /// being worked on from one abandoned by a process restart: the sweeper parks anything that
+    /// has been <c>processing</c> longer than <c>Pipeline:StaleProcessingAfter</c>. Without it a
+    /// crash mid-job would leave an entry invisible forever, which is data loss with extra steps.
+    /// </summary>
+    public DateTime? ProcessingStartedAt { get; set; }
 }

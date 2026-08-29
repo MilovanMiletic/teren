@@ -1,0 +1,30 @@
+# Example ground truth — copy this next to a recording as <audio-file>.truth.txt
+#
+# One term per line. Blank lines and lines starting with # are ignored.
+# `|` separates spellings that all count as correct — use it when the same fact can
+# legitimately be said in more than one way.
+#
+# List only what would cost money if it came out wrong. 10-15 terms is plenty.
+# These terms match the demo site "Stambena zgrada Vojvode Stepe 212".
+
+# --- quantities and units ---
+40 m | 40 metara | četrdeset metara
+6 kom | šest komada
+6 bar | šest bari
+
+# --- materials ---
+PPR cev 25
+PPR fiting
+ugradni vodokotlić Geberit | Geberit Duofix
+kotao Bosch Condens
+
+# --- work items ---
+razvod tople i hladne vode
+štemovanje
+tlačna proba
+izolacija cevi
+
+# --- people ---
+Nenad
+Zoran
+Miloš

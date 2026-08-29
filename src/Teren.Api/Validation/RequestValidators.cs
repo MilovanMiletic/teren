@@ -151,3 +151,26 @@ public sealed class DeclaredMediaValidator : AbstractValidator<DeclaredMedia>
         return $"byte_size exceeds the {limitMb} MB limit for kind '{kind}'.";
     }
 }
+
+/// <summary>
+/// Shape validation for the confirmation payload. Whether the entry may be confirmed at all —
+/// its status, whether a report has already gone out — is stored state and lives in the handler.
+/// </summary>
+public sealed class ConfirmEntryRequestValidator : AbstractValidator<ConfirmEntryRequest>
+{
+    public ConfirmEntryRequestValidator()
+    {
+        RuleLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(r => r.Corrected)
+            .NotNull()
+            .WithMessage("corrected must carry the structure the human approved.")
+            .Must(node => node is System.Text.Json.Nodes.JsonObject)
+            .WithMessage("corrected must be a JSON object.")
+            .Must(node => node is System.Text.Json.Nodes.JsonObject obj
+                          && obj.ContainsKey(Teren.Core.Ai.EntryStructureSchema.VersionKey))
+            .WithMessage(
+                $"corrected must carry {Teren.Core.Ai.EntryStructureSchema.VersionKey}, so a "
+                + "future trade template can evolve the shape without a migration.");
+    }
+}

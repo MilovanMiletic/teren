@@ -70,7 +70,15 @@
     <div class="pane pane--secondary">
       <!-- Sync state is a permanent row, never a toast (PROJECT.md principle 3). -->
       <button type="button" class="card card-interactive sync" (click)="openPending()">
-        @if (pendingCount() > 0) {
+        @if (stuckCount() > 0) {
+          <!--
+            Not merely waiting. Saying "waiting to upload" over an entry the server has refused
+            is true and still a lie about what happens next, so the row says what is actually
+            the case and sends him to the screen that explains it.
+          -->
+          <app-icon name="alert-triangle" [size]="18" class="sync__icon sync__icon--err" />
+          <span class="sync__text t-num">{{ t('sync.stuckCount', { count: stuckCount() }) }}</span>
+        } @else if (pendingCount() > 0) {
           <app-icon name="upload-cloud" [size]="18" class="sync__icon sync__icon--warn" />
           <span class="sync__text t-num">{{
             t('sync.pendingCount', { count: pendingCount() })
@@ -83,13 +91,30 @@
       </button>
 
       <section class="recent">
-        <h2 class="t-label recent__label">{{ t('home.recent.label') }}</h2>
+        <div class="recent__head">
+          <h2 class="t-label recent__label">{{ t('home.recent.label') }}</h2>
+          <!-- The archive is the buyer's reason to pay; it must be reachable from the front door. -->
+          <button type="button" class="recent__all" (click)="openArchive()">
+            <span>{{ t('home.recent.all') }}</span>
+            <app-icon name="chevron-right" [size]="16" />
+          </button>
+        </div>
         @if (recent().length === 0) {
           <p class="card recent__empty t-meta">{{ t('home.recent.empty') }}</p>
         } @else {
           <ul class="card recent__list">
             @for (entry of recent(); track entry.id) {
-              <li class="recent__row">
+              <!--
+                A row that looks tappable and is not reads as broken, not as unbuilt. It opens
+                the record.
+              -->
+              <li>
+                <button
+                  type="button"
+                  class="row-button recent__row"
+                  [attr.aria-label]="t('archive.detail.open')"
+                  (click)="openEntry(entry)"
+                >
                 <div class="recent__text">
                   <span class="recent__title t-num">
                     @switch (dayLabel(entry)) {
@@ -115,6 +140,8 @@
                   </span>
                 </div>
                 <span class="chip chip--{{ statusTone(entry) }}">{{ t(statusKey(entry)) }}</span>
+                  <app-icon name="chevron-right" [size]="18" class="recent__chevron" />
+                </button>
               </li>
             }
           </ul>

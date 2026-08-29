@@ -22,6 +22,15 @@ export const routes: Routes = [
       import('./features/capture/capture-saved-page').then((m) => m.CaptureSavedPage),
   },
   {
+    /*
+     * The archive. One route, not two: the open record is `?unos=<id>` rather than a path
+     * segment, because two sibling route configs would rebuild the whole screen on every click
+     * in the desktop list rail. `ArchivePage` explains the choice in full.
+     */
+    path: 'dnevnik',
+    loadComponent: () => import('./features/archive/archive-page').then((m) => m.ArchivePage),
+  },
+  {
     path: 'cekaju',
     loadComponent: () => import('./features/pending/pending-page').then((m) => m.PendingPage),
   },

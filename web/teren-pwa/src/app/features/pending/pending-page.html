@@ -65,11 +65,30 @@
                 </span>
 
                 @switch (item.outbox?.state) {
-                  @case ('failed') {
+                  @case ('blocked') {
+                    <!-- Terminal. The loop has stopped, and the row has to say so plainly. -->
                     <span class="chip chip--err">
                       <app-icon name="alert-triangle" [size]="13" [strokeWidth]="2.5" />
-                      {{ t('pending.status.failed') }}
+                      {{ t('pending.status.blocked') }}
                     </span>
+                  }
+                  @case ('failed') {
+                    @if (isStalled(item)) {
+                      <!--
+                        Still queued and still being retried — but after half an hour of
+                        failures, "trying again" reads as progress, and a spinner that looks like
+                        progress is the one thing this screen must never be.
+                      -->
+                      <span class="chip chip--err">
+                        <app-icon name="alert-triangle" [size]="13" [strokeWidth]="2.5" />
+                        {{ t('pending.status.stalled') }}
+                      </span>
+                    } @else {
+                      <span class="chip chip--warn">
+                        <app-icon name="clock" [size]="13" [strokeWidth]="2.5" />
+                        {{ t('pending.status.retrying') }}
+                      </span>
+                    }
                   }
                   @case ('in_flight') {
                     <span class="chip chip--neutral t-num">
@@ -98,8 +117,27 @@
                 }}
               </span>
 
-              @if (item.outbox?.state === 'failed') {
-                <span class="t-meta">{{ t('pending.failed.reason') }}</span>
+              <!--
+                The reason, derived from the classified failure the sync loop recorded — not the
+                canned sentence this row used to carry for every failure alike.
+              -->
+              @if (reasonKey(item); as reason) {
+                <span class="t-meta row__reason" [class.row__reason--err]="canRetry(item)">
+                  {{ t(reason) }}
+                </span>
+              }
+
+              @if (canRetry(item)) {
+                <!--
+                  A row that is not getting through must say two things at once: this has not
+                  been sent, and nothing has been lost. The note is the second half, and it is
+                  not optional — "not sent" on its own reads as "gone".
+                -->
+                <span class="t-meta row__safe">{{ t('pending.evidenceSafe') }}</span>
+                <button type="button" class="btn btn--tertiary row__retry" (click)="retry(item)">
+                  <app-icon name="upload-cloud" [size]="18" />
+                  {{ t('pending.retry') }}
+                </button>
               }
             </li>
           }
@@ -122,8 +160,20 @@
           <span class="summary__value t-num">{{ counts().uploading }}</span>
         </div>
         <div class="summary__row">
-          <span class="summary__name">{{ t('pending.status.failed') }}</span>
+          <span class="summary__name">{{ t('pending.status.retrying') }}</span>
           <span class="summary__value t-num">{{ counts().failed }}</span>
+        </div>
+        <div class="summary__row">
+          <span class="summary__name">{{ t('pending.status.stalled') }}</span>
+          <span class="summary__value t-num" [class.summary__value--err]="counts().stalled > 0">
+            {{ counts().stalled }}
+          </span>
+        </div>
+        <div class="summary__row">
+          <span class="summary__name">{{ t('pending.status.blocked') }}</span>
+          <span class="summary__value t-num" [class.summary__value--err]="counts().blocked > 0">
+            {{ counts().blocked }}
+          </span>
         </div>
         <div class="summary__row summary__row--total">
           <span class="summary__name">{{ t('pending.summary.total') }}</span>

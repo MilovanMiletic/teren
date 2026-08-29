@@ -4,4 +4,10 @@
     <Project Path="src/Teren.Core/Teren.Core.csproj" />
     <Project Path="src/Teren.Infrastructure/Teren.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Teren.Api.Tests/Teren.Api.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/SttSpike/SttSpike.csproj" />
+  </Folder>
 </Solution>

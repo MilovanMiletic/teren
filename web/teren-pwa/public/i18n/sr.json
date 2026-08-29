@@ -19,6 +19,7 @@
     "yesterday": "Juče",
     "cancel": "Otkaži",
     "back": "Nazad",
+    "close": "Zatvori",
     "photos": {
       "zero": "bez fotografija",
       "one": "{{count}} fotografija",
@@ -43,14 +44,133 @@
     "record": "Snimi izveštaj",
     "recent": {
       "label": "Poslednji unosi",
+      "all": "Svi unosi",
       "empty": "Za ovo gradilište još nema unosa na telefonu."
     }
   },
   "entry": {
     "status": {
+      "processing": "U obradi",
       "awaitingReview": "Čeka proveru",
+      "incomplete": "Prijem u toku",
+      "needsReview": "Potrebna provera",
       "confirmed": "Potvrđen",
-      "reported": "Poslat"
+      "reported": "Poslat",
+      "received": "Primljen"
+    }
+  },
+  "archive": {
+    "title": "Dnevnik",
+    "empty": {
+      "title": "Nema unosa",
+      "body": "Za ovo gradilište još nema nijednog unosa. Snimljeni izveštaji se ovde čuvaju po danima."
+    },
+    "select": {
+      "title": "Izaberite dan",
+      "body": "Otvorite unos sa spiska levo da vidite radove, transkript, fotografije i snimak."
+    },
+    "partial": {
+      "offline": "Nema interneta — prikazano je samo ono što je na ovom telefonu.",
+      "unauthorized": "Ovaj telefon nema dozvolu da čita sa servera — prikazano je samo ono što je na telefonu.",
+      "notConfigured": "Aplikacija nema podešen server — prikazano je samo ono što je na telefonu.",
+      "unavailable": "Server trenutno ne odgovara — prikazano je samo ono što je na ovom telefonu.",
+      "stale": "Server trenutno nije dostupan — prikaz možda nije potpun."
+    },
+    "detail": {
+      "label": "Unos",
+      "open": "Otvori unos",
+      "loading": "Učitavanje unosa…",
+      "capturedAt": "Snimljeno u {{time}}",
+      "immutable": "Unos se ne menja. Ispravka se unosi kao novi unos koji se poziva na ovaj.",
+      "unreachable": {
+        "title": "Unos nije učitan",
+        "body": "Ovaj unos nije na ovom telefonu, a server nije mogao da se pita da li ga ima. Pokušajte ponovo kada se mreža vrati."
+      },
+      "blocked": {
+        "title": "Unos ne može da se pošalje",
+        "body": "Server ne prihvata ovaj unos, pa sam od sebe neće otići. Snimak i fotografije su bezbedni na telefonu — otvorite ekran „Čeka slanje“ da vidite zašto."
+      },
+      "missing": {
+        "title": "Unos nije pronađen",
+        "body": "Ovaj unos nije ni na telefonu ni na serveru. Možda je otvoren sa druge veze."
+      },
+      "awaiting": {
+        "title": "Još nije stiglo na server",
+        "body": "Snimak i fotografije su bezbedni na telefonu i šalju se sami. Dok ne stignu, unos ne može da uđe u izveštaj."
+      }
+    },
+    "section": {
+      "work": "Radovi",
+      "headcount": "Ljudstvo",
+      "materials": "Materijal",
+      "blockers": "Zastoji",
+      "hiddenWork": "Skriveni radovi",
+      "notes": "Napomena",
+      "transcript": "Transkript",
+      "photos": "Fotografije",
+      "audio": "Snimak",
+      "conditions": "Uslovi"
+    },
+    "structure": {
+      "corrected": "Proverio čovek",
+      "extracted": "Automatski izdvojeno",
+      "empty": {
+        "title": "Ništa nije izdvojeno iz ovog snimka",
+        "body": "Obrada je prošla, ali u snimku nije prepoznat nijedan radni podatak. Transkript i fotografije ispod su i dalje ceo dokaz."
+      },
+      "processing": {
+        "title": "Obrada je u toku",
+        "body": "Server je primio unos i još izdvaja radove, ljudstvo i materijal. Transkript i fotografije se vide čim budu spremni."
+      },
+      "needsReview": {
+        "title": "Obrada nije uspela",
+        "body": "Snimak nije mogao da se pretvori u strukturiran dan. Ništa nije izgubljeno — snimak i fotografije ispod su sačuvani i unos čeka ručnu proveru."
+      },
+      "notSent": {
+        "title": "Unos još nije poslat",
+        "body": "Radovi se izdvajaju na serveru, pa dok unos ne stigne tamo, ovde stoji samo ono što je snimljeno na gradilištu."
+      },
+      "unavailable": {
+        "title": "Podaci sa servera nisu dostupni",
+        "body": "Nije bilo moguće pitati server šta je izdvojeno iz ovog unosa. Ispod je sve što telefon čuva."
+      }
+    },
+    "transcript": {
+      "pending": "Transkript još nije stigao sa servera.",
+      "needsReview": "Snimak nije mogao da se prepiše u tekst. Sam snimak je sačuvan i može da se posluša.",
+      "notSent": "Unos još nije poslat na server, pa transkript ne postoji.",
+      "unavailable": "Nije bilo moguće pitati server za transkript."
+    },
+    "materials": {
+      "delivered": "Isporučeno",
+      "notDelivered": "Nije isporučeno"
+    },
+    "blockers": {
+      "waitingOn": "Čeka se: {{who}}"
+    },
+    "hiddenWork": {
+      "note": "Dokaz snimljen pre zatvaranja"
+    },
+    "photos": {
+      "none": "Uz ovaj unos nema fotografija.",
+      "onServer": "Još fotografija: {{count}} — na serveru, nisu na ovom telefonu.",
+      "open": "Otvori fotografiju {{index}}",
+      "position": "{{index}} / {{total}}",
+      "previous": "Prethodna fotografija",
+      "next": "Sledeća fotografija"
+    },
+    "audio": {
+      "none": "Uz ovaj unos nema snimka.",
+      "offsite": "Snimak je na serveru — nije na ovom telefonu."
+    },
+    "weather": {
+      "label": "Vreme",
+      "range": "{{min}}–{{max}} °C",
+      "precipitation": "Padavine {{mm}} mm"
+    },
+    "gps": {
+      "label": "Lokacija",
+      "accuracy": "±{{metres}} m"
     }
   },
   "capture": {
@@ -64,6 +184,7 @@
       "tooShort": "Snimak je prekratak — probajte ponovo.",
       "retry": "Pokušaj ponovo",
       "openSalvaged": "Otvori sačuvani snimak",
+      "salvaging": "Čuvanje snimljenog…",
       "saveFailed": "Snimak nije mogao da se sačuva — pokušajte ponovo.",
       "saveRetry": "Sačuvaj ponovo"
     },
@@ -121,7 +242,8 @@
     "allSent": "Sve poslato",
     "uploading": "Slanje u toku · {{done}}/{{total}}",
     "uploadingToServer": "Slanje na server",
-    "uploadingDetail": "Snimak poslat · šalju se fotografije"
+    "uploadingDetail": "Snimak poslat · šalju se fotografije",
+    "stuckCount": "Ne prolazi: {{count}}"
   },
   "pending": {
     "title": "Čeka slanje",
@@ -130,12 +252,22 @@
       "body": "Unosi su bezbedni na telefonu i šalju se sami čim se mreža vrati."
     },
     "status": {
-      "failed": "Nije poslato",
+      "retrying": "Pokušava ponovo",
+      "blocked": "Ne može da se pošalje",
       "uploading": "Šalje se · {{done}}/{{total}}",
-      "queued": "Čeka mrežu"
+      "queued": "Čeka mrežu",
+      "stalled": "Ne prolazi"
     },
-    "failed": {
-      "reason": "veza je pukla tokom slanja"
+    "reason": {
+      "offline": "Server nije dostupan.",
+      "server": "Server trenutno ne odgovara.",
+      "storage": "Slanje je prekinuto pre nego što su svi fajlovi stigli.",
+      "incomplete": "Neki fajlovi još nisu stigli na server.",
+      "rejected": "Server nije prihvatio ovaj unos.",
+      "unauthorized": "Ovaj telefon nema dozvolu da šalje na server.",
+      "notConfigured": "Aplikacija nema podešen server.",
+      "insecureContext": "Unosi mogu da se šalju samo preko sigurne (https) adrese.",
+      "unknown": "Slanje nije uspelo iz nepoznatog razloga."
     },
     "retry": "Pokušaj ponovo",
     "meta": "Snimak {{duration}} · {{photos}}",
@@ -150,6 +282,7 @@
       "title": "Stanje reda",
       "uploading": "Šalje se",
       "total": "Ukupno"
-    }
+    },
+    "evidenceSafe": "Snimak i fotografije su bezbedni na ovom telefonu. Ništa nije izgubljeno."
   }
 }

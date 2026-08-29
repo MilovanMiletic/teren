@@ -21,6 +21,15 @@ public sealed class S3ObjectStorage : IObjectStorage, IDisposable
 
     private readonly bool _presignClientIsSeparate;
 
+    /// <summary>
+    /// A third client purely for downloading media in the background pipeline. It exists
+    /// because the other two are tuned for a phone-facing request — 5 s and no retries — and
+    /// a 25 MB voice note read under that budget would abort mid-stream on a slow link. A
+    /// Hangfire job has time; a foreman standing on a site does not. Separate client rather
+    /// than a per-call override because the timeout lives on the SDK config, not the request.
+    /// </summary>
+    private readonly AmazonS3Client _downloadClient;
+
     /// <summary>True when the presigning endpoint is plain HTTP — see the note in
     /// <see cref="CreatePresignedUploadAsync"/>.</summary>
     private readonly bool _presignOverHttp;
@@ -46,9 +55,12 @@ public sealed class S3ObjectStorage : IObjectStorage, IDisposable
         _presignClient = _presignClientIsSeparate
             ? new AmazonS3Client(credentials, BuildConfig(_options.PublicEndpoint))
             : _internalClient;
+
+        _downloadClient = new AmazonS3Client(
+            credentials, BuildConfig(_options.Endpoint, forDownload: true));
     }
 
-    private AmazonS3Config BuildConfig(string serviceUrl) => new()
+    private AmazonS3Config BuildConfig(string serviceUrl, bool forDownload = false) => new()
     {
         ServiceURL = serviceUrl,
         // The SDK rewrites the scheme to https unless UseHttp is set, which would hand the phone
@@ -62,9 +74,11 @@ public sealed class S3ObjectStorage : IObjectStorage, IDisposable
         RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,
         ResponseChecksumValidation = ResponseChecksumValidation.WHEN_REQUIRED,
         // Bounded waiting: /complete is a phone-facing request and must not inherit the SDK's
-        // 100 s / 4 retries when the storage host black-holes packets.
-        Timeout = _options.RequestTimeout,
-        MaxErrorRetry = _options.MaxRetries,
+        // 100 s / 4 retries when the storage host black-holes packets. The download client is
+        // the deliberate exception — it runs inside a Hangfire job, moves whole files, and would
+        // abort a large voice note mid-stream under the request budget.
+        Timeout = forDownload ? _options.DownloadTimeout : _options.RequestTimeout,
+        MaxErrorRetry = forDownload ? _options.DownloadRetries : _options.MaxRetries,
     };
 
     /// <inheritdoc />
@@ -145,9 +159,46 @@ public sealed class S3ObjectStorage : IObjectStorage, IDisposable
         }
     }
 
+    /// <inheritdoc />
+    public async Task<Stream?> OpenReadAsync(string objectKey, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _downloadClient.GetObjectAsync(
+                new GetObjectRequest { BucketName = _options.Bucket, Key = objectKey }, ct);
+
+            // The caller owns the stream; disposing it disposes the response with it.
+            return response.ResponseStream;
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            // Verified at /complete, gone now. Not an outage — a real, reportable problem with
+            // this entry's evidence, so it is null rather than an exception.
+            _logger.LogWarning(
+                "Object {ObjectKey} is not in storage; it was verified at completion.", objectKey);
+            return null;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is AmazonServiceException
+                                       or HttpRequestException
+                                       or OperationCanceledException
+                                       or TimeoutException)
+        {
+            _logger.LogError(ex, "Object storage did not answer for {ObjectKey}.", objectKey);
+
+            throw new ObjectStorageUnavailableException(
+                "Object storage did not answer within "
+                + $"{_options.DownloadTimeout.TotalSeconds:0.#} s.", ex);
+        }
+    }
+
     public void Dispose()
     {
         _internalClient.Dispose();
+        _downloadClient.Dispose();
         if (_presignClientIsSeparate)
         {
             _presignClient.Dispose();

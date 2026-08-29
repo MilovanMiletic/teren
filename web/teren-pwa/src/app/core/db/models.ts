@@ -24,6 +24,14 @@ export type LocalEntryStatus =
    * `queued`, not a terminal one: the entry stays in the outbox and nothing is discarded.
    */
   | 'failed'
+  /**
+   * The server gave an answer that will not change (B3 sets this): the project is unknown, the
+   * declaration was refused, this device is not authorised, this origin cannot hash. The entry is
+   * **not lost** — every byte is still on the phone — but no amount of retrying will move it, so
+   * the loop stops and the pending screen says so out loud. Only an explicit "try again" (or a
+   * new build that fixes the cause) puts it back in the queue.
+   */
+  | 'blocked'
   /** The server acknowledged receipt. Only now may local media eventually be pruned. */
   | 'confirmed_by_server';
 
@@ -107,11 +115,28 @@ export interface LocalMedia {
   uploadState: MediaUploadState;
   /** Set by B3 once the object store has the file. */
   storageKey: string | null;
+  /**
+   * SHA-256 of `blob`, 64 lowercase hex characters (B3, Dexie v4).
+   *
+   * The server requires it on every declared file and refuses a re-declaration whose checksum
+   * changed, so it is computed **once, lazily, at the first upload attempt** and kept — never in
+   * a Dexie upgrade hook, which would hash every blob on the phone before the first frame of the
+   * app could paint (see `teren-db.ts` v4 for the full argument).
+   *
+   * `undefined` on rows written before v4 and on anything not yet uploaded: absence means "not
+   * hashed yet", which is exactly what the lazy scheme needs it to mean.
+   */
+  sha256?: string;
   createdAt: string;
 }
 
-/** What an outbox item is currently doing. */
-export type OutboxState = 'queued' | 'in_flight' | 'failed';
+/**
+ * What an outbox item is currently doing.
+ *
+ * `failed` and `blocked` are the two halves of the distinction B3 exists to make: `failed` is a
+ * retryable setback with a `nextAttemptAt` on it, `blocked` is terminal and has none.
+ */
+export type OutboxState = 'queued' | 'in_flight' | 'failed' | 'blocked';
 
 /**
  * One row per entry that has not yet been confirmed by the server: the unit of network work.
@@ -133,6 +158,15 @@ export interface OutboxItem {
   nextAttemptAt: string | null;
   /** Diagnostic only; never shown raw to the user. */
   lastError: string | null;
+  /**
+   * The classified reason for the last failure (B3; `FailureKind` in `core/api/api-failure.ts`).
+   *
+   * This is what replaced the canned "connection dropped during upload" string the pending screen
+   * used to show for every failure alike: the screen maps this value to a translation key, so what
+   * the foreman reads is derived from what the server actually said. Null while an item has never
+   * failed. Typed as `string` here so the local data model does not depend on the API layer.
+   */
+  failureKind: string | null;
   createdAt: string;
 }
 

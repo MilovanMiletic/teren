@@ -1,4 +1,19 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build *)",
+      "Bash(npx ng *)",
+      "Bash(node -e \"const en=require\\('./web/teren-pwa/public/i18n/en.json'\\),sr=require\\('./web/teren-pwa/public/i18n/sr.json'\\);const flat=\\(o,p=''\\)=>Object.entries\\(o\\).flatMap\\(\\([k,v]\\)=>typeof v==='object'?flat\\(v,p+k+'.'\\):[p+k]\\);const e=flat\\(en\\),s=flat\\(sr\\);console.log\\('en',e.length,'sr',s.length\\);console.log\\('missing in sr:',e.filter\\(k=>!s.includes\\(k\\)\\)\\);console.log\\('extra in sr:',s.filter\\(k=>!e.includes\\(k\\)\\)\\);\")",
+      "Bash(node -e \"const a=require\\('./web/teren-pwa/angular.json'\\);const b=a.projects[Object.keys\\(a.projects\\)[0]].architect.build;console.log\\(JSON.stringify\\({budgets:b.options.budgets||b.configurations?.production?.budgets, configs:Object.keys\\(b.configurations||{}\\)},null,1\\)\\);\")",
+      "Bash(grep -ohE \"^\\\\| *\\\\`?--[a-z0-9-]+\" design/tokens.md)",
+      "Bash(grep -ohE \"\\\\-\\\\-[a-z0-9-]+\" design/tokens.md | sort -u > /tmp/t1.txt; wc -l < /tmp/t1.txt; echo \"=== in tokens.md, NOT in styles.css ===\"; comm -23 /tmp/t1.txt /tmp/t2.txt; echo \"=== in styles.css, NOT in tokens.md ===\"; comm -13 /tmp/t1.txt /tmp/t2.txt)",
+      "Bash(npm ci *)",
+      "Bash(awk -F/ '{print $1}')"
+    ],
+    "additionalDirectories": [
+      "\\tmp"
+    ]
+  },
   "enabledPlugins": {
     "travel-plugins-common@travel": false,
     "travel-plugins-ndc-knowledge@travel": false,

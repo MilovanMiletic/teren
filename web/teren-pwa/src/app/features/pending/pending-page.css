@@ -129,6 +129,31 @@
   overflow-wrap: anywhere;
 }
 
+/* The classified reason for a failure. Muted while it is still being retried… */
+.row__reason {
+  overflow-wrap: anywhere;
+}
+
+/* …and in the error colour once the row is terminal, where it is the headline, not a footnote. */
+.row__reason--err {
+  color: var(--color-err);
+  font-weight: 600;
+}
+
+/*
+ * "Nothing was lost" sits directly under the reason on a blocked row. It is the sentence that
+ * keeps a terminal state from reading as a loss, so it is never allowed to be the quietest thing
+ * in the card.
+ */
+.row__safe {
+  overflow-wrap: anywhere;
+}
+
+.row__retry {
+  align-self: flex-start;
+  margin-top: var(--space-1);
+}
+
 /* ---- Empty state --------------------------------------------------------------------------- */
 
 .empty {
@@ -213,6 +238,11 @@
   .summary__value {
     font-size: var(--text-h2);
     font-weight: 700;
+  }
+
+  /* A non-zero blocked count is the one number on this card that has to be noticed. */
+  .summary__value--err {
+    color: var(--color-err);
   }
 
   .summary__row--total .summary__name {

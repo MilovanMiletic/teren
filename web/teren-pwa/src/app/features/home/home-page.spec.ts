@@ -6,7 +6,7 @@ import { EntryStore } from '../../core/db/entry-store';
 import { captureEntry } from '../../testing/capture-fixture';
 import { TEREN_DB, TerenDb } from '../../core/db/teren-db';
 import { DEMO_PROJECTS } from '../../core/projects/project-source';
-import { flushLiveQueries } from '../../testing/flush';
+import { flushLiveQueries, waitUntil } from '../../testing/flush';
 import { ProjectService } from '../../core/projects/project.service';
 import en from '../../../../public/i18n/en.json';
 import sr from '../../../../public/i18n/sr.json';
@@ -96,6 +96,42 @@ describe('HomePage', () => {
 
     // And queueing it must not double-count the same entry.
     expect(element.textContent).toContain('Čekaju slanje: 1');
+  });
+
+  it('stops saying "waiting to upload" over an entry that is not getting through', async () => {
+    const id = await captureToday();
+    await store.queue(id);
+    const element = await render();
+    await waitUntil(() => element.textContent!.includes('Čekaju slanje: 1'), {
+      onTick: () => fixture.detectChanges(),
+      describe: 'the pending count to appear',
+    });
+
+    // The server refused it. The count is still 1 and still true, but "waiting to upload" now
+    // describes something that will never happen, and this is the screen he actually looks at.
+    await store.setOutboxState(id, 'blocked', { failureKind: 'rejected' });
+    await waitUntil(() => element.textContent!.includes('Ne prolazi: 1'), {
+      onTick: () => fixture.detectChanges(),
+      describe: 'the sync row to report the stuck entry',
+    });
+
+    expect(element.textContent).not.toContain('Čekaju slanje');
+    expect(element.querySelector('.sync__icon--err')).not.toBeNull();
+  });
+
+  it('says the same thing on a recent row as the sync row does', async () => {
+    const id = await captureToday();
+    await store.queue(id);
+    await store.setOutboxState(id, 'blocked', { failureKind: 'unauthorized' });
+    const element = await render();
+    await waitUntil(() => element.textContent!.includes('Ne može da se pošalje'), {
+      onTick: () => fixture.detectChanges(),
+      describe: 'the recent row to report the blocked entry',
+    });
+
+    // A recent row reading "Čeka mrežu" beside a sync row reading "Ne prolazi" would leave the
+    // foreman to work out which of his own screens to believe.
+    expect(element.querySelector('.chip--err')).not.toBeNull();
   });
 
   it('reaches the language switcher from Home, and the choice persists', async () => {

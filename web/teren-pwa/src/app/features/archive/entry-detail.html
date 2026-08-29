@@ -1,0 +1,335 @@
+<section class="detail" *transloco="let t">
+  @if (loading()) {
+    <p class="card detail__placeholder t-meta">{{ t('archive.detail.loading') }}</p>
+  } @else if (notFound()) {
+    <div class="card detail__placeholder">
+      <h2 class="t-h2">{{ t('archive.detail.missing.title') }}</h2>
+      <p class="t-meta detail__placeholder-body">{{ t('archive.detail.missing.body') }}</p>
+    </div>
+  } @else if (unreachable()) {
+    <!--
+      The server could not be asked. Saying the record does not exist would be a claim about
+      evidence that nothing here supports.
+    -->
+    <div class="card detail__placeholder">
+      <h2 class="t-h2">{{ t('archive.detail.unreachable.title') }}</h2>
+      <p class="t-meta detail__placeholder-body">{{ t('archive.detail.unreachable.body') }}</p>
+    </div>
+  } @else {
+    <!-- Which day, which site, where it stands. The three things a record is asked for first. -->
+    <header class="card detail__head">
+      <div class="detail__head-row">
+        <div class="detail__when">
+          <span class="t-label">{{ t('archive.detail.label') }}</span>
+          <h2 class="t-h1 t-num detail__date">{{ day() | date: 'EEEE, d. M. y.' }}</h2>
+          @if (capturedAt(); as moment) {
+            <span class="t-meta t-num">
+              {{ t('archive.detail.capturedAt', { time: moment | date: 'HH:mm' }) }}
+            </span>
+          }
+        </div>
+        <span class="chip chip--{{ statusTone() }}">{{ t(statusKey()) }}</span>
+      </div>
+      @if (projectName(); as name) {
+        <p class="detail__site t-meta">{{ name }}</p>
+      }
+    </header>
+
+    @if (blocked()) {
+      <!--
+        The defining property of a blocked entry is that no retry will move it, so the banner
+        that promises it sends itself must not appear over one.
+      -->
+      <div class="card detail__notice detail__notice--err" role="status">
+        <app-icon name="alert-triangle" [size]="20" class="detail__notice-icon" />
+        <div class="detail__notice-text">
+          <span class="detail__notice-title">{{ t('archive.detail.blocked.title') }}</span>
+          <span class="t-meta">{{ t('archive.detail.blocked.body') }}</span>
+        </div>
+      </div>
+    } @else if (awaitingUpload()) {
+      <!--
+        An entry the server has not received cannot be in a report, and a record that looks
+        finished when it is not is the one failure this screen cannot have.
+      -->
+      <div class="card detail__notice detail__notice--warn" role="status">
+        <app-icon name="upload-cloud" [size]="20" class="detail__notice-icon" />
+        <div class="detail__notice-text">
+          <span class="detail__notice-title">{{ t('archive.detail.awaiting.title') }}</span>
+          <span class="t-meta">{{ t('archive.detail.awaiting.body') }}</span>
+        </div>
+      </div>
+    }
+
+    <!-- ---- The structured day ------------------------------------------------------------ -->
+
+    @if (structureState() === 'ready' && structure(); as s) {
+      <div class="detail__provenance">
+        <app-icon name="check" [size]="14" />
+        <span>{{
+          structureIsCorrected() ? t('archive.structure.corrected') : t('archive.structure.extracted')
+        }}</span>
+      </div>
+
+      @if (s.workDone.length > 0) {
+        <section class="card detail__card">
+          <h3 class="t-label detail__card-label">{{ t('archive.section.work') }}</h3>
+          <ul class="items">
+            @for (item of s.workDone; track $index) {
+              <li class="items__row">
+                <span class="items__name">{{ item.description }}</span>
+                <span class="items__meta t-meta">
+                  @if (item.location) {
+                    <span>{{ item.location }}</span>
+                  }
+                  @if (item.quantity; as q) {
+                    <span class="items__quantity t-num">
+                      @if (q.value !== null) {
+                        {{ q.value | number: '1.0-2' }}
+                      }
+                      {{ q.unit }}
+                    </span>
+                  }
+                </span>
+              </li>
+            }
+          </ul>
+        </section>
+      }
+
+      @if (s.headcount; as head) {
+        @if (head.total !== null || head.roles.length > 0) {
+          <section class="card detail__card">
+            <h3 class="t-label detail__card-label">{{ t('archive.section.headcount') }}</h3>
+            @if (head.total !== null) {
+              <p class="headcount__total t-h1 t-num">{{ head.total }}</p>
+            }
+            @if (head.roles.length > 0) {
+              <ul class="roles">
+                @for (role of head.roles; track $index) {
+                  <li class="roles__pill">
+                    <span>{{ role.role }}</span>
+                    @if (role.count !== null) {
+                      <span class="roles__count t-num">{{ role.count }}</span>
+                    }
+                  </li>
+                }
+              </ul>
+            }
+          </section>
+        }
+      }
+
+      @if (s.materials.length > 0) {
+        <section class="card detail__card">
+          <h3 class="t-label detail__card-label">{{ t('archive.section.materials') }}</h3>
+          <ul class="items">
+            @for (item of s.materials; track $index) {
+              <li class="items__row">
+                <span class="items__name">{{ item.name }}</span>
+                <span class="items__meta t-meta">
+                  @if (item.quantity; as q) {
+                    <span class="items__quantity t-num">
+                      @if (q.value !== null) {
+                        {{ q.value | number: '1.0-2' }}
+                      }
+                      {{ q.unit }}
+                    </span>
+                  }
+                  @if (item.delivered === true) {
+                    <span class="chip chip--ok items__chip">{{ t('archive.materials.delivered') }}</span>
+                  } @else if (item.delivered === false) {
+                    <!-- "Ordered, not delivered" is a fact a report has to carry. -->
+                    <span class="chip chip--warn items__chip">{{
+                      t('archive.materials.notDelivered')
+                    }}</span>
+                  }
+                </span>
+              </li>
+            }
+          </ul>
+        </section>
+      }
+
+      @if (s.blockers.length > 0) {
+        <section class="card detail__card">
+          <h3 class="t-label detail__card-label">{{ t('archive.section.blockers') }}</h3>
+          <ul class="items">
+            @for (item of s.blockers; track $index) {
+              <li class="items__row">
+                <span class="items__name">{{ item.description }}</span>
+                @if (item.waitingOn) {
+                  <span class="items__meta t-meta">
+                    {{ t('archive.blockers.waitingOn', { who: item.waitingOn }) }}
+                  </span>
+                }
+              </li>
+            }
+          </ul>
+        </section>
+      }
+
+      @if (s.hiddenWork.length > 0) {
+        <!--
+          Called out with its own accent, not folded into "work done": this is the evidence that
+          cannot be recovered once the wall closes, and it is why an owner buys the product.
+        -->
+        <section class="card detail__card detail__card--hidden">
+          <h3 class="t-label detail__card-label">{{ t('archive.section.hiddenWork') }}</h3>
+          <ul class="items">
+            @for (item of s.hiddenWork; track $index) {
+              <li class="items__row">
+                <span class="items__name">{{ item.description }}</span>
+                <span class="items__meta t-meta">{{ t('archive.hiddenWork.note') }}</span>
+              </li>
+            }
+          </ul>
+        </section>
+      }
+
+      @if (s.notes) {
+        <section class="card detail__card">
+          <h3 class="t-label detail__card-label">{{ t('archive.section.notes') }}</h3>
+          <p class="detail__prose">{{ s.notes }}</p>
+        </section>
+      }
+    } @else {
+      <!--
+        The common case today: B4 has not extracted anything yet. Which *kind* of absent it is
+        matters — "nothing found in the recording" and "nothing has run yet" are opposite claims.
+      -->
+      <section
+        class="card detail__card detail__state"
+        [class.detail__state--err]="structureState() === 'needsReview'"
+      >
+        <h3 class="t-label detail__card-label">{{ t('archive.section.work') }}</h3>
+        <p class="detail__state-title">{{ t(structureTitleKey()) }}</p>
+        <p class="t-meta detail__state-body">{{ t(structureBodyKey()) }}</p>
+      </section>
+    }
+
+    <!-- ---- Raw evidence: what was actually said, and what was photographed ---------------- -->
+
+    <section class="card detail__card">
+      <h3 class="t-label detail__card-label">{{ t('archive.section.transcript') }}</h3>
+      @if (transcript(); as text) {
+        <!-- Never translated, never tidied: the words spoken on site (PROJECT.md principle 2). -->
+        <p class="detail__prose detail__transcript">{{ text }}</p>
+      } @else {
+        <p class="t-meta detail__state-body">{{ t(transcriptKey()) }}</p>
+      }
+    </section>
+
+    <section class="card detail__card">
+      <h3 class="t-label detail__card-label">{{ t('archive.section.photos') }}</h3>
+      @if (photos().length > 0) {
+        <ul class="photos">
+          @for (photo of photos(); track photo.id; let i = $index) {
+            <li>
+              <button
+                type="button"
+                class="photos__thumb"
+                [attr.aria-label]="t('archive.photos.open', { index: i + 1 })"
+                (click)="openViewer(i)"
+              >
+                <img [src]="photoUrl(photo)" alt="" />
+              </button>
+            </li>
+          }
+        </ul>
+      }
+      @if (unshownPhotoCount() > 0) {
+        <!-- Media bytes never pass through the API and there is no presigned GET: say so. -->
+        <p class="detail__offsite t-meta">
+          <app-icon name="image" [size]="16" />
+          <span>{{ t('archive.photos.onServer', { count: unshownPhotoCount() }) }}</span>
+        </p>
+      }
+      @if (photos().length === 0 && unshownPhotoCount() === 0) {
+        <p class="t-meta detail__state-body">{{ t('archive.photos.none') }}</p>
+      }
+    </section>
+
+    <section class="card detail__card">
+      <h3 class="t-label detail__card-label">{{ t('archive.section.audio') }}</h3>
+      @if (audioUrl(); as url) {
+        <span class="t-meta t-num detail__audio-meta">{{ audioDurationMs() | duration }}</span>
+        <!-- The platform's own player: keyboard-accessible, scrubable, and nothing to maintain. -->
+        <audio class="detail__audio" controls preload="metadata" [src]="url"></audio>
+      } @else if (audioOffsite()) {
+        <p class="detail__offsite t-meta">
+          <app-icon name="mic" [size]="16" />
+          <span>{{ t('archive.audio.offsite') }}</span>
+        </p>
+      } @else {
+        <p class="t-meta detail__state-body">{{ t('archive.audio.none') }}</p>
+      }
+    </section>
+
+    <!-- ---- Conditions: where, and what the weather was --------------------------------- -->
+
+    @if (geo() || weather()) {
+      <section class="card detail__card">
+        <h3 class="t-label detail__card-label">{{ t('archive.section.conditions') }}</h3>
+        <dl class="facts">
+          @if (weather(); as w) {
+            <div class="facts__row">
+              <dt class="t-meta">{{ t('archive.weather.label') }}</dt>
+              <dd class="facts__value">
+                @if (w.conditions) {
+                  <span>{{ w.conditions }}</span>
+                }
+                @if (w.temperatureMinC !== null && w.temperatureMaxC !== null) {
+                  <span class="t-num">
+                    {{
+                      t('archive.weather.range', {
+                        min: w.temperatureMinC | number: '1.0-1',
+                        max: w.temperatureMaxC | number: '1.0-1',
+                      })
+                    }}
+                  </span>
+                }
+                @if (w.precipitationMm !== null && w.precipitationMm > 0) {
+                  <span class="t-num">
+                    {{
+                      t('archive.weather.precipitation', {
+                        mm: w.precipitationMm | number: '1.0-1',
+                      })
+                    }}
+                  </span>
+                }
+              </dd>
+            </div>
+          }
+          @if (geo(); as fix) {
+            <div class="facts__row">
+              <dt class="t-meta">{{ t('archive.gps.label') }}</dt>
+              <dd class="facts__value">
+                <app-icon name="map-pin" [size]="16" class="facts__icon" />
+                <span class="t-num">
+                  {{ coordinate(fix.latitude) }}, {{ coordinate(fix.longitude) }}
+                </span>
+                @if (fix.accuracyM !== null) {
+                  <span class="t-meta t-num">
+                    {{ t('archive.gps.accuracy', { metres: fix.accuracyM | number: '1.0-0' }) }}
+                  </span>
+                }
+              </dd>
+            </div>
+          }
+        </dl>
+      </section>
+    }
+
+    <p class="detail__immutable t-meta">{{ t('archive.detail.immutable') }}</p>
+  }
+
+  @if (viewerIndex() !== null) {
+    <app-photo-viewer
+      [urls]="photoUrls()"
+      [startIndex]="viewerIndex()!"
+      [label]="t('archive.section.photos')"
+      (close)="closeViewer()"
+    />
+  }
+</section>

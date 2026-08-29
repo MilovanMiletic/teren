@@ -353,6 +353,17 @@ describe('EntryStore', () => {
   // ---- Queries ----------------------------------------------------------------------------------
 
   describe('queries', () => {
+    it('hands the archive the recording as well as the photographs', async () => {
+      // `watchPhotos` deliberately excludes the audio; the entry record needs it, because playing
+      // back what was actually said is half of what makes a record evidence.
+      const entry = await captureEntry(store, { photoCount: 2 });
+
+      const media = await firstValueFrom(store.watchMedia(entry.id));
+
+      expect(media.filter((item) => item.kind === 'audio')).toHaveLength(1);
+      expect(media.filter((item) => item.kind === 'photo')).toHaveLength(2);
+    });
+
     it('counts an un-queued draft as pending — home must never claim "all sent" over one', async () => {
       const entry = await captureEntry(store);
 
@@ -410,6 +421,161 @@ describe('EntryStore', () => {
 
       const recent = await firstValueFrom(store.watchRecentEntries(TEST_PROJECT.id));
       expect(recent.map((item) => item.id)).toEqual([newer.id, older.id]);
+    });
+  });
+
+  // ---- The outbox seam the sync loop writes through (B3) -------------------------------------
+
+  describe('outbox', () => {
+    async function queued(): Promise<string> {
+      const entry = await captureEntry(store, { photoCount: 1 });
+      await store.queue(entry.id);
+      return entry.id;
+    }
+
+    it('keeps entry status and outbox state in step through every transition', async () => {
+      const entryId = await queued();
+
+      await store.setOutboxState(entryId, 'in_flight');
+      expect((await store.getEntry(entryId))?.status).toBe('uploading');
+
+      await store.setOutboxState(entryId, 'failed', {
+        failureKind: 'offline',
+        nextAttemptAt: '2099-01-01T00:00:00.000Z',
+      });
+      expect((await store.getEntry(entryId))?.status).toBe('failed');
+
+      await store.setOutboxState(entryId, 'blocked', { failureKind: 'rejected' });
+      expect((await store.getEntry(entryId))?.status).toBe('blocked');
+    });
+
+    it('gives a blocked item no next attempt — that is what makes it terminal', async () => {
+      const entryId = await queued();
+      await store.setOutboxState(entryId, 'failed', {
+        failureKind: 'offline',
+        nextAttemptAt: '2099-01-01T00:00:00.000Z',
+      });
+
+      await store.setOutboxState(entryId, 'blocked', { failureKind: 'unauthorized' });
+
+      expect(await store.getOutboxItem(entryId)).toMatchObject({
+        nextAttemptAt: null,
+        failureKind: 'unauthorized',
+      });
+    });
+
+    it('offers the loop only what is due, and never a blocked item', async () => {
+      const due = await queued();
+      const backingOff = await queued();
+      const terminal = await queued();
+
+      await store.setOutboxState(backingOff, 'failed', {
+        failureKind: 'server',
+        nextAttemptAt: new Date(Date.now() + 60_000).toISOString(),
+      });
+      await store.setOutboxState(terminal, 'blocked', { failureKind: 'rejected' });
+
+      // Re-offering a terminal item is exactly the battery-burning loop the state exists to stop.
+      expect((await store.dueOutboxItems()).map((item) => item.entryId)).toEqual([due]);
+      expect(await store.earliestNextAttempt()).not.toBeNull();
+    });
+
+    it('strands nothing in flight: a killed upload comes back to the queue', async () => {
+      // `in_flight` lives on disk; the attempt it describes lives in a JavaScript task the web
+      // platform ends without warning. Every reader of the outbox skips `in_flight`, so a row
+      // left there is invisible to the loop, to the backlog, to the stuck count and to the retry
+      // button — while the entry goes on claiming to be uploading.
+      const stranded = await queued();
+      const untouched = await queued();
+      await store.setOutboxState(stranded, 'in_flight');
+
+      expect(await store.releaseInFlight()).toBe(1);
+
+      expect(await store.getOutboxItem(stranded)).toMatchObject({
+        state: 'queued',
+        attempts: 1,
+      });
+      // Released through the single writer, so the entry's own status came back with it. A row
+      // that read `queued` under an entry still reading `uploading` would swap one lie for
+      // another.
+      expect((await store.getEntry(stranded))?.status).toBe('queued');
+      expect((await store.dueOutboxItems()).map((item) => item.entryId)).toEqual([
+        stranded,
+        untouched,
+      ]);
+    });
+
+    it('releases nothing when nothing was in flight', async () => {
+      await queued();
+
+      expect(await store.releaseInFlight()).toBe(0);
+    });
+
+    it('takes the oldest item first, by sequence rather than by timestamp', async () => {
+      // Two entries queued inside the same second would tie on a plain timestamp.
+      const first = await queued();
+      const second = await queued();
+
+      expect((await store.dueOutboxItems()).map((item) => item.entryId)).toEqual([first, second]);
+    });
+
+    it('removes only the work ticket when the server confirms — never the evidence', async () => {
+      const entryId = await queued();
+
+      await store.markConfirmedByServer(entryId, {
+        serverStatus: 'processing',
+        confirmedAt: '2026-08-29T10:05:00.000Z',
+      });
+
+      // PROJECT.md principle 3: pruning local media is C1's job, and only after a grace period.
+      const media = await store.listMediaForUpload(entryId);
+      expect(media).toHaveLength(2);
+      expect(media.every((file) => file.blob.size > 0)).toBe(true);
+
+      expect(await store.getEntry(entryId)).toMatchObject({
+        status: 'confirmed_by_server',
+        serverStatus: 'processing',
+        confirmedByServerAt: '2026-08-29T10:05:00.000Z',
+      });
+      // The ticket goes, which is what takes the entry off the pending screen.
+      expect(await store.getOutboxItem(entryId)).toBeUndefined();
+      expect(await firstValueFrom(store.watchPending())).toEqual([]);
+    });
+
+    it('drops an outbox row whose entry is gone, and refuses to touch one whose entry is not', async () => {
+      const entryId = await queued();
+      const orphan = crypto.randomUUID();
+      await db.outbox.put({
+        entryId: orphan,
+        state: 'queued',
+        seq: 99,
+        attempts: 0,
+        lastAttemptAt: null,
+        nextAttemptAt: null,
+        lastError: null,
+        failureKind: null,
+        createdAt: new Date().toISOString(),
+      });
+
+      await store.discardOrphanOutboxItem(orphan);
+      await store.discardOrphanOutboxItem(entryId);
+
+      expect(await store.getOutboxItem(orphan)).toBeUndefined();
+      expect(await store.getOutboxItem(entryId)).toBeDefined();
+    });
+
+    it('lists media for upload with the audio first, then the photos in capture order', async () => {
+      // ARCHITECTURE §8: the report is built from the recording, so the audio goes up first and
+      // the pipeline can start while photos are still climbing over a bad connection.
+      const entry = await captureEntry(store, { photoCount: 3 });
+
+      const media = await store.listMediaForUpload(entry.id);
+      expect(media.map((file) => file.kind)).toEqual(['audio', 'photo', 'photo', 'photo']);
+
+      const photos = media.slice(1);
+      expect(photos.map((file) => file.createdAt)).toEqual(
+        [...photos].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((f) => f.createdAt),
+      );
     });
   });
 });

@@ -1,0 +1,371 @@
+/*
+ * The entry record. Cards on canvas, exactly as everywhere else — this screen invents no visual
+ * language, it only arranges the one in `design/tokens.md`. No artboard exists for it yet.
+ */
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.detail__card {
+  padding: var(--space-4) 18px;
+}
+
+.detail__card-label {
+  margin: 0 0 var(--space-3);
+}
+
+.detail__placeholder {
+  padding: var(--space-6) 18px;
+  text-align: center;
+}
+
+.detail__placeholder-body {
+  margin: var(--space-2) 0 0;
+  line-height: 1.5;
+}
+
+/* ---- Head -------------------------------------------------------------------------------- */
+
+.detail__head {
+  padding: var(--space-5) 18px;
+}
+
+.detail__head-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.detail__when {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.detail__date {
+  /* The date is the record's name. It wraps rather than truncates. */
+  overflow-wrap: anywhere;
+}
+
+.detail__site {
+  margin: var(--space-3) 0 0;
+  overflow-wrap: anywhere;
+}
+
+/* ---- Notices ----------------------------------------------------------------------------- */
+
+.detail__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4) 18px;
+}
+
+.detail__notice--warn {
+  background: var(--color-warn-bg);
+  box-shadow: none;
+}
+
+.detail__notice--warn .detail__notice-icon {
+  color: var(--color-warn-icon);
+}
+
+.detail__notice-icon {
+  flex: none;
+  margin-top: 1px;
+}
+
+.detail__notice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.detail__notice-title {
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-warn);
+}
+
+.detail__notice--warn .t-meta {
+  color: var(--color-warn);
+}
+
+/* Terminal, not merely waiting: the entry needs a decision, not patience. */
+.detail__notice--err {
+  background: var(--color-err-bg);
+  box-shadow: none;
+}
+
+.detail__notice--err .detail__notice-icon,
+.detail__notice--err .detail__notice-title,
+.detail__notice--err .t-meta {
+  color: var(--color-err);
+}
+
+/*
+ * Who produced the structured day: the model, or a person who checked it. Small, because it is a
+ * caption; present, because "a human approved this" is the claim that carries weight later.
+ */
+.detail__provenance {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 var(--space-1);
+  font-size: var(--text-label);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--color-ink-2);
+}
+
+/* ---- Absent / partial states ------------------------------------------------------------- */
+
+.detail__state-title {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+
+.detail__state-body {
+  margin: var(--space-1) 0 0;
+  line-height: 1.5;
+}
+
+.detail__state--err .detail__state-title {
+  color: var(--color-err);
+}
+
+/* ---- Item lists (work, materials, blockers, hidden work) --------------------------------- */
+
+.items {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.items__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-card-line);
+}
+
+.items__row:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.items__row:last-child {
+  padding-bottom: 0;
+}
+
+.items__name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.items__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  overflow-wrap: anywhere;
+}
+
+.items__quantity {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.items__chip {
+  letter-spacing: 0.4px;
+}
+
+/* Hidden work: the evidence that cannot be recovered once the wall closes. */
+.detail__card--hidden {
+  border-left: 3px solid var(--color-accent);
+}
+
+/* ---- Headcount ---------------------------------------------------------------------------- */
+
+.headcount__total {
+  margin: 0;
+}
+
+.roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.roles__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--color-canvas);
+  font-size: var(--text-meta);
+  font-weight: 500;
+}
+
+.roles__count {
+  font-weight: 700;
+}
+
+/* ---- Prose: notes and the transcript ------------------------------------------------------ */
+
+.detail__prose {
+  margin: 0;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  /* Whatever was written stays as written — evidence is not reflowed. */
+  white-space: pre-wrap;
+}
+
+.detail__transcript {
+  color: var(--color-ink);
+}
+
+/* ---- Photographs --------------------------------------------------------------------------- */
+
+.photos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.photos__thumb {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-thumb);
+  overflow: hidden;
+  background: var(--color-canvas);
+  cursor: pointer;
+}
+
+.photos__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Evidence the server holds that this phone does not. Stated, never silently dropped. */
+.detail__offsite {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+}
+
+.photos + .detail__offsite {
+  margin-top: var(--space-3);
+}
+
+/* ---- Audio ---------------------------------------------------------------------------------- */
+
+.detail__audio-meta {
+  display: block;
+  margin-bottom: var(--space-2);
+}
+
+.detail__audio {
+  width: 100%;
+  display: block;
+}
+
+/* ---- Conditions ------------------------------------------------------------------------------ */
+
+.facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.facts__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.facts__row dt {
+  margin: 0;
+}
+
+.facts__value {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  font-weight: 500;
+}
+
+.facts__icon {
+  color: var(--color-ink-2);
+}
+
+.detail__immutable {
+  margin: var(--space-2) 0 0;
+  padding: 0 var(--space-1);
+  line-height: 1.5;
+}
+
+/* ---- Medium and up --------------------------------------------------------------------------- */
+
+@media (min-width: 768px) {
+  .detail__card,
+  .detail__notice,
+  .detail__placeholder {
+    padding-left: var(--space-5);
+    padding-right: var(--space-5);
+  }
+
+  .photos {
+    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  }
+
+  /*
+   * Conditions become a two-column definition list once there is room: a label beside its value
+   * reads as a record, stacked reads as a form.
+   */
+  .facts__row {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--space-4);
+  }
+
+  .facts__row dt {
+    flex: none;
+    width: 110px;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .photos__thumb:hover {
+    box-shadow: var(--shadow-card);
+    opacity: 0.92;
+  }
+}

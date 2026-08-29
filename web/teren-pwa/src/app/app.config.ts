@@ -15,8 +15,11 @@ import { provideTransloco } from '@jsverse/transloco';
 
 import { routes } from './app.routes';
 import { AppStatus } from './core/app-status.service';
+import { ApiProjectSource } from './core/projects/api-project-source';
+import { PROJECT_SOURCE } from './core/projects/project-source';
 import { ProjectService } from './core/projects/project.service';
 import { RescueService } from './core/rescue.service';
+import { UploadService } from './core/sync/upload.service';
 import { AVAILABLE_LANGUAGES, LOCALE_BY_LANGUAGE, activeLanguage } from './i18n';
 import { TranslocoHttpLoader } from './transloco-loader';
 
@@ -27,6 +30,10 @@ export const appConfig: ApplicationConfig = {
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes, withComponentInputBinding()),
     provideHttpClient(withFetch()),
+    // B3: the site list now comes from `GET /api/projects`, cached locally, with the built-in
+    // demo list as the last resort. Nothing above this line changed with it — which is what the
+    // token was put here for in B2.
+    { provide: PROJECT_SOURCE, useExisting: ApiProjectSource },
     provideTransloco({
       config: {
         availableLangs: [...AVAILABLE_LANGUAGES],
@@ -48,8 +55,14 @@ export const appConfig: ApplicationConfig = {
       const projects = inject(ProjectService);
       const rescue = inject(RescueService);
       const status = inject(AppStatus);
+      const uploads = inject(UploadService);
 
       rescue.watch();
+
+      // The sync loop is started, never awaited. It runs for the life of the app and reports on
+      // the pending screen; making bootstrap wait for a network call would put the record button
+      // behind the very connection this product assumes is missing.
+      uploads.start();
 
       // Bootstrap must never be able to fail. A store that will not open (private mode, exhausted
       // quota) or a project list that will not load are conditions the app reports on screen; an

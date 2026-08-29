@@ -14,7 +14,11 @@ export type IconName =
   | 'refresh'
   | 'wifi-off'
   | 'mic-off'
-  | 'globe';
+  | 'globe'
+  | 'x'
+  | 'map-pin'
+  | 'image'
+  | 'book';
 
 /**
  * The icon set: stroke-based, 24 px grid, stroke-width 2, round caps and joins
@@ -109,6 +113,23 @@ export type IconName =
           <path
             d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
           />
+        }
+        @case ('x') {
+          <path d="M18 6L6 18" />
+          <path d="M6 6l12 12" />
+        }
+        @case ('map-pin') {
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+          <circle cx="12" cy="10" r="3" />
+        }
+        @case ('image') {
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <path d="M21 15l-5-5L5 21" />
+        }
+        @case ('book') {
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
         }
       }
     </svg>

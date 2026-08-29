@@ -31,6 +31,19 @@
           <button type="button" class="btn btn--primary" (click)="openSalvaged()">
             {{ t('capture.record.openSalvaged') }}
           </button>
+        } @else if (salvagePending()) {
+          <!--
+            The take is being rescued. The slot keeps its size so nothing moves under the thumb,
+            and it stays disabled: offering "try again" here would start a new recording over
+            chunks that are not yet a draft.
+          -->
+          <button type="button" class="btn btn--primary" disabled aria-live="polite">
+            {{ t('capture.record.salvaging') }}
+          </button>
+        } @else if (salvageFailed()) {
+          <button type="button" class="btn btn--primary" (click)="retrySalvage()">
+            {{ t('capture.record.saveRetry') }}
+          </button>
         } @else if (canRetry(state(), blocker())) {
           <button type="button" class="btn btn--primary" (click)="begin()">
             {{ t('capture.record.retry') }}

@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable, from } from 'rxjs';
 import Dexie, { liveQuery } from 'dexie';
 
+import { STALLED_AFTER_ATTEMPTS } from '../api/api-failure';
 import { localDay } from './local-day';
 import { GeoFix, LocalEntry, LocalMedia, OutboxItem, OutboxState, Project } from './models';
 import { TEREN_DB } from './teren-db';
@@ -333,6 +334,7 @@ export class EntryStore {
           lastAttemptAt: null,
           nextAttemptAt: null,
           lastError: null,
+          failureKind: null,
           createdAt: nowIso,
         });
       }
@@ -397,6 +399,21 @@ export class EntryStore {
     return this.db.entries.get(entryId);
   }
 
+  /**
+   * Live list of everything an entry holds — the audio and every photo — oldest first.
+   *
+   * The archive needs the audio row that `watchPhotos` deliberately excludes: playing back what
+   * was actually said is half of what makes a record evidence rather than a summary.
+   */
+  watchMedia(entryId: string): Observable<LocalMedia[]> {
+    return from(
+      liveQuery(async () => {
+        const media = await this.db.media.where('entryId').equals(entryId).toArray();
+        return media.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      }),
+    );
+  }
+
   /** Live list of an entry's photos, oldest first. */
   watchPhotos(entryId: string): Observable<LocalMedia[]> {
     return from(
@@ -419,6 +436,18 @@ export class EntryStore {
           .toArray(),
       ),
     );
+  }
+
+  /**
+   * Live list of every entry this phone holds for a project, most recent first — the archive's
+   * local half.
+   *
+   * Capped rather than unbounded: the cap is a memory guard on a device that may have been
+   * recording daily for a year, not a product decision about how far back the archive goes. Older
+   * work is still reachable, because the server's list is merged in beside this one.
+   */
+  watchEntriesForProject(projectId: string, limit = 200): Observable<LocalEntry[]> {
+    return this.watchRecentEntries(projectId, limit);
   }
 
   /** Live view of "has an entry been recorded for this project today?". */
@@ -451,6 +480,28 @@ export class EntryStore {
     return from(liveQuery(async () => (await this.readPending()).length));
   }
 
+  /**
+   * Live count of entries that are not simply waiting — they are not getting through.
+   *
+   * Blocked items (terminal) and items that have failed past `STALLED_AFTER_ATTEMPTS` while still
+   * being retried. The home screen needs this separately from the pending count so its sync row
+   * can stop saying "waiting to upload" over an entry that is stuck: the count alone is true but
+   * reads as "on its way", and on the one screen a foreman actually looks at, that is the
+   * difference between an honest queue and a reassuring one.
+   */
+  watchStuckCount(): Observable<number> {
+    return from(
+      liveQuery(async () => {
+        const items = await this.db.outbox.toArray();
+        return items.filter(
+          (item) =>
+            item.state === 'blocked' ||
+            (item.state === 'failed' && item.attempts >= STALLED_AFTER_ATTEMPTS),
+        ).length;
+      }),
+    );
+  }
+
   private async readPending(): Promise<PendingEntry[]> {
     const pending: PendingEntry[] = [];
 
@@ -470,14 +521,25 @@ export class EntryStore {
     return pending;
   }
 
+  // ---- The outbox: everything the sync loop writes ------------------------------------------
+
   /**
    * Move an outbox item's state. B3 owns the sync loop; this is the single writer of outbox
    * state, so entry status and outbox state can never drift apart.
+   *
+   * Everything below is expressed in terms of this one method rather than reaching into the
+   * tables directly — a reviewer flagged the original seam as likely to be too narrow for B3, and
+   * it was: the loop also has to record *why* an attempt failed. It is widened by adding
+   * `failureKind` and the `blocked` state here, not by opening a second write path.
    */
   async setOutboxState(
     entryId: string,
     state: OutboxState,
-    details: { lastError?: string | null; nextAttemptAt?: string | null } = {},
+    details: {
+      lastError?: string | null;
+      nextAttemptAt?: string | null;
+      failureKind?: string | null;
+    } = {},
   ): Promise<void> {
     const nowIso = new Date().toISOString();
     await this.db.transaction('rw', this.db.entries, this.db.outbox, async () => {
@@ -485,17 +547,236 @@ export class EntryStore {
       if (!item) {
         return;
       }
+      const failed = state === 'failed' || state === 'blocked';
       await this.db.outbox.update(entryId, {
         state,
         attempts: state === 'in_flight' ? item.attempts + 1 : item.attempts,
         lastAttemptAt: state === 'in_flight' ? nowIso : item.lastAttemptAt,
-        lastError: details.lastError ?? (state === 'failed' ? item.lastError : null),
-        nextAttemptAt: details.nextAttemptAt ?? null,
+        lastError: details.lastError ?? (failed ? item.lastError : null),
+        failureKind: details.failureKind ?? (failed ? item.failureKind : null),
+        // A blocked item has no next attempt by definition: that is what makes it terminal.
+        nextAttemptAt: state === 'blocked' ? null : (details.nextAttemptAt ?? null),
       });
       await this.db.entries.update(entryId, {
-        status: state === 'in_flight' ? 'uploading' : state === 'failed' ? 'failed' : 'queued',
+        status: ENTRY_STATUS_BY_OUTBOX_STATE[state],
         updatedAt: nowIso,
       });
     });
   }
+
+  /**
+   * The outbox items whose next attempt is due, oldest first.
+   *
+   * `blocked` items are never returned: they are terminal, and re-offering them to the loop is
+   * exactly the battery-burning behaviour the state exists to prevent. `in_flight` items are not
+   * returned either, because an attempt is already running against them **in this process** —
+   * which is precisely why {@link releaseInFlight} has to exist: that reasoning holds inside one
+   * page lifetime and breaks the moment the page is killed, and the row on disk outlives the loop
+   * that wrote it.
+   */
+  async dueOutboxItems(now: number = Date.now()): Promise<OutboxItem[]> {
+    const nowIso = new Date(now).toISOString();
+    const items = await this.db.outbox.orderBy('seq').toArray();
+    return items.filter(
+      (item) =>
+        (item.state === 'queued' || item.state === 'failed') &&
+        (item.nextAttemptAt === null || item.nextAttemptAt <= nowIso),
+    );
+  }
+
+  /**
+   * When the loop should next wake for an item that is backing off, or null if nothing is
+   * waiting. Lets the loop sleep exactly as long as it has to instead of polling.
+   */
+  async earliestNextAttempt(): Promise<string | null> {
+    const items = await this.db.outbox.toArray();
+    const waiting = items
+      .filter((item) => item.state === 'failed' && item.nextAttemptAt !== null)
+      .map((item) => item.nextAttemptAt!)
+      .sort();
+    return waiting[0] ?? null;
+  }
+
+  async getOutboxItem(entryId: string): Promise<OutboxItem | undefined> {
+    return this.db.outbox.get(entryId);
+  }
+
+  /**
+   * Put every item that was mid-upload back into the queue.
+   *
+   * ## Why an `in_flight` row on disk is a bug waiting to happen
+   *
+   * `in_flight` is written to IndexedDB, but the thing it describes — an attempt actually running
+   * — lives only in a JavaScript task. The web platform ends those without warning: the foreman
+   * pockets the phone and iOS discards the tab, the battery dies, the browser is swiped away.
+   * ARCHITECTURE §11 calls this out and promises "resumption on next open"; on a site it is not
+   * an edge case but the ordinary way a multi-photo upload ends.
+   *
+   * Left alone, such a row is stranded for good: it is not due, not counted as a backlog, not
+   * counted as stuck, and has no retry button — while the pending screen goes on saying "Slanje
+   * na server" about an entry nothing is sending. Every byte is safe and every screen is lying.
+   *
+   * ## Why releasing them is safe
+   *
+   * The whole upload conversation is replay-tolerant, and B3 proves it end to end: `POST /entries`
+   * is idempotent on the client UUID, a re-declaration of the same file is free, an object already
+   * verified comes back with no URL and is skipped, and an entry the server sealed while the phone
+   * was not listening answers 409 — which the loop resolves through `received_at` and treats as
+   * the success it is. So the worst case of releasing a row that really was still uploading (two
+   * tabs open, say) is some repeated work, never a duplicate or a lost entry.
+   *
+   * The attempt counter is deliberately **not** reset: an attempt was made and it did not finish.
+   * Pretending otherwise would let a phone that is killed mid-upload every time look, for ever,
+   * like one that is merely on its first try.
+   */
+  async releaseInFlight(): Promise<number> {
+    const stranded = await this.db.outbox.where('state').equals('in_flight').toArray();
+    for (const item of stranded) {
+      // Through the single writer, so the entry's own status comes back from `uploading` to
+      // `queued` with it — a released row that still read "uploading" on the home screen would
+      // have swapped one lie for another.
+      await this.setOutboxState(item.entryId, 'queued');
+    }
+    return stranded.length;
+  }
+
+  /**
+   * Live count of items the sync loop could act on. Its only job is to wake the loop when
+   * something new is queued, so the foreman's entry leaves the phone at once rather than at the
+   * next tick.
+   */
+  watchOutboxBacklog(): Observable<number> {
+    return from(liveQuery(() => this.db.outbox.where('state').anyOf('queued', 'failed').count()));
+  }
+
+  /**
+   * Drop an outbox row whose entry no longer exists.
+   *
+   * The only deletion the sync loop performs, and it removes a work ticket for work that cannot
+   * be done — never evidence. An entry is never deleted, so this is reachable only from a store
+   * that was interrupted between two writes.
+   */
+  async discardOrphanOutboxItem(entryId: string): Promise<void> {
+    await this.db.transaction('rw', this.db.entries, this.db.outbox, async () => {
+      if (await this.db.entries.get(entryId)) {
+        return;
+      }
+      await this.db.outbox.delete(entryId);
+    });
+  }
+
+  /**
+   * Try this entry again now, at the foreman's explicit request.
+   *
+   * Serves the two rows that offer the button: a **blocked** item, which the loop will otherwise
+   * never touch again, and a **stalled** one, which is still backing off and would otherwise wait
+   * out its interval. In both cases pressing the button is a statement that something changed —
+   * he walked outside, the Wi-Fi came back, a new build was installed — so the wait is cleared
+   * and the attempt counter with it, which also puts the row back to "trying again" rather than
+   * leaving it labelled as not getting through.
+   *
+   * An item that is `queued` or in flight is left alone: there is nothing to release.
+   */
+  async retryNow(entryId: string): Promise<void> {
+    const nowIso = new Date().toISOString();
+    await this.db.transaction('rw', this.db.entries, this.db.outbox, async () => {
+      const item = await this.db.outbox.get(entryId);
+      if (!item || (item.state !== 'blocked' && item.state !== 'failed')) {
+        return;
+      }
+      await this.db.outbox.update(entryId, {
+        state: 'queued',
+        attempts: 0,
+        nextAttemptAt: null,
+        lastError: null,
+        failureKind: null,
+      });
+      await this.db.entries.update(entryId, { status: 'queued', updatedAt: nowIso });
+    });
+  }
+
+  /**
+   * The server has the whole entry: `queued → confirmed_by_server`.
+   *
+   * The outbox row is removed — and only the outbox row. It is a work ticket, not evidence: the
+   * entry, its audio and its photos all stay exactly where they are, because pruning local media
+   * is C1's job and PROJECT.md principle 3 allows it only after a grace period. Removing the
+   * ticket is what takes the entry off the pending screen, which is the whole point of confirming
+   * it.
+   */
+  async markConfirmedByServer(
+    entryId: string,
+    details: { serverStatus?: string | null; confirmedAt?: string } = {},
+  ): Promise<void> {
+    const nowIso = details.confirmedAt ?? new Date().toISOString();
+    await this.db.transaction('rw', this.db.entries, this.db.outbox, async () => {
+      const entry = await this.db.entries.get(entryId);
+      if (!entry) {
+        return;
+      }
+      await this.db.entries.update(entryId, {
+        status: 'confirmed_by_server',
+        serverStatus: (details.serverStatus as LocalEntry['serverStatus']) ?? entry.serverStatus,
+        confirmedByServerAt: nowIso,
+        updatedAt: nowIso,
+      });
+      await this.db.outbox.delete(entryId);
+    });
+  }
+
+  /** Record what the server last said about an entry, without changing the phone's own state. */
+  async setServerStatus(entryId: string, serverStatus: string | null): Promise<void> {
+    await this.db.entries.update(entryId, {
+      serverStatus: serverStatus as LocalEntry['serverStatus'],
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  // ---- Media, as the upload loop needs it ----------------------------------------------------
+
+  /**
+   * An entry's files in the order ARCHITECTURE §8 says to upload them: **audio first, then photos
+   * one at a time**. The report only needs the recording, so processing can start while photos
+   * are still climbing over a bad connection.
+   */
+  async listMediaForUpload(entryId: string): Promise<LocalMedia[]> {
+    const media = await this.db.media.where('entryId').equals(entryId).toArray();
+    return media.sort((a, b) => {
+      if (a.kind !== b.kind) {
+        return a.kind === 'audio' ? -1 : 1;
+      }
+      return a.createdAt.localeCompare(b.createdAt);
+    });
+  }
+
+  /** Persist a file's checksum, computed lazily on its first upload attempt (Dexie v4). */
+  async setMediaSha256(mediaId: string, sha256: string): Promise<void> {
+    await this.db.media.update(mediaId, { sha256 });
+  }
+
+  /** The object store holds this file: record where, so a resumed attempt can skip it. */
+  async markMediaUploaded(mediaId: string, storageKey: string): Promise<void> {
+    await this.db.media.update(mediaId, { uploadState: 'uploaded', storageKey });
+  }
+
+  async setMediaUploadState(
+    mediaId: string,
+    uploadState: LocalMedia['uploadState'],
+  ): Promise<void> {
+    await this.db.media.update(mediaId, { uploadState });
+  }
 }
+
+/**
+ * The phone-side entry status implied by each outbox state.
+ *
+ * One table rather than a nested conditional, so adding a state cannot silently fall through to
+ * `queued` — which is how an entry that can never be sent would end up telling the foreman it is
+ * waiting for the network.
+ */
+const ENTRY_STATUS_BY_OUTBOX_STATE: Record<OutboxState, LocalEntry['status']> = {
+  queued: 'queued',
+  in_flight: 'uploading',
+  failed: 'failed',
+  blocked: 'blocked',
+};

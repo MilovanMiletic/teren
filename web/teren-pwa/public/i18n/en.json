@@ -19,6 +19,7 @@
     "yesterday": "Yesterday",
     "cancel": "Cancel",
     "back": "Back",
+    "close": "Close",
     "photos": {
       "zero": "no photos",
       "one": "{{count}} photo",
@@ -43,14 +44,133 @@
     "record": "Record report",
     "recent": {
       "label": "Recent entries",
+      "all": "All entries",
       "empty": "No entries on this phone for this site yet."
     }
   },
   "entry": {
     "status": {
+      "processing": "Processing",
       "awaitingReview": "Awaiting review",
+      "incomplete": "Arriving",
+      "needsReview": "Needs review",
       "confirmed": "Confirmed",
-      "reported": "Sent"
+      "reported": "Sent",
+      "received": "Received"
+    }
+  },
+  "archive": {
+    "title": "Site diary",
+    "empty": {
+      "title": "No entries",
+      "body": "There are no entries for this site yet. Recorded reports are kept here, day by day."
+    },
+    "select": {
+      "title": "Choose a day",
+      "body": "Open an entry from the list to see the work, the transcript, the photos and the recording."
+    },
+    "partial": {
+      "offline": "No internet — showing only what is on this phone.",
+      "unauthorized": "This phone is not authorised to read from the server — showing only what is on the phone.",
+      "notConfigured": "This app has no server set up — showing only what is on the phone.",
+      "unavailable": "The server is not responding — showing only what is on this phone.",
+      "stale": "The server is unreachable — this view may not be complete."
+    },
+    "detail": {
+      "label": "Entry",
+      "open": "Open entry",
+      "loading": "Loading the entry…",
+      "capturedAt": "Recorded at {{time}}",
+      "immutable": "An entry never changes. A correction is filed as a new entry referring back to this one.",
+      "unreachable": {
+        "title": "Entry could not be loaded",
+        "body": "This entry is not on this phone, and the server could not be asked whether it has it. Try again when the network is back."
+      },
+      "blocked": {
+        "title": "This entry cannot be sent",
+        "body": "The server will not accept this entry, so it will not go on its own. The recording and photos are safe on the phone — open the \"Waiting to upload\" screen to see why."
+      },
+      "missing": {
+        "title": "Entry not found",
+        "body": "This entry is neither on the phone nor on the server. It may have been opened from another link."
+      },
+      "awaiting": {
+        "title": "Not on the server yet",
+        "body": "The recording and photos are safe on this phone and upload on their own. Until they arrive, this entry cannot go into a report."
+      }
+    },
+    "section": {
+      "work": "Work done",
+      "headcount": "People",
+      "materials": "Materials",
+      "blockers": "Blockers",
+      "hiddenWork": "Hidden work",
+      "notes": "Notes",
+      "transcript": "Transcript",
+      "photos": "Photos",
+      "audio": "Recording",
+      "conditions": "Conditions"
+    },
+    "structure": {
+      "corrected": "Checked by a person",
+      "extracted": "Extracted automatically",
+      "empty": {
+        "title": "Nothing was extracted from this recording",
+        "body": "Processing ran but found no work details in the recording. The transcript and photos below are still the full evidence."
+      },
+      "processing": {
+        "title": "Processing",
+        "body": "The server has the entry and is still extracting work, people and materials. The transcript and photos appear as soon as they are ready."
+      },
+      "needsReview": {
+        "title": "Processing failed",
+        "body": "This recording could not be turned into a structured day. Nothing was lost — the recording and photos below are kept, and the entry is waiting for a person to review it."
+      },
+      "notSent": {
+        "title": "Not sent yet",
+        "body": "Work details are extracted on the server, so until this entry reaches it, all that is here is what was recorded on site."
+      },
+      "unavailable": {
+        "title": "Server data unavailable",
+        "body": "The server could not be asked what was extracted from this entry. Below is everything the phone holds."
+      }
+    },
+    "transcript": {
+      "pending": "The transcript has not arrived from the server yet.",
+      "needsReview": "This recording could not be transcribed. The recording itself is kept and can be played back.",
+      "notSent": "This entry has not been sent to the server, so there is no transcript.",
+      "unavailable": "The server could not be asked for the transcript."
+    },
+    "materials": {
+      "delivered": "Delivered",
+      "notDelivered": "Not delivered"
+    },
+    "blockers": {
+      "waitingOn": "Waiting on: {{who}}"
+    },
+    "hiddenWork": {
+      "note": "Evidence recorded before it was covered up"
+    },
+    "photos": {
+      "none": "This entry has no photos.",
+      "onServer": "{{count}} more on the server — not on this phone.",
+      "open": "Open photo {{index}}",
+      "position": "{{index}} / {{total}}",
+      "previous": "Previous photo",
+      "next": "Next photo"
+    },
+    "audio": {
+      "none": "This entry has no recording.",
+      "offsite": "The recording is on the server — not on this phone."
+    },
+    "weather": {
+      "label": "Weather",
+      "range": "{{min}}–{{max}} °C",
+      "precipitation": "Rainfall {{mm}} mm"
+    },
+    "gps": {
+      "label": "Location",
+      "accuracy": "±{{metres}} m"
     }
   },
   "capture": {
@@ -64,6 +184,7 @@
       "tooShort": "That recording was too short — try again.",
       "retry": "Try again",
       "openSalvaged": "Open the saved recording",
+      "salvaging": "Saving what was recorded…",
       "saveFailed": "The recording could not be saved — please try again.",
       "saveRetry": "Save again"
     },
@@ -121,7 +242,8 @@
     "allSent": "All sent",
     "uploading": "Uploading · {{done}}/{{total}}",
     "uploadingToServer": "Uploading to server",
-    "uploadingDetail": "Audio sent · uploading photos"
+    "uploadingDetail": "Audio sent · uploading photos",
+    "stuckCount": "Not getting through: {{count}}"
   },
   "pending": {
     "title": "Waiting to upload",
@@ -130,12 +252,22 @@
       "body": "Entries are safe on your phone and upload automatically when the network returns."
     },
     "status": {
-      "failed": "Not sent",
+      "retrying": "Trying again",
+      "blocked": "Cannot be sent",
       "uploading": "Uploading · {{done}}/{{total}}",
-      "queued": "Waiting for network"
+      "queued": "Waiting for network",
+      "stalled": "Not getting through"
     },
-    "failed": {
-      "reason": "connection dropped during upload"
+    "reason": {
+      "offline": "The server could not be reached.",
+      "server": "The server is not responding right now.",
+      "storage": "The upload was interrupted before all files arrived.",
+      "incomplete": "Some files have not arrived on the server yet.",
+      "rejected": "The server did not accept this entry.",
+      "unauthorized": "This phone is not authorised to send to the server.",
+      "notConfigured": "This app has no server set up.",
+      "insecureContext": "Entries can only be sent over a secure (https) address.",
+      "unknown": "Sending failed for an unexpected reason."
     },
     "retry": "Try again",
     "meta": "Audio {{duration}} · {{photos}}",
@@ -150,6 +282,7 @@
       "title": "Queue status",
       "uploading": "Uploading",
       "total": "Total"
-    }
+    },
+    "evidenceSafe": "The recording and the photos are safe on this phone. Nothing was lost."
   }
 }
