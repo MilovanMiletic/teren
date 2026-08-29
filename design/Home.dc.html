@@ -1,0 +1,102 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'IBM Plex Sans', Arial, sans-serif; color: #1A1A1A; background: #EFEDE8; -webkit-font-smoothing: antialiased; }
+    a { color: #C2410C; } a:hover { color: #9A3412; }
+  </style>
+</helmet>
+<div style="width: 390px; height: 844px; background: #EFEDE8; display: flex; flex-direction: column; overflow: hidden; padding: 0 16px;">
+
+  <!-- App bar -->
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px 2px 14px 2px;">
+    <span style="font-size: 14px; font-weight: 700; letter-spacing: 2px;">TEREN</span>
+    <span style="font-size: 13px; font-weight: 500; color: #5F5B52; font-variant-numeric: tabular-nums;">subota, 29. 8. 2026.</span>
+  </div>
+
+  <!-- Project picker -->
+  <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; background: #FFFFFF; border-radius: 20px; box-shadow: 0 1px 3px rgba(26,26,26,0.04), 0 6px 20px rgba(26,26,26,0.05); padding: 12px 18px; min-height: 68px;">
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.8px; color: #5F5B52;">GRADILIŠTE</span>
+      <span style="font-size: 17px; font-weight: 600;">Vojvode Stepe 212, Beograd</span>
+    </div>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5F5B52" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+  </div>
+
+  <!-- Today card -->
+  <div style="position: relative; background: #FFFFFF; border-radius: 24px; box-shadow: 0 1px 3px rgba(26,26,26,0.04), 0 6px 20px rgba(26,26,26,0.05); padding: 20px; margin-top: 12px; min-height: 116px; overflow: hidden;">
+    <div style="position: absolute; right: -34px; top: -34px; width: 150px; height: 150px; border-radius: 50%; background: #F7E7DF;"></div>
+    <div style="position: absolute; right: -8px; top: -8px; width: 98px; height: 98px; border-radius: 50%; background: #F0C9B8;"></div>
+    <div style="position: absolute; right: 16px; top: 16px; width: 50px; height: 50px; border-radius: 50%; background: #E8967B;"></div>
+    <div style="position: relative; display: flex; flex-direction: column; gap: 5px; max-width: 240px;">
+      <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.8px; color: #5F5B52;">DANAŠNJI UNOS</span>
+      <span style="font-size: 22px; font-weight: 700;">Još nije unet</span>
+      <span style="font-size: 13px; font-weight: 500; color: #5F5B52;">Snimite izveštaj pre kraja dana.</span>
+    </div>
+  </div>
+
+  <!-- Record -->
+  <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 18px 0 6px 0;">
+    <div style="width: 132px; height: 132px; border-radius: 50%; background: #E8674A; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 20px rgba(232,103,74,0.35);">
+      <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10v1a7 7 0 0 0 14 0v-1"></path><path d="M12 18v4"></path></svg>
+    </div>
+    <span style="font-size: 15px; font-weight: 600;">Snimi izveštaj</span>
+  </div>
+
+  <!-- Sync row -->
+  <div style="display: flex; align-items: center; gap: 10px; background: #FFFFFF; border-radius: 999px; box-shadow: 0 1px 3px rgba(26,26,26,0.04), 0 6px 20px rgba(26,26,26,0.05); padding: 0 18px; min-height: 52px; margin-top: 14px;">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16l-4-4-4 4"></path><path d="M12 12v9"></path><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path></svg>
+    <span style="font-size: 15px; font-weight: 600; flex-grow: 1;">Čekaju slanje: <span style="font-variant-numeric: tabular-nums;">2</span></span>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5F5B52" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>
+  </div>
+
+  <!-- Recent entries (from seed) -->
+  <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 16px;">
+    <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.8px; color: #5F5B52; padding-left: 4px;">POSLEDNJI UNOSI</span>
+    <div style="display: flex; flex-direction: column; background: #FFFFFF; border-radius: 20px; box-shadow: 0 1px 3px rgba(26,26,26,0.04), 0 6px 20px rgba(26,26,26,0.05);">
+
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 18px; min-height: 62px; border-bottom: 1px solid #ECE9E3;">
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span style="font-size: 14px; font-weight: 600;">Montaža kotla Bosch u kotlarnici</span>
+          <span style="font-size: 13px; font-weight: 500; color: #5F5B52; font-variant-numeric: tabular-nums;">petak, 28. 8.</span>
+        </div>
+        <div style="display: flex; align-items: center; background: #F6E8D8; border-radius: 999px; padding: 5px 10px;">
+          <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.5px; color: #92400E;">ČEKA PROVERU</span>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 18px; min-height: 62px; border-bottom: 1px solid #ECE9E3;">
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span style="font-size: 14px; font-weight: 600;">Vodokotlići Geberit, 3. sprat</span>
+          <span style="font-size: 13px; font-weight: 500; color: #5F5B52; font-variant-numeric: tabular-nums;">četvrtak, 27. 8.</span>
+        </div>
+        <div style="display: flex; align-items: center; background: #EFEDE8; border-radius: 999px; padding: 5px 10px;">
+          <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.5px; color: #5F5B52;">POTVRĐEN</span>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 18px; min-height: 62px;">
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span style="font-size: 14px; font-weight: 600;">Razvod vode, 2. sprat</span>
+          <span style="font-size: 13px; font-weight: 500; color: #5F5B52; font-variant-numeric: tabular-nums;">sreda, 26. 8.</span>
+        </div>
+        <div style="display: flex; align-items: center; background: #E4EDE2; border-radius: 999px; padding: 5px 10px;">
+          <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.5px; color: #166534;">POSLAT</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

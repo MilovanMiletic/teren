@@ -1,0 +1,163 @@
+.saved {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+  padding-bottom: var(--space-6);
+  text-align: center;
+}
+
+.saved__mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--color-card);
+  box-shadow: var(--shadow-card);
+  color: var(--color-ok-icon);
+}
+
+.saved__body {
+  margin: 0;
+  line-height: 1.5;
+  color: var(--color-ink-2);
+}
+
+.missing {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-5);
+}
+
+/* ---- What is stored ----------------------------------------------------------------------- */
+
+.stored {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4) 18px;
+}
+
+.stored__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.stored__label {
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+
+.stored__icon {
+  color: var(--color-ok-icon);
+}
+
+/* ---- Photos ------------------------------------------------------------------------------- */
+
+.photos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+}
+
+.photos__label {
+  margin: 0;
+  padding-left: var(--space-1);
+}
+
+.photos__strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.photos__thumb {
+  width: 92px;
+  height: 92px;
+  border-radius: var(--radius-thumb);
+  object-fit: cover;
+  background: var(--color-card);
+  box-shadow: var(--shadow-card);
+}
+
+/* A label, not a button: the file input inside it is what actually opens the camera. */
+.photos__add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 92px;
+  height: 92px;
+  border: 1px dashed var(--color-ink-3);
+  border-radius: var(--radius-thumb);
+  color: var(--color-ink-2);
+  cursor: pointer;
+}
+
+.photos__add:focus-within {
+  outline: 3px solid var(--color-accent-deep);
+  outline-offset: 2px;
+}
+
+.photos__add--busy {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.photos__add-text {
+  font-size: var(--text-meta);
+  font-weight: 600;
+}
+
+.photos__error {
+  color: var(--color-err);
+}
+
+.footer {
+  padding-top: var(--space-5);
+  padding-bottom: var(--space-8);
+}
+
+@media (min-width: 768px) {
+  /* The app header carries the wordmark from here up. */
+  .bar {
+    display: none;
+  }
+
+  .saved {
+    margin-top: var(--space-8);
+  }
+}
+
+/* Expanded: the same focused column, one step larger, and photos get a proper grid. */
+@media (min-width: 1024px) {
+  .saved__mark {
+    width: 96px;
+    height: 96px;
+  }
+
+  .photos__strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: var(--space-3);
+  }
+
+  .photos__thumb,
+  .photos__add {
+    width: 100%;
+    height: 120px;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .photos__add:hover {
+    border-color: var(--color-accent-deep);
+    color: var(--color-accent-deep);
+  }
+}

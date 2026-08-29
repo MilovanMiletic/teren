@@ -1,0 +1,167 @@
+<div class="screen" *transloco="let t">
+  <!-- Medium and up: the application header replaces the phone bar and hosts the picker. -->
+  <app-header [project]="project()?.address ?? null" [pickable]="true" (choose)="openPicker()" />
+
+  <header class="column bar bar--compact">
+    <span class="bar__brand">{{ t('app.name') }}</span>
+    <span class="t-meta t-num">{{ now() | date: 'EEEE, d. M. y.' }}</span>
+  </header>
+
+  <div class="column content band-top">
+    @if (!status.storageAvailable()) {
+      <!-- The app booted, but it cannot hold evidence. Say so instead of recording into a void. -->
+      <div class="card storage-warning" role="alert">
+        <app-icon name="alert-triangle" [size]="20" class="storage-warning__icon" />
+        <div class="storage-warning__text">
+          <span class="storage-warning__title">{{ t('app.storage.unavailable.title') }}</span>
+          <span class="t-meta">{{ t('app.storage.unavailable.body') }}</span>
+        </div>
+      </div>
+    }
+
+    <!-- Which site. Persisted, because a foreman works the same one for weeks. -->
+    <button
+      type="button"
+      class="card card-interactive picker"
+      aria-haspopup="dialog"
+      [attr.aria-expanded]="pickerOpen()"
+      [attr.aria-label]="t('home.project.change')"
+      (click)="openPicker()"
+    >
+      <span class="picker__text">
+        <span class="t-label">{{ t('home.project.label') }}</span>
+        <span class="picker__value">{{ project()?.address ?? t('home.project.none') }}</span>
+      </span>
+      <app-icon name="chevron-down" [size]="20" class="picker__chevron" />
+    </button>
+
+    <!-- Left pane at expanded: the day's status and the one action that changes it. -->
+    <div class="pane pane--primary">
+      <section class="card card--hero today" [attr.aria-label]="t('home.today.label')">
+        <span class="today__circle today__circle--1" aria-hidden="true"></span>
+        <span class="today__circle today__circle--2" aria-hidden="true"></span>
+        <span class="today__circle today__circle--3" aria-hidden="true"></span>
+        <div class="today__text">
+          <span class="t-label">{{ t('home.today.label') }}</span>
+          @if (todayEntry(); as entry) {
+            <span class="t-h1 t-num">
+              {{ t('home.today.done', { time: entry.capturedAt | date: 'HH:mm' }) }}
+            </span>
+            <span class="t-meta">{{ t('home.today.doneHint') }}</span>
+          } @else {
+            <span class="t-h1">{{ t('home.today.missing') }}</span>
+            <span class="t-meta">{{ t('home.today.missingHint') }}</span>
+          }
+        </div>
+      </section>
+
+      <!-- The one primary action on this screen; a capture card at expanded. -->
+      <div class="record">
+        <button type="button" class="record__button" (click)="record()">
+          <app-icon name="mic" [size]="52" />
+          <span class="visually-hidden">{{ t('home.record') }}</span>
+        </button>
+        <span class="record__label" aria-hidden="true">{{ t('home.record') }}</span>
+        <span class="record__hint t-meta">{{ t('capture.record.hint') }}</span>
+      </div>
+    </div>
+
+    <!-- Right pane at expanded: where the work stands. -->
+    <div class="pane pane--secondary">
+      <!-- Sync state is a permanent row, never a toast (PROJECT.md principle 3). -->
+      <button type="button" class="card card-interactive sync" (click)="openPending()">
+        @if (pendingCount() > 0) {
+          <app-icon name="upload-cloud" [size]="18" class="sync__icon sync__icon--warn" />
+          <span class="sync__text t-num">{{
+            t('sync.pendingCount', { count: pendingCount() })
+          }}</span>
+        } @else {
+          <app-icon name="check" [size]="18" class="sync__icon sync__icon--ok" />
+          <span class="sync__text">{{ t('sync.allSent') }}</span>
+        }
+        <app-icon name="chevron-right" [size]="18" class="sync__chevron" />
+      </button>
+
+      <section class="recent">
+        <h2 class="t-label recent__label">{{ t('home.recent.label') }}</h2>
+        @if (recent().length === 0) {
+          <p class="card recent__empty t-meta">{{ t('home.recent.empty') }}</p>
+        } @else {
+          <ul class="card recent__list">
+            @for (entry of recent(); track entry.id) {
+              <li class="recent__row">
+                <div class="recent__text">
+                  <span class="recent__title t-num">
+                    @switch (dayLabel(entry)) {
+                      @case ('today') {
+                        {{ t('common.today') }}
+                      }
+                      @case ('yesterday') {
+                        {{ t('common.yesterday') }}
+                      }
+                      @default {
+                        {{ entry.capturedAt | date: 'EEEE, d. M.' }}
+                      }
+                    }
+                    {{ entry.capturedAt | date: 'HH:mm' }}
+                  </span>
+                  <span class="t-meta t-num">
+                    {{
+                      t('pending.meta', {
+                        duration: entry.audioDurationMs | duration,
+                        photos: t(plural.photos(entry.photoCount), { count: entry.photoCount }),
+                      })
+                    }}
+                  </span>
+                </div>
+                <span class="chip chip--{{ statusTone(entry) }}">{{ t(statusKey(entry)) }}</span>
+              </li>
+            }
+          </ul>
+        }
+      </section>
+    </div>
+  </div>
+
+  <!-- Compact only: the switcher lives at the foot of the scroll, off the capture path. -->
+  <div class="column home-footer">
+    <app-language-switcher />
+  </div>
+
+  @if (pickerOpen()) {
+    <div class="sheet" (click)="closePicker()">
+      <div
+        class="sheet__panel"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-label]="t('home.project.choose')"
+        (click)="$event.stopPropagation()"
+      >
+        <h2 class="t-h2 sheet__title">{{ t('home.project.choose') }}</h2>
+        <ul class="sheet__list">
+          @for (option of projectList(); track option.id) {
+            <li>
+              <button
+                type="button"
+                class="sheet__option"
+                [class.sheet__option--selected]="option.id === project()?.id"
+                (click)="choose(option)"
+              >
+                <span class="sheet__option-text">
+                  <span class="sheet__option-name">{{ option.name }}</span>
+                  <span class="t-meta">{{ option.address }}</span>
+                </span>
+                @if (option.id === project()?.id) {
+                  <app-icon name="check" [size]="20" class="sheet__check" />
+                }
+              </button>
+            </li>
+          }
+        </ul>
+        <button type="button" class="btn btn--tertiary sheet__cancel" (click)="closePicker()">
+          {{ t('common.cancel') }}
+        </button>
+      </div>
+    </div>
+  }
+</div>

@@ -1,0 +1,82 @@
+<div class="screen" *transloco="let t">
+  <app-header [project]="entry()?.projectName ?? null" />
+
+  <header class="column column--focused bar">
+    <span class="bar__brand">{{ t('app.name') }}</span>
+  </header>
+
+  @if (loaded() && !entry()) {
+    <div class="column column--focused">
+      <p class="card missing t-body">{{ t('capture.saved.missing') }}</p>
+      <button type="button" class="btn btn--tertiary" (click)="leave()">
+        {{ t('common.back') }}
+      </button>
+    </div>
+  } @else {
+    <div class="column column--focused saved band-top">
+      <span class="saved__mark" aria-hidden="true">
+        <app-icon name="check" [size]="40" [strokeWidth]="2.5" />
+      </span>
+      <h1 class="t-h1">{{ t('capture.saved.title') }}</h1>
+      <p class="t-body saved__body">{{ t('capture.saved.body') }}</p>
+    </div>
+
+    <!-- What is on the phone right now. Not an upload bar: nothing is uploading yet. -->
+    <div class="column column--focused">
+      <div class="card stored">
+        <div class="stored__row">
+          <span class="stored__label">{{ t('capture.saved.storedLabel') }}</span>
+          <app-icon name="check" [size]="18" class="stored__icon" />
+        </div>
+        <span class="t-meta t-num">
+          {{
+            t('capture.saved.storedDetail', {
+              duration: entry()?.audioDurationMs | duration,
+              photos: t(plural.photos(photoCount()), { count: photoCount() }),
+            })
+          }}
+        </span>
+      </div>
+    </div>
+
+    <section class="column column--focused photos">
+      <h2 class="t-label photos__label">
+        {{ t('capture.photos.label', { count: photoCount() }) }}
+      </h2>
+      <div class="photos__strip">
+        @for (photo of media(); track photo.id) {
+          <img class="photos__thumb" [src]="thumbnail(photo)" alt="" />
+        }
+        <label class="photos__add" [class.photos__add--busy]="busy()">
+          <app-icon name="plus" [size]="20" />
+          <span class="photos__add-text">{{ t('capture.photos.addOne') }}</span>
+          <input
+            class="visually-hidden"
+            type="file"
+            accept="image/*"
+            capture="environment"
+            multiple
+            [disabled]="busy()"
+            (change)="onPhotoSelected($event)"
+          />
+        </label>
+      </div>
+      @if (busy()) {
+        <span class="t-meta">{{ t('capture.photos.preparing') }}</span>
+      }
+      @if (photoError() === 'rejected') {
+        <span class="t-meta photos__error">{{ t('capture.photos.rejected') }}</span>
+      } @else if (photoError() === 'failed') {
+        <span class="t-meta photos__error">{{ t('capture.photos.failed') }}</span>
+      }
+    </section>
+
+    <div class="grow"></div>
+
+    <div class="column column--focused footer">
+      <button type="button" class="btn btn--primary" [disabled]="busy()" (click)="done()">
+        {{ t('capture.saved.done') }}
+      </button>
+    </div>
+  }
+</div>

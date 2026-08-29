@@ -1,0 +1,62 @@
+# Local development dependencies for Teren.
+# The API and PWA run on the host (dotnet run / ng serve); this file provides
+# only the backing services, so the edit-reload loop stays fast.
+#
+#   docker compose up -d
+#   docker compose down          (keeps data)
+#   docker compose down -v       (wipes data)
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: teren-postgres
+    environment:
+      POSTGRES_DB: teren
+      POSTGRES_USER: teren
+      POSTGRES_PASSWORD: teren_dev_only
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U teren -d teren"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # S3-compatible object storage. Mirrors Hetzner Object Storage in production,
+  # so the application code is identical in both places.
+  minio:
+    image: minio/minio:latest
+    container_name: teren-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: teren
+      MINIO_ROOT_PASSWORD: teren_dev_only
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # web console — http://localhost:9001
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: creates the media bucket so the app never has to.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 teren teren_dev_only &&
+      mc mb --ignore-existing local/teren-media &&
+      echo 'bucket teren-media ready'
+      "
+
+volumes:
+  postgres-data:
+  minio-data:

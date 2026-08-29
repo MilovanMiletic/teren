@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'IBM Plex Sans', Arial, sans-serif; color: #1A1A1A; background: #EFEDE8; -webkit-font-smoothing: antialiased; }
+    a { color: #C2410C; } a:hover { color: #9A3412; }
+  </style>
+</helmet>
+<div style="width: 390px; height: 844px; background: #EFEDE8; display: flex; flex-direction: column; overflow: hidden; padding: 0 16px;">
+
+  <!-- Brand block -->
+  <div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 0; padding: 0 12px;">
+
+    <!-- Layered circles motif -->
+    <div style="position: relative; width: 150px; height: 120px; margin-bottom: 28px;">
+      <div style="position: absolute; left: 0; top: 10px; width: 100px; height: 100px; border-radius: 50%; background: #F0C9B8;"></div>
+      <div style="position: absolute; right: 0; top: 0; width: 76px; height: 76px; border-radius: 50%; background: #E8967B;"></div>
+      <div style="position: absolute; right: 26px; bottom: 0; width: 56px; height: 56px; border-radius: 50%; background: #E8674A; display: flex; justify-content: center; align-items: center;">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10v1a7 7 0 0 0 14 0v-1"></path><path d="M12 18v4"></path></svg>
+      </div>
+    </div>
+
+    <span style="font-size: 34px; font-weight: 700; letter-spacing: 6px;">TEREN</span>
+    <span style="font-size: 17px; font-weight: 600; text-align: center; margin-top: 12px;">Građevinski dnevnik koji se sam piše.</span>
+    <span style="font-size: 15px; font-weight: 400; line-height: 1.55; color: #5F5B52; text-align: center; margin-top: 10px;">Snimite 30 sekundi govora sa gradilišta — Teren od toga pravi uredan dnevnik i izveštaj za investitora.</span>
+  </div>
+
+  <!-- Entry paths -->
+  <div style="display: flex; flex-direction: column; gap: 12px; padding-bottom: 32px;">
+    <div style="display: flex; justify-content: center; align-items: center; min-height: 56px; border-radius: 999px; background: #C2410C;">
+      <span style="font-size: 16px; font-weight: 600; color: #FFFFFF;">Prijavi se</span>
+    </div>
+    <div style="display: flex; justify-content: center; align-items: center; min-height: 56px; border-radius: 999px; background: #FFFFFF; box-shadow: 0 1px 3px rgba(26,26,26,0.04), 0 6px 20px rgba(26,26,26,0.05);">
+      <span style="font-size: 16px; font-weight: 600;">Pridruži se gradilištu kodom</span>
+    </div>
+    <span style="font-size: 13px; font-weight: 400; color: #5F5B52; text-align: center; margin-top: 4px;">Kod za pridruživanje dobijate od vlasnika firme.</span>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

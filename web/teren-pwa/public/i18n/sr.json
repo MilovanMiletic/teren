@@ -1,0 +1,155 @@
+{
+  "app": {
+    "name": "Teren",
+    "tagline": "Građevinski dnevnik koji se sam piše",
+    "storage": {
+      "unavailable": {
+        "title": "Čuvanje na telefonu ne radi",
+        "body": "Pregledač ne dozvoljava lokalno čuvanje podataka. Snimanje je isključeno dok se to ne reši — ništa od ranije nije izgubljeno."
+      }
+    }
+  },
+  "common": {
+    "language": "Jezik",
+    "languageName": {
+      "sr": "Srpski",
+      "en": "English"
+    },
+    "today": "Danas",
+    "yesterday": "Juče",
+    "cancel": "Otkaži",
+    "back": "Nazad",
+    "photos": {
+      "zero": "bez fotografija",
+      "one": "{{count}} fotografija",
+      "few": "{{count}} fotografije",
+      "other": "{{count}} fotografija"
+    }
+  },
+  "home": {
+    "project": {
+      "label": "Gradilište",
+      "change": "Promenite gradilište",
+      "choose": "Izaberite gradilište",
+      "none": "Nema gradilišta"
+    },
+    "today": {
+      "label": "Današnji unos",
+      "missing": "Još nije unet",
+      "missingHint": "Snimite izveštaj pre kraja dana.",
+      "done": "Unet u {{time}}",
+      "doneHint": "Možete snimiti još jedan unos ako se nešto promeni."
+    },
+    "record": "Snimi izveštaj",
+    "recent": {
+      "label": "Poslednji unosi",
+      "empty": "Za ovo gradilište još nema unosa na telefonu."
+    }
+  },
+  "entry": {
+    "status": {
+      "awaitingReview": "Čeka proveru",
+      "confirmed": "Potvrđen",
+      "reported": "Poslat"
+    }
+  },
+  "capture": {
+    "record": {
+      "hint": "Oko 30 sekundi je dovoljno",
+      "recording": "Snimanje",
+      "mention": "Pomenite: radove · ljude · materijal · zastoje",
+      "stop": "Završi snimanje",
+      "cancel": "Otkaži",
+      "starting": "Priprema mikrofona…",
+      "tooShort": "Snimak je prekratak — probajte ponovo.",
+      "retry": "Pokušaj ponovo",
+      "openSalvaged": "Otvori sačuvani snimak",
+      "saveFailed": "Snimak nije mogao da se sačuva — pokušajte ponovo.",
+      "saveRetry": "Sačuvaj ponovo"
+    },
+    "mic": {
+      "denied": {
+        "title": "Mikrofon nije dozvoljen",
+        "body": "Teren ne može da snima dok mu pregledač ne dozvoli mikrofon. Dozvolite mikrofon u podešavanjima sajta pa pokušajte ponovo. Ništa nije izgubljeno."
+      },
+      "unavailable": {
+        "title": "Mikrofon nije dostupan",
+        "body": "Telefon ne prijavljuje nijedan mikrofon ili ga koristi druga aplikacija. Zatvorite druge aplikacije pa pokušajte ponovo."
+      },
+      "unsupported": {
+        "title": "Snimanje nije podržano",
+        "body": "Ovaj pregledač ne može da snima zvuk. Otvorite Teren u novijem pregledaču, preko sigurne (HTTPS) adrese."
+      },
+      "error": {
+        "title": "Snimanje nije počelo",
+        "body": "Došlo je do greške pri pokretanju mikrofona. Pokušajte ponovo."
+      },
+      "interrupted": {
+        "title": "Snimanje je prekinuto",
+        "body": "Nešto na telefonu je prekinulo snimanje — poziv ili druga aplikacija. Sve što je snimljeno do tog trenutka je sačuvano."
+      }
+    },
+    "photos": {
+      "add": "Dodaj fotografije",
+      "addOne": "Dodaj",
+      "label": "Fotografije ({{count}})",
+      "preparing": "Priprema fotografije…",
+      "failed": "Fotografija nije mogla da se pripremi. Pokušajte ponovo.",
+      "rejected": "Unos je već poslat na red za slanje, pa fotografija nije dodata."
+    },
+    "saved": {
+      "title": "Unos sačuvan",
+      "body": "Telefon čuva sve dok server ne potvrdi prijem. Možete odmah da nastavite sa poslom.",
+      "storedLabel": "Sačuvano na telefonu",
+      "storedDetail": "Snimak {{duration}} · {{photos}}",
+      "done": "Gotovo",
+      "missing": "Ovaj unos nije pronađen na telefonu."
+    },
+    "blocked": {
+      "project": {
+        "title": "Gradilište nije izabrano",
+        "body": "Izaberite gradilište na početnom ekranu pa pokušajte ponovo. Snimak mora da pripada gradilištu."
+      },
+      "storage": {
+        "title": "Telefon ne može da čuva snimke",
+        "body": "Pregledač ne dozvoljava lokalno čuvanje podataka, pa snimak ne bi imao gde da se sačuva. Isključite privatni režim ili oslobodite prostor pa pokušajte ponovo."
+      }
+    }
+  },
+  "sync": {
+    "pendingCount": "Čekaju slanje: {{count}}",
+    "allSent": "Sve poslato",
+    "uploading": "Slanje u toku · {{done}}/{{total}}",
+    "uploadingToServer": "Slanje na server",
+    "uploadingDetail": "Snimak poslat · šalju se fotografije"
+  },
+  "pending": {
+    "title": "Čeka slanje",
+    "offline": {
+      "title": "Nema interneta",
+      "body": "Unosi su bezbedni na telefonu i šalju se sami čim se mreža vrati."
+    },
+    "status": {
+      "failed": "Nije poslato",
+      "uploading": "Šalje se · {{done}}/{{total}}",
+      "queued": "Čeka mrežu"
+    },
+    "failed": {
+      "reason": "veza je pukla tokom slanja"
+    },
+    "retry": "Pokušaj ponovo",
+    "meta": "Snimak {{duration}} · {{photos}}",
+    "trustNote": "Ništa se ne briše sa telefona dok server ne potvrdi da je unos primljen.",
+    "empty": {
+      "title": "Sve je poslato",
+      "body": "Poslednji unos je primljen danas u {{time}}. Svi snimci i fotografije su na serveru.",
+      "bodyNone": "Nijedan unos ne čeka slanje. Snimci i fotografije koje napravite ostaju ovde dok ne odu na server."
+    },
+    "newEntry": "Novi unos",
+    "summary": {
+      "title": "Stanje reda",
+      "uploading": "Šalje se",
+      "total": "Ukupno"
+    }
+  }
+}

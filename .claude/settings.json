@@ -1,0 +1,12 @@
+{
+  "enabledPlugins": {
+    "travel-plugins-common@travel": false,
+    "travel-plugins-ndc-knowledge@travel": false,
+    "travel-plugins-ndc-core@travel": false,
+    "travel-plugins-sbt-saga-knowledge@travel": false,
+    "travel-plugins-profile-sbt-saga@travel": false,
+    "travel-plugins-sbt-saga-core@travel": false,
+    "travel-plugins-code-quality-verification@travel": false,
+    "travel-plugins-default-tooling@travel": false
+  }
+}

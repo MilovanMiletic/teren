@@ -1,0 +1,93 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'IBM Plex Sans', Arial, sans-serif; color: #1A1A1A; background: #EFEDE8; -webkit-font-smoothing: antialiased; }
+    a { color: #C2410C; } a:hover { color: #9A3412; }
+  </style>
+</helmet>
+<div style="width: 390px; height: 844px; background: #EFEDE8; display: flex; flex-direction: column; overflow: hidden; padding: 0 16px;">
+
+  <!-- App bar: back + title + count -->
+  <div style="display: flex; align-items: center; gap: 14px; padding: 16px 0 16px 0;">
+    <div style="width: 44px; height: 44px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 3px rgba(26,26,26,0.04), 0 6px 20px rgba(26,26,26,0.05); display: flex; justify-content: center; align-items: center;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+    </div>
+    <span style="font-size: 22px; font-weight: 700; flex-grow: 1;">Čeka slanje</span>
+    <span style="font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; padding-right: 6px;">3</span>
+  </div>
+
+  <!-- Offline banner (dark card) -->
+  <div style="display: flex; align-items: flex-start; gap: 12px; background: #1A1A1A; border-radius: 20px; padding: 16px 18px;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#E8967B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-top: 1px;"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path><path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <span style="font-size: 15px; font-weight: 600; color: #FFFFFF;">Nema interneta</span>
+      <span style="font-size: 13px; font-weight: 400; line-height: 1.45; color: #C9C4BA;">Unosi su bezbedni na telefonu i šalju se sami čim se mreža vrati.</span>
+    </div>
+  </div>
+
+  <!-- Entry cards -->
+  <div style="display: flex; flex-direction: column; gap: 12px; padding-top: 12px; flex-grow: 1;">
+
+    <!-- Failed -->
+    <div style="display: flex; flex-direction: column; gap: 10px; background: #FFFFFF; border-radius: 20px; box-shadow: 0 1px 3px rgba(26,26,26,0.04), 0 6px 20px rgba(26,26,26,0.05); padding: 16px 18px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+        <span style="font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums;">Danas 14:05</span>
+        <div style="display: flex; align-items: center; gap: 6px; background: #F6E1DC; border-radius: 999px; padding: 5px 10px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#B91C1C" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.5px; color: #991B1B;">NIJE POSLATO</span>
+        </div>
+      </div>
+      <span style="font-size: 13px; font-weight: 400; color: #5F5B52;">Snimak 0:41 · 4 fotografije · veza je pukla tokom slanja</span>
+      <div style="display: flex; justify-content: center; align-items: center; gap: 8px; min-height: 48px; border-radius: 999px; background: #1A1A1A;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+        <span style="font-size: 15px; font-weight: 600; color: #FFFFFF;">Pokušaj ponovo</span>
+      </div>
+    </div>
+
+    <!-- Uploading -->
+    <div style="display: flex; flex-direction: column; gap: 10px; background: #FFFFFF; border-radius: 20px; box-shadow: 0 1px 3px rgba(26,26,26,0.04), 0 6px 20px rgba(26,26,26,0.05); padding: 16px 18px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+        <span style="font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums;">Danas 12:38</span>
+        <div style="display: flex; align-items: center; gap: 6px; background: #EFEDE8; border-radius: 999px; padding: 5px 10px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#5F5B52" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16l-4-4-4 4"></path><path d="M12 12v9"></path><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path></svg>
+          <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.5px; color: #5F5B52; font-variant-numeric: tabular-nums;">ŠALJE SE · 2/4</span>
+        </div>
+      </div>
+      <div style="height: 8px; border-radius: 4px; background: #ECE9E3; overflow: hidden;">
+        <div style="width: 50%; height: 8px; border-radius: 4px; background: #E8674A;"></div>
+      </div>
+      <span style="font-size: 13px; font-weight: 400; color: #5F5B52;">Snimak 0:33 · 3 fotografije</span>
+    </div>
+
+    <!-- Queued -->
+    <div style="display: flex; flex-direction: column; gap: 8px; background: #FFFFFF; border-radius: 20px; box-shadow: 0 1px 3px rgba(26,26,26,0.04), 0 6px 20px rgba(26,26,26,0.05); padding: 16px 18px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+        <span style="font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums;">Juče 16:52</span>
+        <div style="display: flex; align-items: center; gap: 6px; background: #F6E8D8; border-radius: 999px; padding: 5px 10px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.5px; color: #92400E;">ČEKA MREŽU</span>
+        </div>
+      </div>
+      <span style="font-size: 13px; font-weight: 400; color: #5F5B52;">Snimak 0:28 · 2 fotografije</span>
+    </div>
+
+  </div>
+
+  <!-- Trust note -->
+  <div style="padding: 16px 12px 24px 12px;">
+    <span style="display: block; font-size: 13px; font-weight: 400; line-height: 1.5; color: #5F5B52; text-align: center;">Ništa se ne briše sa telefona dok server ne potvrdi da je unos primljen.</span>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

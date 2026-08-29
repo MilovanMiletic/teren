@@ -1,0 +1,464 @@
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-bottom: var(--space-8);
+}
+
+/*
+ * Expanded: a real two-pane application layout on a 12-column grid. Left carries the day and the
+ * action that changes it; right carries where the work stands. Neither pane is filler.
+ */
+@media (min-width: 1024px) {
+  .content {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: var(--space-6);
+    align-items: start;
+  }
+
+  .storage-warning {
+    grid-column: 1 / -1;
+  }
+
+  .pane--primary {
+    grid-column: span 7;
+  }
+
+  .pane--secondary {
+    grid-column: span 5;
+  }
+}
+
+.storage-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4) 18px;
+  background: var(--color-err-bg);
+  box-shadow: none;
+}
+
+.storage-warning__icon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--color-err-icon);
+}
+
+.storage-warning__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.storage-warning__title {
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-err);
+}
+
+/* ---- Project picker ---------------------------------------------------------------------- */
+
+.picker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 68px;
+  padding: var(--space-3) 18px;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.picker__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.picker__value {
+  font-size: var(--text-h2);
+  font-weight: 600;
+}
+
+.picker__chevron {
+  flex: none;
+  color: var(--color-ink-2);
+}
+
+/* From medium up the picker lives in the app header; two of them would be two answers. */
+@media (min-width: 768px) {
+  .picker {
+    display: none;
+  }
+}
+
+/* ---- Today card -------------------------------------------------------------------------- */
+
+.today {
+  position: relative;
+  min-height: 116px;
+  padding: var(--space-5);
+}
+
+.today__circle {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.today__circle--1 {
+  right: -34px;
+  top: -34px;
+  width: 150px;
+  height: 150px;
+  background: var(--color-accent-tint-1);
+}
+
+.today__circle--2 {
+  right: -8px;
+  top: -8px;
+  width: 98px;
+  height: 98px;
+  background: var(--color-accent-tint-2);
+}
+
+.today__circle--3 {
+  right: var(--space-4);
+  top: var(--space-4);
+  width: 50px;
+  height: 50px;
+  background: var(--color-accent-tint-3);
+}
+
+.today__text {
+  position: relative;
+  /* Above the decoration, which is clipped to the card by the base `.card` rule. */
+  z-index: var(--z-content);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  /* Keeps the headline clear of the decorative circles at every width. */
+  max-width: min(240px, calc(100% - 120px));
+}
+
+/*
+ * Medium and up the card is far wider than the phone artboard, so the decoration grows with it
+ * and the headline is allowed the room it gains instead of staying pinned at a phone's 240 px.
+ */
+@media (min-width: 768px) {
+  .today {
+    min-height: 140px;
+    padding: var(--space-6);
+  }
+
+  .today__circle--1 {
+    right: -40px;
+    top: -40px;
+    width: 180px;
+    height: 180px;
+  }
+
+  .today__circle--2 {
+    right: -10px;
+    top: -10px;
+    width: 116px;
+    height: 116px;
+  }
+
+  .today__circle--3 {
+    right: var(--space-5);
+    top: var(--space-5);
+    width: 58px;
+    height: 58px;
+  }
+
+  .today__text {
+    max-width: calc(100% - 210px);
+  }
+}
+
+/* ---- Record ------------------------------------------------------------------------------ */
+
+.record {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 6px 0 2px;
+}
+
+.record__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 132px;
+  height: 132px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--color-card);
+  box-shadow: var(--shadow-record);
+  cursor: pointer;
+}
+
+.record__button:active {
+  transform: scale(0.97);
+}
+
+.record__label {
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+
+/* The supporting line only earns its space where there is space. */
+.record__hint {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .record {
+    margin: var(--space-2) 0;
+  }
+}
+
+/*
+ * Expanded: the record action becomes a capture card. It is still the dominant element on the
+ * screen — larger, not demoted — but it now sits on a surface instead of floating.
+ */
+@media (min-width: 1024px) {
+  .record {
+    margin: 0;
+    padding: var(--space-8) var(--space-6);
+    gap: var(--space-3);
+    border-radius: var(--radius-card-hero);
+    background: var(--color-card);
+    box-shadow: var(--shadow-card);
+  }
+
+  .record__button {
+    width: 168px;
+    height: 168px;
+  }
+
+  .record__button app-icon svg {
+    width: 64px;
+    height: 64px;
+  }
+
+  .record__label {
+    font-size: var(--text-h1);
+    font-weight: 700;
+  }
+
+  .record__hint {
+    display: block;
+  }
+}
+
+/* ---- Sync row ---------------------------------------------------------------------------- */
+
+.sync {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sync__icon--warn {
+  color: var(--color-warn-icon);
+}
+
+.sync__icon--ok {
+  color: var(--color-ok-icon);
+}
+
+.sync__text {
+  flex-grow: 1;
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+
+.sync__chevron {
+  color: var(--color-ink-2);
+}
+
+/* ---- Recent entries ----------------------------------------------------------------------- */
+
+.recent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.recent__label {
+  margin: 0;
+  padding-left: var(--space-1);
+}
+
+.recent__empty {
+  margin: 0;
+  padding: var(--space-4) 18px;
+}
+
+.recent__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recent__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 62px;
+  padding: var(--space-3) 18px;
+  border-bottom: 1px solid var(--color-card-line);
+}
+
+.recent__row:last-child {
+  border-bottom: 0;
+}
+
+.recent__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.recent__title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ---- Compact chrome and footer -------------------------------------------------------------- */
+
+@media (min-width: 768px) {
+  /* The app header takes over the wordmark and the date. */
+  .bar--compact {
+    display: none;
+  }
+}
+
+.home-footer {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-6);
+}
+
+@media (min-width: 768px) {
+  /* From medium up the switcher is in the header, where it is always in reach. */
+  .home-footer {
+    display: none;
+  }
+}
+
+/* ---- Project sheet ------------------------------------------------------------------------ */
+
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(26, 26, 26, 0.35);
+  padding: var(--page-gutter);
+  padding-bottom: calc(var(--page-gutter) + env(safe-area-inset-bottom));
+}
+
+.sheet__panel {
+  width: 100%;
+  /* A dialog, not a content column: it never grows with the page width. */
+  max-width: 520px;
+  max-height: 80dvh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border-radius: var(--radius-card-hero);
+  background: var(--color-card);
+  box-shadow: var(--shadow-card);
+}
+
+.sheet__title {
+  margin: 0;
+}
+
+.sheet__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sheet__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 64px;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-radius: var(--radius-field);
+  background: var(--color-canvas);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sheet__option--selected {
+  background: var(--color-accent-tint-1);
+}
+
+.sheet__option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sheet__option-name {
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+
+.sheet__check {
+  flex: none;
+  color: var(--color-accent-deep);
+}
+
+.sheet__cancel {
+  margin-top: var(--space-1);
+}
+
+/* A bottom sheet is a thumb affordance. With a pointer it becomes a centred dialog. */
+@media (min-width: 768px) {
+  .sheet {
+    align-items: center;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .sheet__option:hover {
+    background: var(--color-accent-tint-1);
+  }
+}

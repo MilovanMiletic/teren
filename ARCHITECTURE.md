@@ -1,0 +1,628 @@
+# Teren — Architecture
+
+The technical layer: stack, structure, data model, pipelines, and the decisions behind them.
+`PROJECT.md` says why, `ROADMAP.md` says in what order, this file says how.
+
+Status: partly built. §6 (data model) now describes the real schema as migrated; the pipelines
+and ops sections are still design ahead of code. Sections marked `[to verify]` are unconfirmed.
+Last updated: 2026-08-29.
+
+---
+
+## 1. Toolchain (verified on the dev machine, 2026-08-29)
+
+| Tool | Version | Note |
+|---|---|---|
+| .NET SDK | 10.0.111 | LTS — target `net10.0` |
+| Angular CLI | 22.1.6 | current major |
+| Node | 24.19.0 | |
+| npm | 11.17.0 | |
+| Docker | 29.7.2 | |
+| Docker Compose | v5.4.0 | `docker compose`, not `docker-compose` |
+| PostgreSQL | via container | no local `psql` client — use `docker compose exec` |
+
+The git repository exists but nothing is committed yet, and git identity is unset.
+
+### Licensing to keep an eye on (this is a commercial product)
+
+- **Hangfire Core** — LGPL, free. Hangfire Pro is paid; we do not need it.
+- **QuestPDF** — dual-licensed. The Community licence is free below a revenue threshold
+  (~$1M USD); above that it needs a paid licence. Fine for years, but verify the current terms
+  when adopting, and record the licence choice in the project file. `[to verify]`
+- **Dexie** — Apache 2.0, no issue.
+
+---
+
+## 2. System topology
+
+```
+┌────────────────────────┐
+│  Angular PWA (phone)   │  camera, MediaRecorder, Geolocation
+│  Dexie / IndexedDB     │  local store + upload queue = source of truth until confirmed
+└───────────┬────────────┘
+            │ HTTPS (JSON)                     ┌───────────────────────────┐
+            ├─────────────────────────────────►│  Teren.Api (.NET 10)      │
+            │                                  │  Minimal API + Hangfire   │
+            │ HTTPS (PUT, presigned)           │  single process           │
+            └──────────────┐                   └──────┬─────────┬──────────┘
+                           │                          │         │
+                           ▼                          ▼         ▼
+                  ┌─────────────────┐        ┌────────────┐  ┌──────────────────┐
+                  │ Object storage  │        │ PostgreSQL │  │ External services │
+                  │ (S3 / MinIO)    │        │            │  │ STT · Claude ·    │
+                  │ audio + photos  │        │ entries,   │  │ weather · email   │
+                  └─────────────────┘        │ jobs, JSONB│  └──────────────────┘
+                                             └────────────┘
+```
+
+Two rules this topology exists to enforce:
+
+1. **Media never passes through the API.** The phone uploads directly to object storage with
+   short-lived presigned URLs. The API only ever handles small JSON.
+2. **External services are only ever called from Hangfire jobs**, never inside a request from the
+   phone (PROJECT.md principle 4).
+
+---
+
+## 3. Repository layout
+
+Directories marked *planned* do not exist yet; they arrive with the increment that needs them.
+
+```
+teren/
+├── src/
+│   ├── Teren.Api/              # Minimal API endpoints, DI, Hangfire host, auth
+│   ├── Teren.Core/             # domain entities, state machine, jobs, prompts, report templates
+│   └── Teren.Infrastructure/   # EF Core + Npgsql, S3 client, STT/LLM/weather/email adapters
+├── web/
+│   └── teren-pwa/              # Angular 22 PWA
+├── design/                     # planned (A1-era) — screen artboards, design tokens
+├── tools/
+│   └── SttSpike/               # planned (A1) — throwaway transcription benchmark
+├── evals/                      # planned (B4) — extraction fixtures from correction triples
+├── deploy/                     # planned (B3a) — compose files, Caddyfile, backup scripts
+├── docker-compose.yml          # Postgres + MinIO for local dev
+└── docs/                       # planned (A3) — stt-evaluation.md and friends
+```
+
+Three backend projects, not seven. A solo project pays for every layer boundary it creates;
+these three exist because they have genuinely different reasons to change (transport, business
+rules, external I/O). Collapse further if even this feels heavy.
+
+---
+
+## 4. Backend
+
+**Stack:** .NET 10 Minimal API + EF Core 10 + Npgsql + Hangfire (Postgres storage) + QuestPDF,
+all in **one process, one container**. API and background worker split only when a real load
+problem proves it necessary.
+
+**Key conventions**
+
+- Endpoints grouped per resource in `Teren.Api/Endpoints/*.cs`, registered via extension methods.
+- No repository-per-entity ceremony: EF `DbContext` used directly from handlers. This is a small
+  app with one developer; indirection is cost, not safety.
+- Every query is scoped by `CompanyId` through an EF **global query filter** — multi-tenant
+  correctness comes from the infrastructure, not from remembering to add a `Where` clause.
+- FluentValidation for request payloads; problem-details responses.
+- Serilog structured logging with the entry id on every pipeline log line.
+
+**Configuration and secrets**
+
+`appsettings.json` for shape, **user-secrets** in development, **environment variables** in
+production. Secrets needed: `Anthropic__ApiKey`, `Stt__ApiKey`,
+`Storage__{Endpoint,AccessKey,SecretKey,Bucket}`, `Email__ApiKey`. No secret is ever committed.
+One deliberate exception class: **local-dev throwaway credentials** live in
+`appsettings.Development.json` — the Postgres connection string, the MinIO keys, and the static
+dev device token, all matching `docker-compose.yml` (`teren/teren_dev_only`) and worthless outside
+localhost. Production supplies all of them via environment variables, and startup refuses to boot
+with the required ones empty (`ValidateOnStart`).
+
+---
+
+## 5. Frontend
+
+**Stack:** Angular 22 (standalone components, signals), `@angular/pwa` service worker,
+Dexie 4 over IndexedDB, plain CSS on the design-token custom properties (Tailwind was
+deliberately dropped at B2 — the token contract is the styling system), Transloco for
+localisation.
+
+### Adaptive layout — a founder rule (2026-08-29)
+
+**A desktop layout is designed, not inherited. A screen without a deliberate ≥1024 layout is not
+done.** "Responsive" meaning "the phone column survives centred on a big screen" is explicitly
+rejected. Three device classes, breakpoints owned by the token layer:
+
+| Class | Width | Layout contract |
+|---|---|---|
+| Compact | <768 | Artboard-true phone layout — the foreman's experience, never regressed |
+| Medium | 768–1023 | Wider cards, two-up where content allows; proportioned column, never a stretched phone view |
+| Expanded | ≥1024 | Real application layout: full-width app header (wordmark, project context, date, language switcher), content max-width 1200 centred, screens composed on a 12-col grid (e.g. Home: capture pane + status/recent pane); hover and `:focus-visible` affordances |
+
+Single-task screens (recording, saved) stay deliberately focused at expanded — one centred column
+under the header — but that is a designed decision per screen, not a default. Language switching
+is reachable from every screen via the header (compact places it unobtrusively off the capture
+path). Design artboards ship in pairs from M0 onward: 390 phone + 1280 desktop per screen.
+
+### Localisation
+
+Both languages ship in **one build**. English is the **source language** — translation keys and
+base strings are English, consistent with the code/comments/docs convention — and **Serbian is the
+default runtime locale**, because the people using this on a site do not read English.
+
+- **Library: Transloco** (`@jsverse/transloco` 8.4.0, peer `@angular/core >=16`). Runtime
+  dictionaries mean one bundle, one service-worker scope, and instant language switching.
+  `@angular/localize` 22.1.4 was rejected deliberately: it bakes a locale into each bundle, which
+  would mean two builds and two deploy paths for a PWA — real cost, no gain at two locales.
+  `@ngx-translate/core` 18 is an equivalent fallback if Transloco disappoints.
+- **Dictionaries:** `web/teren-pwa/public/i18n/{en,sr}.json`, served at `/i18n/{lang}.json`
+  (Angular 22 serves static files from `public/`, not `src/assets/`). Feature-prefixed keys
+  (`capture.record.start`). Plain JSON on purpose, so a non-developer can read and correct the
+  Serbian without touching code.
+- **Hard rule: no user-facing string is ever hardcoded** in a template or component. Enforced from
+  the very first component — retrofitting i18n costs many times what starting with it costs.
+- **Script: Serbian Latin.** Standard in the construction trades. Cyrillic remains possible later;
+  it is one more dictionary file, not a rewrite.
+- **Formatting:** Angular ships this locale as **`sr-Latn`** (there is no `sr-Latn-RS` locale
+  file), registered at bootstrap so dates, numbers and units format natively. Never hand-roll a
+  date string. `LOCALE_ID` is fixed at bootstrap, so switching language re-renders text at once
+  but reformats dates only on the next load — acceptable, since the switcher is a demo and
+  development convenience rather than something a foreman touches daily.
+- **Language switcher** in settings, persisted locally — useful for the distributor when demoing
+  to a non-Serbian audience, and for reading screenshots during development.
+
+**What is never translated: the content.** Transcripts and extracted values stay in the language
+they were spoken, because raw evidence is never altered (PROJECT.md principle 2). Only the chrome
+is localised. Note that the entry schema already splits this correctly — keys like `work_done` and
+`headcount` are English while their values are Serbian. That split is intentional and stays.
+
+**Reports:** the PDF goes to a Serbian client, so **Serbian is the default report language**, set
+**per project** rather than per device — the recipient's language has nothing to do with the
+foreman's phone setting. Templates are localised the same way, which leaves the door open to an
+English report for a foreign investor without any new machinery.
+
+**Screens (M0)**
+
+1. **Capture** — the only screen that matters. Project picker → big record button → photo button
+   → done. Target: under 30 seconds, usable one-handed with muddy hands, so large hit targets and
+   no typing on site.
+2. **Pending** — what has not reached the server yet, with a clear count. The foreman must never
+   wonder whether his work vanished.
+3. **Confirmation** — what the system understood, editable in a couple of taps. Mandatory gate
+   before a report is sent.
+4. **Archive** (M1) — past entries by project and date.
+
+**Media capture**
+
+- **Photos:** `<input type="file" accept="image/*" capture="environment">`. Compress client-side
+  to 1600 px long edge, JPEG ~80. Web capture carries **no EXIF**, so GPS comes separately from
+  the Geolocation API and is attached to the entry, not to the file.
+- **Audio:** `MediaRecorder`, target Opus in OGG, mono, 16 kHz — roughly 100–150 KB per minute.
+  **Platform caveat:** iOS Safari does not produce OGG/Opus; it yields MP4/AAC. So negotiate with
+  `MediaRecorder.isTypeSupported()`, record the actual MIME type alongside the file, and let the
+  server normalise (ffmpeg) if the chosen STT provider is fussy. Do not assume one container.
+  `[to verify on a real iPhone]`
+
+---
+
+## 6. Data model
+
+Postgres. Structured entry content lives in JSONB because fields differ per trade; everything
+that must be queried, joined, or proven lives in real columns. Built in B1 — this section
+describes the real schema (migration `InitialSchema` in `src/Teren.Infrastructure/Migrations`).
+
+```sql
+company (id uuid PK, name, created_at)
+
+project (id uuid PK, company_id → company, name, address,
+         latitude double precision null,    -- WGS84; plain columns, no PostGIS (see below)
+         longitude double precision null,
+         recipients jsonb,             -- [{name, email, role}]
+         vocabulary jsonb,             -- work items, worker names, materials → STT/LLM hints
+         report_language text NOT NULL DEFAULT 'sr',   -- report/email language for this client
+         created_at)
+
+entry (id uuid PRIMARY KEY,            -- generated on the phone; the idempotency key
+       company_id → company, project_id → project, entry_date date,
+       status text NOT NULL,           -- CHECK-constrained; see state machine below
+       raw_transcript text,            -- evidence; write-once (trigger-enforced)
+       structure jsonb,                -- what the model extracted (schema below)
+       corrected jsonb,                -- what the human approved (may equal structure)
+       weather jsonb,
+       latitude double precision null, longitude double precision null,
+       gps_accuracy_m double precision null,
+       supersedes_entry_id uuid null → entry,
+       device_id uuid null,
+       created_at, received_at, confirmed_at, reported_at,   -- all timestamptz, UTC
+       failure_reason text null)
+
+media (id uuid PRIMARY KEY,            -- generated on the phone, like entry.id
+       company_id → company,           -- every tenant-owned table carries it (see §12)
+       entry_id → entry,
+       kind text,                      -- CHECK: audio | photo
+       object_key text UNIQUE, content_type text, byte_size bigint,
+       sha256 char(64),                -- integrity / evidence
+       captured_at timestamptz,
+       upload_status text,             -- CHECK: pending | uploaded | verified | failed
+       created_at)
+
+report (id uuid PK, company_id → company, project_id → project,
+        kind,                          -- CHECK: daily | weekly
+        period_start date, period_end date,
+        pdf_object_key text, recipients jsonb, sent_at timestamptz null,
+        created_at)
+```
+
+**No PostGIS.** The original draft used `geography(Point,4326)`, but nothing on the roadmap needs
+spatial queries — coordinates are only ever stored and echoed back (weather lookup, report
+footer). Plain `double precision` latitude/longitude plus an accuracy column does that without
+adding a Postgres extension the `postgres:17-alpine` dev image does not carry.
+
+**Mechanical enforcement in the schema** (not just conventions):
+
+- `entry` statuses, `media.kind`/`upload_status` and `report.kind` are CHECK-constrained;
+  enums are stored as snake_case text (readable in psql, in dumps, and in a courtroom).
+- `structure` and `corrected` each CHECK that `schema_version` is present.
+- Triggers `trg_entry_guard_update` / `trg_entry_guard_delete` on `entry`: once `reported_at`
+  is set, UPDATE and DELETE are rejected; and `raw_transcript`, once written, can never be
+  changed even on an unreported entry. The same rules are enforced in `TerenDbContext` so EF
+  callers fail fast with a clear exception, but the trigger is what makes the promise hold
+  against any SQL.
+- All FKs are `ON DELETE RESTRICT` — evidence is never cascade-deleted.
+
+**Indexes:** `entry(project_id, entry_date desc)`, `entry(status)` for the job sweeper,
+`media(entry_id)`, `media(object_key) unique`, `report(project_id, period_start desc)`, plus
+`company_id` on every tenant-owned table.
+
+**EF Core mapping:** domain entities live in `Teren.Core` with no EF attributes; explicit
+`IEntityTypeConfiguration<T>` classes in `Teren.Infrastructure/Persistence/Configurations` map
+PascalCase to snake_case. JSONB columns are mapped as `string` (boring on purpose — the server
+treats them as opaque payloads; Postgres validates what must be validated). `dotnet-ef` is a
+**local** tool (`.config/dotnet-tools.json`), so the repo is self-contained.
+
+**Demo seed:** `dotnet run --project src/Teren.Api -- seed` (idempotent; `-- migrate` applies
+migrations only). Seeds the demo company *Vodoinstal Petrović d.o.o.*, one Belgrade
+plumbing/heating site and three realistic Serbian entries (reported / confirmed /
+awaiting_confirmation) dated relative to the first seed run.
+
+### Entry structure JSONB (v1)
+
+```json
+{
+  "schema_version": 1,
+  "work_done": [
+    { "description": "Razvod od kotla do kupatila",
+      "location": "zapadno krilo, 2. sprat",
+      "quantity": { "value": 40, "unit": "m" } }
+  ],
+  "headcount": { "total": 3, "roles": [{ "role": "vodoinstalater", "count": 3 }] },
+  "materials": [
+    { "name": "PPR cev 25mm", "quantity": { "value": 40, "unit": "m" }, "delivered": true }
+  ],
+  "blockers": [
+    { "description": "čeka se štemovanje", "waiting_on": "električari" }
+  ],
+  "hidden_work": [
+    { "description": "cevi u zidu pre zatvaranja", "media_ids": ["…"] }
+  ],
+  "notes": "…"
+}
+```
+
+`schema_version` is there from day one so a future trade template can evolve the shape without a
+migration. `hidden_work` is called out separately because it is the highest-value evidence in the
+product — the thing that cannot be proven after the wall closes.
+
+### Entry state machine
+
+Client-side (Dexie) and server-side states are **deliberately different vocabularies**; conflating
+them is how sync bugs are born.
+
+```
+phone:   draft ──► queued ──► uploading ──► confirmed_by_server ──► (safe to prune locally)
+
+server:  received ──► processing ──► awaiting_confirmation ──► confirmed ──► reported
+                          │                                          
+                          └──► needs_review   (STT or extraction failed — entry NEVER lost,
+                                               raw transcript/audio shown to the human instead)
+```
+
+Rules that fall out of this:
+- The phone deletes nothing before `confirmed_by_server`, and even then only after a grace period.
+- `POST /entries` with an id that already exists returns the current state with **200**, not a
+  conflict — retries must be free.
+- Once `reported_at` is set the row is immutable: enforced in the application layer *and* by
+  Postgres triggers rejecting both UPDATE and DELETE. Corrections insert a new entry with
+  `supersedes_entry_id`.
+- **`received_at` means "the server holds the complete entry"** — stamped by a successful
+  `/complete` (all declared media verified), **not** by `POST /entries` (decided at B3, review
+  F1/F9). Once stamped, the evidence set is sealed: further `/media` declarations are rejected
+  (409) and `/complete` replays return the recorded state without re-verifying. **B4's pickup
+  predicate is `status = received AND received_at IS NOT NULL`.**
+- `media.upload_status` vocabulary: `pending` (declared, not yet seen in storage) → `verified`
+  (present with the declared size) or `failed` (present but wrong size). `uploaded` is reserved
+  for a future client-reported hint and is currently unused.
+
+### Verification obligations B3 hands to B4 and reporting (review F3 — binding)
+
+`/complete` verifies existence + byte size only; the API never reads media bytes. Therefore:
+- **B4 must verify the audio's sha256** when it downloads it for transcription; mismatch parks the
+  entry in `needs_review` — never silent.
+- **Report generation must verify each photo's sha256** before embedding it in a PDF.
+- **B4 must handle entries with zero media** (allowed at `/complete` to keep the typed-shorthand
+  fallback open): an entry with no audio and no text parks in `needs_review`, never flows into a
+  report empty.
+
+---
+
+## 7. API surface (M0)
+
+| Method | Route | Purpose |
+|---|---|---|
+| `GET` | `/api/projects` | projects visible to this device |
+| `POST` | `/api/entries` | create entry from client UUID → **202**, returns upload targets. Idempotent |
+| `POST` | `/api/entries/{id}/media` | request presigned PUT URLs for audio/photos |
+| `POST` | `/api/entries/{id}/complete` | all uploads finished → enqueue processing |
+| `GET` | `/api/entries/{id}` | status + extracted structure (client polls this) |
+| `POST` | `/api/entries/{id}/confirm` | human-approved structure → enqueue report |
+| `GET` | `/api/entries` | archive list, filtered by project and date range |
+| `GET` | `/health` | liveness for the deploy |
+| — | `/hangfire` | job dashboard, behind auth |
+
+**Polling, not SignalR.** Processing takes roughly 20–60 seconds and exactly one screen cares.
+A 3-second poll is a handful of lines; a realtime transport is a dependency. Revisit only if the
+UX proves it.
+
+---
+
+## 8. Media pipeline
+
+1. Phone captures, extracts metadata **before** compressing, then compresses (photos).
+2. Phone computes SHA-256 of the bytes it will actually upload, stores it locally with the record.
+3. Phone asks the API for a presigned PUT URL per file — **15-minute TTL, PUT only, exact object
+   key**, no wildcards.
+4. Phone uploads directly to object storage, then reports success to `/complete`.
+5. Server verifies **existence and size** against what the phone declared (checksums are verified
+   where the bytes are actually read — B4 for audio, report generation for photos; see §6).
+   `/complete` distinguishes `pending` (not yet in storage) from `failed` (present, wrong size).
+   A successful `/complete` stamps `received_at` and **seals the evidence set** — later media
+   declarations are rejected (409).
+
+**Media limits (as built, B3):** 1 audio per entry, ≤ 20 photos, 21 media total (the total cap is
+an invariant guard so raising a per-kind cap can never silently unbound verification). Audio
+≤ 25 MB, photo ≤ 10 MB.
+
+**Storage verification is time-budgeted:** the whole `/complete` verification pass runs under
+`Storage:VerificationBudget` (10 s default) with per-call timeout and `Storage:MaxRetries = 0`;
+unreachable storage returns **503 + Retry-After** and never writes a verdict on any media row.
+These knobs live beside `Storage:UploadUrlTtl` (15 min) in configuration.
+
+**Object key layout** (no personal data in keys, ever):
+
+```
+company/{companyId}/project/{projectId}/entry/{entryId}/{mediaId}.{ext}
+```
+
+**Upload order:** entry JSON → audio → photos one at a time. The report only needs the audio, so
+processing can start while photos are still climbing over a bad connection.
+
+---
+
+## 9. AI pipeline
+
+Two external calls, both from Hangfire jobs, both behind interfaces so a provider swap is a
+one-file change.
+
+### 9.1 Transcription
+
+```csharp
+public interface ITranscriptionProvider
+{
+    Task<TranscriptResult> TranscribeAsync(
+        Stream audio, TranscriptionContext context, CancellationToken ct);
+}
+
+// context carries: language "sr-RS", project vocabulary (work items, worker names, materials)
+// as recognition hints where the provider supports them
+```
+
+Provider is **undecided on purpose** — roadmap A3 decides it from real site audio, not from
+marketing pages. Candidates to benchmark: OpenAI Whisper API, Azure AI Speech (`sr-RS`, supports
+phrase lists), Google Cloud STT, ElevenLabs Scribe, and self-hosted `whisper large-v3` as the
+cost/control floor. Judge them only on the words that carry money: work items, quantities, names.
+
+### 9.2 Structure extraction (Claude)
+
+Official Anthropic .NET SDK (`dotnet add package Anthropic`), called from
+`Teren.Infrastructure`. Shape of the call:
+
+```csharp
+using Anthropic;
+using Anthropic.Models.Messages;
+
+var response = await client.Messages.Create(new MessageCreateParams
+{
+    Model = options.ExtractionModel,          // "claude-sonnet-5" — config, never hardcoded
+    MaxTokens = 4000,
+    Thinking = new ThinkingConfigAdaptive(),
+    System = new List<TextBlockParam>
+    {
+        new() { Text = extractionInstructions,   // stable prefix
+                CacheControl = new CacheControlEphemeral() },
+        new() { Text = projectVocabulary },      // per-project, volatile → after the breakpoint
+    },
+    OutputConfig = new OutputConfig
+    {
+        Format = new JsonOutputFormat { Schema = EntryStructureSchema.V1 },
+    },
+    Messages = [ new() { Role = Role.User, Content = transcript } ],
+});
+```
+
+Decisions embedded above, and why:
+
+- **Structured outputs (`OutputConfig.Format`), not prompt-and-pray.** The response is validated
+  against the v1 schema server-side, so the pipeline never has to parse hopeful JSON.
+- **Adaptive thinking**, the current mode for this model generation. `budget_tokens` is gone and
+  returns a 400 on current models — do not carry that pattern in from older code.
+- **Model comes from config.** Start on **Sonnet 5**; the extraction task is short-transcript
+  normalisation, which it should handle comfortably, and lower latency matters because a human is
+  waiting. Escalate to Opus 5 if the eval set shows Serbian trade jargon slipping. Per-entry cost
+  is about **$0.008 on Sonnet 5 versus $0.02 on Opus 5** — against €30–80 per site per month, both
+  are noise, so this choice is settled by measured quality, never by price (PROJECT.md principle).
+- **Canonical-name mapping happens inside this call**: the project vocabulary is passed as
+  context and the model is instructed to normalise variants to canonical names. A separate mapping
+  stage is only worth building if the evals show the single call failing.
+- **Failure is never data loss.** If extraction fails after retries, the entry moves to
+  `needs_review` with the raw transcript intact and visible. The human still gets his evidence.
+
+### 9.3 The quality loop (free, if we do not throw the data away)
+
+Every confirmation produces a **(transcript, extracted, corrected)** triple. Stored in
+`entry.raw_transcript` / `structure` / `corrected`, these become fixtures in `evals/`. Before any
+prompt or model change ships, a console runner replays the fixtures and reports where extraction
+got better or worse. This costs one JSONB column now and is the only thing that makes prompt
+changes safe later.
+
+---
+
+## 10. Other external services
+
+| Service | Choice | Rationale |
+|---|---|---|
+| Weather | **Open-Meteo** | Free, no API key, historical archive by lat/lon/date — exactly the shape we need |
+| Email | Resend or Postmark `[decision pending, needed by B6]` | Both give clean SPF/DKIM setup on a `.rs` domain; deliverability matters because the report is the product's face to the client |
+| Object storage | MinIO locally, Hetzner Object Storage in production | S3-compatible both sides, so one client and no code difference |
+
+Each sits behind an interface (`IWeatherProvider`, `IReportDelivery`) for the same reason as STT.
+
+---
+
+## 11. Offline and sync
+
+The phone is the source of truth until the server confirms (PROJECT.md principle 3).
+
+**Dexie stores:** `entries`, `media`, `outbox`. The outbox drives every network operation.
+
+**Sync loop:** on app open, on connectivity regained, and on a timer — take the oldest outbox
+item, attempt it, apply exponential backoff with jitter on failure, never block the UI. Attempt
+only when the OS reports connectivity.
+
+**Web platform limits, planned around rather than discovered later:**
+
+- **No background upload.** When the tab closes or the phone locks, uploads stop; iOS has no
+  Background Sync at all. Mitigation: an explicit "uploading — don't close this" state and
+  resumption on next open. This is the strongest argument for a native shell later, and only real
+  user pain should trigger that move.
+- **Storage eviction.** iOS evicts data for sites unused for long stretches. Mitigation: prompt
+  Add-to-Home-Screen, keep local retention short once the server has confirmed.
+- **Quota.** Photos dominate; prune confirmed entries' local media after a grace period.
+
+---
+
+## 12. Security and tenancy
+
+- **Tenancy:** every table carries `company_id`; EF global query filters apply it automatically.
+- **Presigned URLs:** 15-minute TTL, single object key, PUT only. No listing, no wildcards.
+- **Immutability:** application check plus a Postgres trigger blocking UPDATE on entries with
+  `reported_at IS NOT NULL`. Evidence value depends on this being mechanical, not conventional.
+- **Auth, honestly staged:**
+  - *M0 (demo):* a static device token baked into the build. This is a **deliberate temporary
+    compromise for the distributor demo, and no real customer data goes into that environment.**
+  - *M1:* join codes bind a device to a project and issue a per-device token (roadmap C5) — still
+    no login screen, because a foreman with muddy hands will not type a password.
+  - *M2:* real accounts and roles, when there are customers who are not friends.
+
+### Identity model (planned; each table lands with the increment that uses it)
+
+There is deliberately no user/profile table in the B1 schema — B2–B4 have no one to authenticate.
+Two tables arrive later, both tenant-scoped under `company` like everything else:
+
+```sql
+-- C5 (M1): who is this phone? Identity of the DEVICE, not a person.
+device (id uuid PK, company_id → company,
+        project_id → project,          -- what the join code bound it to
+        name text,                     -- "Zoranov telefon"
+        token_hash text,               -- per-device bearer token, hashed
+        created_at, last_seen_at, revoked_at timestamptz null)
+
+-- M2: who is this person? Owners log in; foremen mostly keep using bound devices.
+app_user (id uuid PK, company_id → company,
+          email text UNIQUE, password_hash text,
+          display_name text, role text,          -- owner | office | foreman
+          language text NOT NULL DEFAULT 'sr',
+          created_at, last_login_at, disabled_at timestamptz null)
+```
+
+How they relate: `entry.device_id` (already in the B1 schema) records provenance — which phone
+captured the evidence — and keeps meaning even after accounts exist. A `device` may later gain an
+optional `app_user_id` when a company wants entries attributed to named people; that link is
+nullable on purpose, because the foreman's phone is bound to a *project* first and a *person*
+second. The two identities serve different questions: `device` answers "is this phone allowed to
+write into this project", `app_user` answers "who may see, confirm, and administer".
+
+Why not create these tables now: the columns depend on decisions not yet made (password vs. magic
+link, whether foremen ever log in at all). Speculative schema is churn; the shape is recorded here
+so the design (welcome/login screens) and the schema stay aligned, and the migration is written
+when C5 respectively M2 starts.
+- Personal data stays out of URLs, object keys, and logs.
+
+---
+
+## 13. Operations
+
+### Environments
+
+Three, and the reason there are three is that **this product cannot be judged in a desktop
+browser**. Voice recording (`MediaRecorder`), camera capture, Geolocation, the service worker and
+add-to-home-screen all require a real device on a **secure origin**. A laptop tells you the logic
+compiles; only a phone tells you the product works.
+
+| Environment | What it is | From | Purpose |
+|---|---|---|---|
+| **Local** | `docker compose up` + `dotnet run` + `ng serve` on the founder's machine | B0 | Fast loop; API and data logic |
+| **Phone-testable dev** | The local stack exposed over HTTPS through a tunnel | B0 | The founder opens the app on his own phone the same evening something is built |
+| **Staging** | Small VPS running the same compose stack at a stable subdomain | B3a | Runs continuously without the laptop; where background jobs, email and the demo actually get exercised |
+| **Production** | Same stack, `teren.rs`, backups and alerting | C7 | Real customers |
+
+**The tunnel needs a stable hostname, not a random one.** IndexedDB, the service-worker
+registration and the installed home-screen app are all scoped to the origin, so a tunnel URL that
+changes on every restart silently wipes local state between sessions — which makes testing the
+offline queue meaningless, since that is precisely the thing that must survive. Use a tool that
+gives a fixed hostname (ngrok's free tier includes one static domain `[to verify at signup]`; a
+Cloudflare named tunnel is the alternative once a domain exists).
+
+**Why staging arrives at B3a and not at the end:** from B4 onward the interesting behaviour is
+asynchronous — Hangfire jobs, transcription and extraction calls, email delivery. The founder
+needs to record an entry, put the phone down, and check the result later. That requires the stack
+to be up when his laptop is not.
+
+**Data rule:** staging carries seeded demo data only. No real customer entry goes into any
+environment before device binding (C5) and production hardening (C7).
+
+### Deployment and monitoring
+
+- **Deployment:** single Hetzner VPS, `docker compose` (api, postgres, caddy), **Caddy** for
+  automatic TLS. Object storage is managed and external. Staging and production are the same
+  compose file with different environment variables — if they diverge, staging stops being
+  evidence about production.
+- **Backups:** nightly `pg_dump` to object storage, 30-day retention. A restore rehearsal is part
+  of C7 — an unrehearsed backup is a rumour, and this product's whole promise is that evidence
+  survives.
+- **Monitoring:** `/health`, Hangfire dashboard behind auth, Serilog to stdout with the entry id
+  on pipeline lines, and email alerts on failed jobs. No observability platform until something
+  actually hurts.
+
+---
+
+## 14. Open technical decisions
+
+| # | Decision | Needed by | Note |
+|---|---|---|---|
+| 1 | STT provider | B4 | Settled by the A3 spike on real audio, not by opinion |
+| 2 | Email provider | B6 | Resend vs Postmark |
+| 3 | Extraction model (Sonnet 5 vs Opus 5) | after first evals | Config switch; decided by measured quality |
+| 4 | Audio container on iOS | B2 | Verify what a real iPhone actually records; server-side normalisation if needed |
+| 5 | QuestPDF licence tier | before first paying customer | Community licence terms and threshold |
+| 6 | PDF typography | B6 | Embed a font with full Serbian Latin diacritic coverage (č, ć, š, ž, đ); the same font must serve the English template |
+| 7 | Serbian copy review | B5 | Translations are written by Claude and **must be reviewed by the founder** — a native check on trade vocabulary, not just grammar |

@@ -1,0 +1,21 @@
+{
+  "artboards": [
+    { "file": "Welcome.dc.html", "x": 0, "y": 0, "w": 390, "h": 844, "title": "Welcome" },
+    { "file": "Login.dc.html", "x": 470, "y": 0, "w": 390, "h": 844, "title": "Login — error state" },
+    { "file": "Home.dc.html", "x": 0, "y": 990, "w": 390, "h": 844, "title": "Home" },
+    { "file": "CaptureRecording.dc.html", "x": 470, "y": 990, "w": 390, "h": 844, "title": "Capture — recording" },
+    { "file": "CaptureSaved.dc.html", "x": 940, "y": 990, "w": 390, "h": 844, "title": "Capture — saved" },
+    { "file": "Pending.dc.html", "x": 0, "y": 1980, "w": 390, "h": 844, "title": "Pending — offline + failed" },
+    { "file": "PendingEmpty.dc.html", "x": 470, "y": 1980, "w": 390, "h": 844, "title": "Pending — all synced" },
+    { "file": "Processing.dc.html", "x": 0, "y": 2970, "w": 390, "h": 844, "title": "Processing" },
+    { "file": "Confirmation.dc.html", "x": 470, "y": 2970, "w": 390, "h": 844, "title": "Confirmation" },
+    { "file": "NeedsReview.dc.html", "x": 940, "y": 2970, "w": 390, "h": 844, "title": "Needs review" }
+  ],
+  "annotations": [
+    { "id": "note-onboarding", "x": 0, "y": -140, "w": 380, "text": "Onboarding — Welcome and Login serve M1 (join code, C5) and M2 (accounts), designed now so M0 chrome fits them later. No login on site: the foreman joins with a code, once." },
+    { "id": "note-capture-flow", "x": 0, "y": 850, "w": 380, "text": "Home + capture flow — the 30-second path: today card, record, photos, done. Home supersedes the old bare capture screen (Main folded into Home). One primary action per screen; no typing on site." },
+    { "id": "note-sync", "x": 0, "y": 1840, "w": 380, "text": "Sync visibility (B2/B3, hardened in C1). The count is first-class UI; offline is a calm dark card, not an error. Nothing is deleted locally before server confirmation." },
+    { "id": "note-confirm", "x": 0, "y": 2830, "w": 380, "text": "Server pipeline states (B4/B5). Confirmation is the mandatory gate before the report is sent; corrections here are the training signal. Needs-review shows raw evidence, never loses data." }
+  ],
+  "launch": { "view": "canvas" }
+}

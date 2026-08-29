@@ -1,0 +1,155 @@
+{
+  "app": {
+    "name": "Teren",
+    "tagline": "The site diary that writes itself",
+    "storage": {
+      "unavailable": {
+        "title": "Local storage is not working",
+        "body": "The browser is not allowing local storage. Recording is disabled until that is fixed — nothing recorded earlier has been lost."
+      }
+    }
+  },
+  "common": {
+    "language": "Language",
+    "languageName": {
+      "sr": "Srpski",
+      "en": "English"
+    },
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "cancel": "Cancel",
+    "back": "Back",
+    "photos": {
+      "zero": "no photos",
+      "one": "{{count}} photo",
+      "few": "{{count}} photos",
+      "other": "{{count}} photos"
+    }
+  },
+  "home": {
+    "project": {
+      "label": "Site",
+      "change": "Change site",
+      "choose": "Choose a site",
+      "none": "No sites"
+    },
+    "today": {
+      "label": "Today's entry",
+      "missing": "Not recorded yet",
+      "missingHint": "Record the report before the end of the day.",
+      "done": "Recorded at {{time}}",
+      "doneHint": "You can record another entry if something changes."
+    },
+    "record": "Record report",
+    "recent": {
+      "label": "Recent entries",
+      "empty": "No entries on this phone for this site yet."
+    }
+  },
+  "entry": {
+    "status": {
+      "awaitingReview": "Awaiting review",
+      "confirmed": "Confirmed",
+      "reported": "Sent"
+    }
+  },
+  "capture": {
+    "record": {
+      "hint": "About 30 seconds is enough",
+      "recording": "Recording",
+      "mention": "Mention: work · people · material · blockers",
+      "stop": "Finish recording",
+      "cancel": "Cancel",
+      "starting": "Getting the microphone ready…",
+      "tooShort": "That recording was too short — try again.",
+      "retry": "Try again",
+      "openSalvaged": "Open the saved recording",
+      "saveFailed": "The recording could not be saved — please try again.",
+      "saveRetry": "Save again"
+    },
+    "mic": {
+      "denied": {
+        "title": "Microphone not allowed",
+        "body": "Teren cannot record until the browser grants access to the microphone. Allow it in the site settings and try again. Nothing has been lost."
+      },
+      "unavailable": {
+        "title": "Microphone unavailable",
+        "body": "The phone reports no microphone, or another app is using it. Close other apps and try again."
+      },
+      "unsupported": {
+        "title": "Recording is not supported",
+        "body": "This browser cannot record audio. Open Teren in a newer browser over a secure (HTTPS) address."
+      },
+      "error": {
+        "title": "Recording did not start",
+        "body": "Something went wrong starting the microphone. Please try again."
+      },
+      "interrupted": {
+        "title": "Recording was interrupted",
+        "body": "Something on the phone took the microphone — a call, or another app. Everything recorded up to that moment is saved."
+      }
+    },
+    "photos": {
+      "add": "Add photos",
+      "addOne": "Add",
+      "label": "Photos ({{count}})",
+      "preparing": "Preparing photo…",
+      "failed": "That photo could not be prepared. Please try again.",
+      "rejected": "This entry is already queued for upload, so the photo was not added."
+    },
+    "saved": {
+      "title": "Entry saved",
+      "body": "Your phone keeps everything until the server confirms receipt. You can get back to work right away.",
+      "storedLabel": "Saved on this phone",
+      "storedDetail": "Audio {{duration}} · {{photos}}",
+      "done": "Done",
+      "missing": "That entry is not on this phone."
+    },
+    "blocked": {
+      "project": {
+        "title": "No site selected",
+        "body": "Choose a site on the home screen and try again. A recording has to belong to a site."
+      },
+      "storage": {
+        "title": "This phone cannot store recordings",
+        "body": "The browser is not allowing local storage, so a recording would have nowhere to go. Leave private mode or free up space, then try again."
+      }
+    }
+  },
+  "sync": {
+    "pendingCount": "Waiting to upload: {{count}}",
+    "allSent": "All sent",
+    "uploading": "Uploading · {{done}}/{{total}}",
+    "uploadingToServer": "Uploading to server",
+    "uploadingDetail": "Audio sent · uploading photos"
+  },
+  "pending": {
+    "title": "Waiting to upload",
+    "offline": {
+      "title": "No internet",
+      "body": "Entries are safe on your phone and upload automatically when the network returns."
+    },
+    "status": {
+      "failed": "Not sent",
+      "uploading": "Uploading · {{done}}/{{total}}",
+      "queued": "Waiting for network"
+    },
+    "failed": {
+      "reason": "connection dropped during upload"
+    },
+    "retry": "Try again",
+    "meta": "Audio {{duration}} · {{photos}}",
+    "trustNote": "Nothing is deleted from your phone until the server confirms the entry was received.",
+    "empty": {
+      "title": "Everything is sent",
+      "body": "The last entry was received today at {{time}}. All recordings and photos are on the server.",
+      "bodyNone": "No entry is waiting to upload. Recordings and photos you take stay here until they reach the server."
+    },
+    "newEntry": "New entry",
+    "summary": {
+      "title": "Queue status",
+      "uploading": "Uploading",
+      "total": "Total"
+    }
+  }
+}

@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Teren.Api/Teren.Api.csproj" />
+    <Project Path="src/Teren.Core/Teren.Core.csproj" />
+    <Project Path="src/Teren.Infrastructure/Teren.Infrastructure.csproj" />
+  </Folder>
+</Solution>

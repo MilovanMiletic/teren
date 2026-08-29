@@ -1,0 +1,142 @@
+<div class="screen" *transloco="let t">
+  <app-header [project]="project()?.name ?? null" [showBack]="true" (back)="back()" />
+
+  <header class="column head band-top">
+    <button
+      type="button"
+      class="btn-icon head__back"
+      [attr.aria-label]="t('common.back')"
+      (click)="back()"
+    >
+      <app-icon name="chevron-left" [size]="20" />
+    </button>
+    <h1 class="t-h1 head__title">{{ t('pending.title') }}</h1>
+    <span class="t-h1 t-num head__count" [class.head__count--zero]="count() === 0">
+      {{ count() }}
+    </span>
+  </header>
+
+  <div class="column content">
+    <div class="pane pane--main">
+      @if (!connectivity.online()) {
+        <!-- The one dark surface in the product: offline is the state worth interrupting for. -->
+        <div class="offline" role="status">
+          <app-icon name="wifi-off" [size]="20" class="offline__icon" />
+          <div class="offline__text">
+            <span class="offline__title">{{ t('pending.offline.title') }}</span>
+            <span class="offline__body">{{ t('pending.offline.body') }}</span>
+          </div>
+        </div>
+      }
+
+      @if (count() === 0) {
+        <div class="empty">
+          <span class="empty__mark" aria-hidden="true">
+            <app-icon name="check" [size]="40" [strokeWidth]="2.5" />
+          </span>
+          <h2 class="t-h1">{{ t('pending.empty.title') }}</h2>
+          <p class="t-body empty__body">{{ t('pending.empty.bodyNone') }}</p>
+        </div>
+
+        <div class="footer">
+          <button type="button" class="btn btn--tertiary" (click)="record()">
+            <app-icon name="mic" [size]="18" />
+            {{ t('pending.newEntry') }}
+          </button>
+        </div>
+      } @else {
+        <ul class="list">
+          @for (item of pending(); track item.entry.id) {
+            <li class="card row">
+              <div class="row__head">
+                <span class="row__when t-num">
+                  @switch (dayLabel(item)) {
+                    @case ('today') {
+                      {{ t('common.today') }}
+                    }
+                    @case ('yesterday') {
+                      {{ t('common.yesterday') }}
+                    }
+                    @default {
+                      {{ item.entry.capturedAt | date: 'd. M.' }}
+                    }
+                  }
+                  {{ item.entry.capturedAt | date: 'HH:mm' }}
+                </span>
+
+                @switch (item.outbox?.state) {
+                  @case ('failed') {
+                    <span class="chip chip--err">
+                      <app-icon name="alert-triangle" [size]="13" [strokeWidth]="2.5" />
+                      {{ t('pending.status.failed') }}
+                    </span>
+                  }
+                  @case ('in_flight') {
+                    <span class="chip chip--neutral t-num">
+                      <app-icon name="upload-cloud" [size]="13" [strokeWidth]="2.5" />
+                      {{ t('sync.uploadingToServer') }}
+                    </span>
+                  }
+                  @default {
+                    <span class="chip chip--warn">
+                      <app-icon name="clock" [size]="13" [strokeWidth]="2.5" />
+                      {{ t('pending.status.queued') }}
+                    </span>
+                  }
+                }
+              </div>
+
+              <span class="t-meta t-num row__meta">
+                {{ item.entry.projectName }} ·
+                {{
+                  t('pending.meta', {
+                    duration: item.entry.audioDurationMs | duration,
+                    photos: t(plural.photos(item.entry.photoCount), {
+                      count: item.entry.photoCount,
+                    }),
+                  })
+                }}
+              </span>
+
+              @if (item.outbox?.state === 'failed') {
+                <span class="t-meta">{{ t('pending.failed.reason') }}</span>
+              }
+            </li>
+          }
+        </ul>
+      }
+
+      <div class="grow"></div>
+    </div>
+
+    <!-- Expanded only: what the queue adds up to, and the promise the product makes about it. -->
+    <div class="pane pane--rail">
+      <section class="card summary" [attr.aria-label]="t('pending.summary.title')">
+        <h2 class="t-label summary__label">{{ t('pending.summary.title') }}</h2>
+        <div class="summary__row">
+          <span class="summary__name">{{ t('pending.status.queued') }}</span>
+          <span class="summary__value t-num">{{ counts().queued }}</span>
+        </div>
+        <div class="summary__row">
+          <span class="summary__name">{{ t('pending.summary.uploading') }}</span>
+          <span class="summary__value t-num">{{ counts().uploading }}</span>
+        </div>
+        <div class="summary__row">
+          <span class="summary__name">{{ t('pending.status.failed') }}</span>
+          <span class="summary__value t-num">{{ counts().failed }}</span>
+        </div>
+        <div class="summary__row summary__row--total">
+          <span class="summary__name">{{ t('pending.summary.total') }}</span>
+          <span class="summary__value t-num">{{ counts().total }}</span>
+        </div>
+      </section>
+
+      <p class="trust__note t-meta">{{ t('pending.trustNote') }}</p>
+
+      <!-- Compact only: same switcher component, same foot-of-the-scroll placement as Home. -->
+      <div class="trust__langs">
+        <app-language-switcher />
+      </div>
+    </div>
+  </div>
+</div>

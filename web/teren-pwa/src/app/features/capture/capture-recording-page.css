@@ -1,0 +1,270 @@
+.bar {
+  padding-bottom: var(--space-2);
+}
+
+/*
+ * From medium up the app header carries the wordmark, the project and the date. The recording
+ * badge stays — it is the one thing on this screen that must never be somewhere else — so the bar
+ * survives with only the badge in it, right-aligned under the header.
+ */
+@media (min-width: 768px) {
+  .bar {
+    justify-content: flex-end;
+    padding-top: var(--space-5);
+  }
+
+  .bar__brand,
+  .context {
+    display: none;
+  }
+}
+
+/* ---- Recording badge --------------------------------------------------------------------- */
+
+.rec-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 14px;
+  border-radius: var(--radius-pill);
+  background: var(--color-err-bg);
+  color: var(--color-err);
+  font-size: var(--text-meta);
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.rec-badge__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-err-icon);
+  animation: teren-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes teren-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* ---- Context line ------------------------------------------------------------------------ */
+
+.context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.context__project {
+  font-size: var(--text-meta);
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Timer and waveform ------------------------------------------------------------------- */
+
+.live {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-6);
+  padding-top: var(--space-6);
+  padding-bottom: var(--space-6);
+}
+
+.timer {
+  font-size: var(--text-display);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.wave {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 48px;
+}
+
+.wave__bar {
+  width: 4px;
+  height: 48px;
+  border-radius: 2px;
+  background: var(--color-accent);
+  transform: scaleY(0.12);
+  transform-origin: center;
+  transition: transform 90ms linear;
+}
+
+.live__hint {
+  font-size: 14px;
+  text-align: center;
+}
+
+.live__warning {
+  margin: 0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: var(--text-meta);
+}
+
+/* ---- Stop and cancel ---------------------------------------------------------------------- */
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: var(--space-8);
+}
+
+.stop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 128px;
+  height: 128px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-ink);
+  box-shadow: var(--shadow-stop);
+  cursor: pointer;
+}
+
+.stop:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.stop__square {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  background: var(--color-card);
+}
+
+.actions__label {
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+
+.actions__cancel {
+  min-width: 140px;
+  width: auto;
+  color: var(--color-ink-2);
+}
+
+/* ---- Microphone problem ------------------------------------------------------------------- */
+
+.problem {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-5);
+  padding-top: var(--space-6);
+  padding-bottom: var(--space-8);
+}
+
+.problem__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6) var(--space-5);
+  text-align: center;
+}
+
+.problem__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--color-warn-bg);
+  color: var(--color-warn-icon);
+}
+
+.problem__body {
+  margin: 0;
+  color: var(--color-ink-2);
+  line-height: 1.5;
+}
+
+.problem__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/*
+ * Expanded: the same single focused column, one type step up and slightly larger controls. The
+ * screen has one job and a wider window does not give it a second one.
+ */
+@media (min-width: 1024px) {
+  .timer {
+    font-size: 88px;
+  }
+
+  .wave {
+    height: 64px;
+    gap: 6px;
+  }
+
+  .wave__bar {
+    width: 5px;
+    height: 64px;
+  }
+
+  .live__hint {
+    font-size: var(--text-body);
+  }
+
+  .stop {
+    width: 144px;
+    height: 144px;
+  }
+
+  .stop__square {
+    width: 40px;
+    height: 40px;
+  }
+
+  .actions__label {
+    font-size: var(--text-h2);
+  }
+
+  .problem__card {
+    padding: var(--space-8);
+  }
+
+  .problem__actions {
+    flex-direction: row;
+    justify-content: center;
+  }
+
+  .problem__actions .btn {
+    max-width: 280px;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .stop:hover:not(:disabled) {
+    box-shadow:
+      0 8px 30px rgba(26, 26, 26, 0.32),
+      0 0 0 6px var(--color-card-line);
+  }
+}

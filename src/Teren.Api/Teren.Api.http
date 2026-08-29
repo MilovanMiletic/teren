@@ -1,0 +1,6 @@
+@Teren.Api_HostAddress = http://localhost:5286
+
+GET {{Teren.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

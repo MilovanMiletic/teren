@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'IBM Plex Sans', Arial, sans-serif; color: #1A1A1A; background: #EFEDE8; -webkit-font-smoothing: antialiased; }
+    a { color: #C2410C; } a:hover { color: #9A3412; }
+  </style>
+</helmet>
+<div style="width: 390px; height: 844px; background: #EFEDE8; display: flex; flex-direction: column; overflow: hidden; padding: 0 16px;">
+
+  <!-- App bar -->
+  <div style="display: flex; align-items: center; gap: 14px; padding: 16px 0 12px 0;">
+    <div style="width: 44px; height: 44px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 3px rgba(26,26,26,0.04), 0 6px 20px rgba(26,26,26,0.05); display: flex; justify-content: center; align-items: center;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+    </div>
+    <div style="display: flex; flex-direction: column;">
+      <span style="font-size: 17px; font-weight: 700;">Potrebna provera</span>
+      <span style="font-size: 13px; font-weight: 500; color: #5F5B52; font-variant-numeric: tabular-nums;">subota, 29. 8. 2026. · Vojvode Stepe 212</span>
+    </div>
+  </div>
+
+  <!-- Status card (muted warn tint) -->
+  <div style="display: flex; align-items: flex-start; gap: 12px; background: #F6E8D8; border-radius: 20px; padding: 16px 18px;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-top: 1px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <span style="font-size: 15px; font-weight: 600; color: #92400E;">Nismo uspeli pouzdano da razumemo snimak</span>
+      <span style="font-size: 13px; font-weight: 400; line-height: 1.45; color: #92400E;">Ništa nije izgubljeno — snimak i fotografije su sačuvani kao dokaz.</span>
+    </div>
+  </div>
+
+  <!-- Raw evidence: audio -->
+  <div style="display: flex; align-items: center; gap: 12px; background: #FFFFFF; border-radius: 999px; box-shadow: 0 1px 3px rgba(26,26,26,0.04), 0 6px 20px rgba(26,26,26,0.05); padding: 8px 16px 8px 8px; min-height: 60px; margin-top: 12px;">
+    <div style="width: 44px; height: 44px; border-radius: 50%; background: #1A1A1A; display: flex; justify-content: center; align-items: center;">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="#FFFFFF" stroke="none"><polygon points="7 4 20 12 7 20 7 4"></polygon></svg>
+    </div>
+    <div style="display: flex; flex-direction: column; flex-grow: 1;">
+      <span style="font-size: 15px; font-weight: 600;">Preslušaj snimak</span>
+      <span style="font-size: 13px; font-weight: 500; color: #5F5B52; font-variant-numeric: tabular-nums;">0:41</span>
+    </div>
+  </div>
+
+  <!-- Partial transcript -->
+  <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 16px;">
+    <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.8px; color: #5F5B52; padding-left: 4px;">DELIMIČAN PREPIS</span>
+    <div style="background: #FFFFFF; border-radius: 20px; box-shadow: 0 1px 3px rgba(26,26,26,0.04), 0 6px 20px rgba(26,26,26,0.05); padding: 16px 18px;">
+      <span style="font-size: 15px; font-weight: 400; line-height: 1.6;">Danas smo radili razvod <span style="color: #A09A8E; font-style: italic;">‹nerazumljivo›</span> na drugom spratu, zapadno krilo. Postavljeno je nekih četrdeset metara <span style="color: #A09A8E; font-style: italic;">‹nerazumljivo›</span> od dvadeset pet. Bila su tri <span style="color: #A09A8E; font-style: italic;">‹nerazumljivo›</span>, ja, Zoran i <span style="color: #A09A8E; font-style: italic;">‹nerazumljivo›</span>…</span>
+    </div>
+  </div>
+
+  <div style="margin: 16px 12px 0 12px;">
+    <span style="display: block; font-size: 13px; font-weight: 400; line-height: 1.5; color: #5F5B52;">Preslušajte snimak pa pokušajte obradu ponovo. Ako ne uspe, snimak ostaje sačuvan u dnevniku kao dokaz.</span>
+  </div>
+
+  <div style="flex-grow: 1;"></div>
+
+  <!-- Actions -->
+  <div style="display: flex; flex-direction: column; gap: 12px; padding-bottom: 28px;">
+    <div style="display: flex; justify-content: center; align-items: center; gap: 10px; min-height: 56px; border-radius: 999px; background: #C2410C;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+      <span style="font-size: 16px; font-weight: 600; color: #FFFFFF;">Pokušaj obradu ponovo</span>
+    </div>
+    <div style="display: flex; justify-content: center; align-items: center; min-height: 56px; border-radius: 999px; background: #FFFFFF; box-shadow: 0 1px 3px rgba(26,26,26,0.04), 0 6px 20px rgba(26,26,26,0.05);">
+      <span style="font-size: 16px; font-weight: 600;">Nazad na snimanje</span>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

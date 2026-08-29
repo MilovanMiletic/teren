@@ -1,0 +1,85 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'IBM Plex Sans', Arial, sans-serif; color: #1A1A1A; background: #EFEDE8; -webkit-font-smoothing: antialiased; }
+    a { color: #C2410C; } a:hover { color: #9A3412; }
+  </style>
+</helmet>
+<div style="width: 390px; height: 844px; background: #EFEDE8; display: flex; flex-direction: column; overflow: hidden; padding: 0 16px;">
+
+  <!-- App bar -->
+  <div style="display: flex; align-items: center; gap: 14px; padding: 16px 0 20px 0;">
+    <div style="width: 44px; height: 44px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 3px rgba(26,26,26,0.04), 0 6px 20px rgba(26,26,26,0.05); display: flex; justify-content: center; align-items: center;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+    </div>
+    <span style="font-size: 22px; font-weight: 700;">Prijava</span>
+  </div>
+
+  <!-- Form card -->
+  <div style="display: flex; flex-direction: column; gap: 14px; background: #FFFFFF; border-radius: 24px; box-shadow: 0 1px 3px rgba(26,26,26,0.04), 0 6px 20px rgba(26,26,26,0.05); padding: 20px;">
+
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.8px; color: #5F5B52;">IMEJL ADRESA</span>
+      <div style="display: flex; align-items: center; min-height: 56px; border: 1px solid #E5E1D8; border-radius: 16px; padding: 0 16px;">
+        <span style="font-size: 16px; font-weight: 500;">zoran@vodoinstal.rs</span>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.8px; color: #5F5B52;">LOZINKA</span>
+      <div style="display: flex; align-items: center; gap: 8px; min-height: 56px; border: 1.5px solid #B91C1C; border-radius: 16px; padding: 0 6px 0 16px;">
+        <span style="font-size: 16px; font-weight: 600; letter-spacing: 3px; flex-grow: 1;">••••••••</span>
+        <div style="width: 44px; height: 44px; display: flex; justify-content: center; align-items: center;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5F5B52" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#B91C1C" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        <span style="font-size: 13px; font-weight: 600; color: #991B1B;">Pogrešna imejl adresa ili lozinka.</span>
+      </div>
+    </div>
+
+    <div style="display: flex; justify-content: flex-end;">
+      <div style="display: flex; align-items: center; min-height: 44px;">
+        <span style="font-size: 14px; font-weight: 600; color: #C2410C;">Zaboravljena lozinka?</span>
+      </div>
+    </div>
+
+    <div style="display: flex; justify-content: center; align-items: center; min-height: 56px; border-radius: 999px; background: #C2410C;">
+      <span style="font-size: 16px; font-weight: 600; color: #FFFFFF;">Prijavi se</span>
+    </div>
+
+  </div>
+
+  <!-- Divider -->
+  <div style="display: flex; align-items: center; gap: 12px; margin: 24px 8px;">
+    <div style="height: 1px; background: #E5E1D8; flex-grow: 1;"></div>
+    <span style="font-size: 13px; font-weight: 500; color: #5F5B52;">ili</span>
+    <div style="height: 1px; background: #E5E1D8; flex-grow: 1;"></div>
+  </div>
+
+  <!-- Join by code -->
+  <div style="display: flex; justify-content: center; align-items: center; gap: 10px; min-height: 56px; border-radius: 999px; background: #FFFFFF; box-shadow: 0 1px 3px rgba(26,26,26,0.04), 0 6px 20px rgba(26,26,26,0.05);">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+    <span style="font-size: 16px; font-weight: 600;">Pridruži se gradilištu kodom</span>
+  </div>
+
+  <div style="margin-top: 12px; padding: 0 16px;">
+    <span style="display: block; font-size: 13px; font-weight: 400; line-height: 1.5; color: #5F5B52; text-align: center;">Kod dobijate od vlasnika firme — na gradilištu ne treba lozinka.</span>
+  </div>
+
+  <div style="flex-grow: 1;"></div>
+
+</div>
+</x-dc>
+</body>
+</html>

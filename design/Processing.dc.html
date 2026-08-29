@@ -1,0 +1,74 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'IBM Plex Sans', Arial, sans-serif; color: #1A1A1A; background: #EFEDE8; -webkit-font-smoothing: antialiased; }
+    a { color: #C2410C; } a:hover { color: #9A3412; }
+    @keyframes teren-spin { to { transform: rotate(360deg); } }
+  </style>
+</helmet>
+<div style="width: 390px; height: 844px; background: #EFEDE8; display: flex; flex-direction: column; overflow: hidden; padding: 0 16px;">
+
+  <!-- App bar -->
+  <div style="display: flex; align-items: center; gap: 14px; padding: 16px 0 8px 0;">
+    <div style="width: 44px; height: 44px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 3px rgba(26,26,26,0.04), 0 6px 20px rgba(26,26,26,0.05); display: flex; justify-content: center; align-items: center;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+    </div>
+    <div style="display: flex; flex-direction: column;">
+      <span style="font-size: 17px; font-weight: 700;">Obrada unosa</span>
+      <span style="font-size: 13px; font-weight: 500; color: #5F5B52; font-variant-numeric: tabular-nums;">subota, 29. 8. 2026. · Vojvode Stepe 212</span>
+    </div>
+  </div>
+
+  <!-- Spinner + title -->
+  <div style="display: flex; flex-direction: column; align-items: center; gap: 14px; margin-top: 48px; padding: 0 24px;">
+    <div style="width: 64px; height: 64px; border-radius: 50%; border: 6px solid #E5E1D8; border-top-color: #E8674A; animation: teren-spin 1s linear infinite;"></div>
+    <span style="font-size: 22px; font-weight: 700;">Priprema izveštaja</span>
+    <span style="font-size: 15px; font-weight: 400; line-height: 1.5; color: #5F5B52; text-align: center;">Obično traje do jednog minuta.</span>
+  </div>
+
+  <!-- Steps card -->
+  <div style="display: flex; flex-direction: column; margin-top: 28px; background: #FFFFFF; border-radius: 20px; box-shadow: 0 1px 3px rgba(26,26,26,0.04), 0 6px 20px rgba(26,26,26,0.05);">
+    <div style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 18px; border-bottom: 1px solid #ECE9E3;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
+      <span style="font-size: 15px; font-weight: 500;">Snimak primljen na server</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 18px; border-bottom: 1px solid #ECE9E3;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
+      <span style="font-size: 15px; font-weight: 500;">Snimak pretvoren u tekst</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 18px; border-bottom: 1px solid #ECE9E3;">
+      <div style="width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid #E5E1D8; border-top-color: #E8674A; animation: teren-spin 1s linear infinite;"></div>
+      <span style="font-size: 15px; font-weight: 600;">Izdvajanje radova i materijala…</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 18px;">
+      <div style="width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid #E5E1D8;"></div>
+      <span style="font-size: 15px; font-weight: 500; color: #5F5B52;">Spremno za vašu proveru</span>
+    </div>
+  </div>
+
+  <div style="margin: 20px 12px 0 12px;">
+    <span style="display: block; font-size: 13px; font-weight: 400; line-height: 1.5; color: #5F5B52; text-align: center;">Ne morate da čekate ovde — unos će vas sačekati spreman za proveru.</span>
+  </div>
+
+  <div style="flex-grow: 1;"></div>
+
+  <!-- Secondary: back to capture -->
+  <div style="padding-bottom: 28px;">
+    <div style="display: flex; justify-content: center; align-items: center; min-height: 56px; border-radius: 999px; background: #FFFFFF; box-shadow: 0 1px 3px rgba(26,26,26,0.04), 0 6px 20px rgba(26,26,26,0.05);">
+      <span style="font-size: 16px; font-weight: 600;">Nazad na snimanje</span>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

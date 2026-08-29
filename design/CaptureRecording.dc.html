@@ -1,0 +1,72 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'IBM Plex Sans', Arial, sans-serif; color: #1A1A1A; background: #EFEDE8; -webkit-font-smoothing: antialiased; }
+    a { color: #C2410C; } a:hover { color: #9A3412; }
+    @keyframes teren-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    @keyframes teren-wave { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
+  </style>
+</helmet>
+<div style="width: 390px; height: 844px; background: #EFEDE8; display: flex; flex-direction: column; overflow: hidden; padding: 0 16px;">
+
+  <!-- App bar with recording indicator -->
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px 2px 8px 2px;">
+    <span style="font-size: 14px; font-weight: 700; letter-spacing: 2px;">TEREN</span>
+    <div style="display: flex; align-items: center; gap: 8px; background: #F6E1DC; border-radius: 999px; padding: 8px 14px;">
+      <div style="width: 8px; height: 8px; border-radius: 50%; background: #B91C1C; animation: teren-pulse 1.2s ease-in-out infinite;"></div>
+      <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.8px; color: #991B1B;">SNIMANJE</span>
+    </div>
+  </div>
+
+  <!-- Context line -->
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 2px;">
+    <span style="font-size: 13px; font-weight: 600;">Vojvode Stepe 212, Beograd</span>
+    <span style="font-size: 13px; font-weight: 500; color: #5F5B52; font-variant-numeric: tabular-nums;">subota, 29. 8. 2026.</span>
+  </div>
+
+  <!-- Timer + waveform -->
+  <div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 28px;">
+    <span style="font-size: 64px; font-weight: 600; font-variant-numeric: tabular-nums;">0:27</span>
+    <div style="display: flex; align-items: center; gap: 4px; height: 48px;">
+      <div style="width: 4px; height: 18px; border-radius: 2px; background: #E8674A; animation: teren-wave 0.9s ease-in-out infinite;"></div>
+      <div style="width: 4px; height: 32px; border-radius: 2px; background: #E8674A; animation: teren-wave 1.1s ease-in-out infinite;"></div>
+      <div style="width: 4px; height: 44px; border-radius: 2px; background: #E8674A; animation: teren-wave 0.8s ease-in-out infinite;"></div>
+      <div style="width: 4px; height: 26px; border-radius: 2px; background: #E8674A; animation: teren-wave 1.3s ease-in-out infinite;"></div>
+      <div style="width: 4px; height: 38px; border-radius: 2px; background: #E8674A; animation: teren-wave 0.95s ease-in-out infinite;"></div>
+      <div style="width: 4px; height: 20px; border-radius: 2px; background: #E8674A; animation: teren-wave 1.15s ease-in-out infinite;"></div>
+      <div style="width: 4px; height: 34px; border-radius: 2px; background: #E8674A; animation: teren-wave 0.85s ease-in-out infinite;"></div>
+      <div style="width: 4px; height: 46px; border-radius: 2px; background: #E8674A; animation: teren-wave 1.05s ease-in-out infinite;"></div>
+      <div style="width: 4px; height: 24px; border-radius: 2px; background: #E8674A; animation: teren-wave 1.25s ease-in-out infinite;"></div>
+      <div style="width: 4px; height: 40px; border-radius: 2px; background: #E8674A; animation: teren-wave 0.9s ease-in-out infinite;"></div>
+      <div style="width: 4px; height: 28px; border-radius: 2px; background: #E8674A; animation: teren-wave 1.1s ease-in-out infinite;"></div>
+      <div style="width: 4px; height: 42px; border-radius: 2px; background: #E8674A; animation: teren-wave 0.8s ease-in-out infinite;"></div>
+      <div style="width: 4px; height: 22px; border-radius: 2px; background: #E8674A; animation: teren-wave 1.2s ease-in-out infinite;"></div>
+      <div style="width: 4px; height: 36px; border-radius: 2px; background: #E8674A; animation: teren-wave 0.95s ease-in-out infinite;"></div>
+    </div>
+    <span style="font-size: 14px; font-weight: 500; color: #5F5B52;">Pomenite: radove · ljude · materijal · zastoje</span>
+  </div>
+
+  <!-- Stop (primary) + cancel -->
+  <div style="display: flex; flex-direction: column; align-items: center; gap: 14px; padding-bottom: 28px;">
+    <div style="width: 128px; height: 128px; border-radius: 50%; background: #1A1A1A; display: flex; justify-content: center; align-items: center; box-shadow: 0 6px 24px rgba(26,26,26,0.25);">
+      <div style="width: 36px; height: 36px; border-radius: 6px; background: #FFFFFF;"></div>
+    </div>
+    <span style="font-size: 15px; font-weight: 600;">Završi snimanje</span>
+    <div style="display: flex; justify-content: center; align-items: center; min-height: 48px; min-width: 140px; border-radius: 999px; background: #FFFFFF; box-shadow: 0 1px 3px rgba(26,26,26,0.04), 0 6px 20px rgba(26,26,26,0.05);">
+      <span style="font-size: 15px; font-weight: 600; color: #5F5B52;">Otkaži</span>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

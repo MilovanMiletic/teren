@@ -1,0 +1,91 @@
+<div class="screen" *transloco="let t">
+  <app-header [project]="project()?.name ?? null" />
+
+  <header class="column column--focused bar band-top">
+    <span class="bar__brand">{{ t('app.name') }}</span>
+    @if (state() === 'recording') {
+      <span class="rec-badge" role="status">
+        <span class="rec-badge__dot" aria-hidden="true"></span>
+        {{ t('capture.record.recording') }}
+      </span>
+    }
+  </header>
+
+  <div class="column column--focused context">
+    <span class="context__project">{{ project()?.address }}</span>
+    <span class="t-meta t-num">{{ now | date: 'EEEE, d. M. y.' }}</span>
+  </div>
+
+  @if (problemKey(state(), blocker()); as problem) {
+    <!-- Something is stopping the recording. Explain it, offer the way out, lose nothing. -->
+    <div class="column column--focused problem">
+      <div class="card problem__card">
+        <span class="problem__icon" aria-hidden="true">
+          <app-icon name="mic-off" [size]="32" />
+        </span>
+        <h1 class="t-h1">{{ t(problem + '.title') }}</h1>
+        <p class="t-body problem__body">{{ t(problem + '.body') }}</p>
+      </div>
+      <div class="problem__actions">
+        @if (salvagedEntryId()) {
+          <button type="button" class="btn btn--primary" (click)="openSalvaged()">
+            {{ t('capture.record.openSalvaged') }}
+          </button>
+        } @else if (canRetry(state(), blocker())) {
+          <button type="button" class="btn btn--primary" (click)="begin()">
+            {{ t('capture.record.retry') }}
+          </button>
+        }
+        <button type="button" class="btn btn--tertiary" (click)="leave()">
+          {{ t('common.back') }}
+        </button>
+      </div>
+    </div>
+  } @else {
+    <div class="column column--focused live">
+      <span class="timer t-num">{{ elapsed() }}</span>
+
+      <div class="wave" aria-hidden="true">
+        @for (level of levels(); track $index) {
+          <span class="wave__bar" [style.transform]="'scaleY(' + level + ')'"></span>
+        }
+      </div>
+
+      @if (state() === 'starting') {
+        <span class="t-meta live__hint">{{ t('capture.record.starting') }}</span>
+      } @else {
+        <span class="t-meta live__hint">{{ t('capture.record.mention') }}</span>
+      }
+
+      @if (tooShort()) {
+        <p class="chip chip--warn live__warning">{{ t('capture.record.tooShort') }}</p>
+      }
+      @if (saveFailed()) {
+        <p class="chip chip--err live__warning">{{ t('capture.record.saveFailed') }}</p>
+      }
+    </div>
+
+    <div class="column column--focused actions">
+      @if (saveFailed()) {
+        <button type="button" class="btn btn--solid" [disabled]="saving()" (click)="retrySave()">
+          <app-icon name="refresh" [size]="18" />
+          {{ t('capture.record.saveRetry') }}
+        </button>
+      } @else {
+        <button
+          type="button"
+          class="stop"
+          [disabled]="state() !== 'recording' || saving()"
+          (click)="stop()"
+        >
+          <span class="stop__square" aria-hidden="true"></span>
+          <span class="visually-hidden">{{ t('capture.record.stop') }}</span>
+        </button>
+        <span class="actions__label" aria-hidden="true">{{ t('capture.record.stop') }}</span>
+      }
+      <button type="button" class="btn btn--tertiary btn--row actions__cancel" (click)="cancel()">
+        {{ t('capture.record.cancel') }}
+      </button>
+    </div>
+  }
+</div>

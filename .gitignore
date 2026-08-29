@@ -1,0 +1,45 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+
+# Secrets — never commit these
+appsettings.Development.local.json
+appsettings.*.local.json
+.env
+.env.*
+!.env.example
+*.pfx
+*.key
+
+# Node / Angular
+node_modules/
+dist/
+.angular/
+npm-debug.log*
+yarn-error.log*
+
+# Local data volumes
+.data/
+postgres-data/
+minio-data/
+
+# Spike inputs/outputs — real site audio is not committed
+tools/SttSpike/audio/
+docs/stt-output/
+
+# Editors / OS
+.vs/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.obsidian/
+.DS_Store
+*.swp
+
+# Claude Code: project settings are shared, local overrides are not
+.claude/settings.local.json
