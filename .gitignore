@@ -46,3 +46,6 @@ docs/stt-output/
 
 # Test runner output
 TestResults/
+
+# Local database dumps — never committed (deploy/backup/pg-backup.sh)
+deploy/.backups/

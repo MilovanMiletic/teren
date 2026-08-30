@@ -11,9 +11,11 @@ using Teren.Core.Reporting;
 using Teren.Infrastructure.Processing;
 using Teren.Infrastructure.Reporting;
 using Teren.Api.Contracts;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Teren.Api.Auth;
 using Teren.Api.Endpoints;
+using Teren.Api.Maintenance;
 using Teren.Api.Errors;
 using Teren.Api.Validation;
 using Teren.Core.Storage;
@@ -97,9 +99,61 @@ builder.Services.AddTerenPipeline(builder.Configuration);
 // — which needs no job server at all — stays runnable and testable without one.
 builder.Services.AddTerenJobs(builder.Configuration, connectionString);
 
+// The two destructive seams exist in the container ONLY for `reset-demo`. Nothing that serves a
+// request — no endpoint, no job, no accident — can inject a way to erase an object or cancel a
+// job, because outside this one command neither interface is registered at all. Widening
+// IObjectStorage instead would have handed a destructive verb to every service on the request
+// path in exchange for nothing. See DemoReset.
+if (args.Contains(DemoResetGuard.CommandName))
+{
+    builder.Services.AddSingleton<IDemoObjectPurge, S3DemoObjectPurge>();
+
+    if (builder.Configuration.GetValue("Hangfire:Enabled", defaultValue: true))
+    {
+        builder.Services.AddSingleton<IDemoJobPurge, HangfireDemoJobPurge>();
+    }
+    else
+    {
+        builder.Services.AddSingleton<IDemoJobPurge, NoDemoJobPurge>();
+    }
+}
+
 builder.Services.AddSingleton<IValidator<CreateEntryRequest>, CreateEntryRequestValidator>();
 builder.Services.AddSingleton<IValidator<DeclareMediaRequest>, DeclareMediaRequestValidator>();
 builder.Services.AddSingleton<IValidator<ConfirmEntryRequest>, ConfirmEntryRequestValidator>();
+
+// Staging and production put Caddy in front of this process (ARCHITECTURE §13): Caddy owns the
+// certificate and forwards over the private compose network in plain HTTP. Without this, two
+// things break in ways that look like something else.
+//
+//   * `Request.Scheme` would read "http" on every request, so `UseHttpsRedirection` below would
+//     answer *every* call — the container healthcheck included — with a 307 to an https URL on
+//     the API's own internal port, which nothing listens on. The stack would look broken at the
+//     proxy rather than here.
+//   * `RemoteIpAddress` would be the proxy's container address, so every log line and the
+//     Hangfire dashboard's loopback check would see one single client.
+//
+// KnownNetworks/KnownProxies are cleared deliberately, and that is only safe because of how the
+// stack is deployed: the API port is **not published to the host** in
+// `deploy/docker-compose.prod.yml`, so the only thing that can reach this process is the proxy
+// on the internal network. Publish that port and this becomes a header-spoofing hole.
+//
+// Off by default — a developer running `dotnet run` is not behind anything.
+var behindProxy = builder.Configuration.GetValue("Hosting:BehindProxy", defaultValue: false);
+
+if (behindProxy)
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        // Proto and For only. X-Forwarded-Host is deliberately not honoured: nothing here
+        // derives a URL from the request host (presigned URLs come from Storage:PublicEndpoint),
+        // so trusting it would add spoofing surface in exchange for nothing.
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        // KnownIPNetworks, not the obsolete KnownNetworks (ASPDEPR005).
+        options.KnownIPNetworks.Clear();
+        options.KnownProxies.Clear();
+    });
+}
 
 var corsOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [];
 builder.Services.AddCors(options =>
@@ -121,8 +175,18 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 // One-shot maintenance commands:
-//   dotnet run --project src/Teren.Api -- migrate   apply pending EF migrations
-//   dotnet run --project src/Teren.Api -- seed      migrate + seed the demo data (idempotent)
+//   dotnet run --project src/Teren.Api -- migrate      apply pending EF migrations
+//   dotnet run --project src/Teren.Api -- seed         migrate + seed the demo data (idempotent)
+//   dotnet run --project src/Teren.Api -- reset-demo   DESTRUCTIVE: see DemoResetGuard
+//
+// None of these reach app.Run(), so no hosted service starts: `reset-demo` does not bring up a
+// Hangfire worker that would start executing the jobs it is about to delete.
+if (args.Contains(DemoResetGuard.CommandName))
+{
+    Environment.ExitCode = await DemoResetCommand.RunAsync(app, args);
+    return;
+}
+
 if (args.Contains("migrate") || args.Contains("seed"))
 {
     using var scope = app.Services.CreateScope();
@@ -142,6 +206,12 @@ if (args.Contains("migrate") || args.Contains("seed"))
     return;
 }
 
+// Before anything that reads the scheme or the client address, which is everything below.
+if (behindProxy)
+{
+    app.UseForwardedHeaders();
+}
+
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
@@ -149,8 +219,11 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
-else
+else if (!behindProxy)
 {
+    // Caddy already redirects http to https at the edge, and the hop from Caddy to this process
+    // is plain HTTP on a private network by design. Redirecting here would only bounce the
+    // proxy's own request — and the healthcheck — to a port nothing is listening on.
     app.UseHttpsRedirection();
 }
 

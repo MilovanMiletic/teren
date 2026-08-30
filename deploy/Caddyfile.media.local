@@ -1,0 +1,25 @@
+# Local-only: HTTPS in front of MinIO, so the local production stack can be driven from a real
+# browser rather than only from curl.
+#
+# Why it has to exist. The app is served from https://localhost:8443, and the phone (or the
+# browser) uploads media *directly* to object storage with a presigned PUT. A fetch from an https
+# page to an http endpoint is blocked as mixed content, so http://localhost:9100 is unusable from
+# the app even though it is a perfectly good MinIO. Terminating TLS in front of MinIO at
+# https://localhost:9443 removes that, and it rehearses the exact production shape: storage on
+# its own hostname, reached over https, with Storage__PublicEndpoint pointing at it.
+#
+# The Host header is passed through unchanged — Caddy's default — and that is load-bearing.
+# SigV4 signs the host, so if this proxy rewrote it, every presigned URL the API hands out would
+# fail authentication for a reason nothing in the error message would mention.
+#
+# Production equivalent: the commented `media.{$TEREN_DOMAIN}` block at the bottom of
+# deploy/Caddyfile, and only if you self-host storage instead of using Hetzner Object Storage.
+
+{
+	local_certs
+}
+
+https://localhost:9443 {
+	tls internal
+	reverse_proxy minio:9000
+}

@@ -7,6 +7,17 @@
         "title": "Local storage is not working",
         "body": "The browser is not allowing local storage. Recording is disabled until that is fixed — nothing recorded earlier has been lost."
       }
+    },
+    "install": {
+      "title": "Add Teren to your home screen",
+      "body": "It opens like an app and keeps working where there is no signal.",
+      "action": "Add",
+      "dismiss": "Not now",
+      "ios": {
+        "hint": "In Safari, tap the Share button, then choose Add to Home Screen.",
+        "share": "Share",
+        "add": "Add to Home Screen"
+      }
     }
   },
   "common": {

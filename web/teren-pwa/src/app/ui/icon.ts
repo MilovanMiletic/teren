@@ -21,7 +21,9 @@ export type IconName =
   | 'book'
   | 'pencil'
   | 'download'
-  | 'file-text';
+  | 'file-text'
+  | 'share'
+  | 'phone-home';
 
 /**
  * The icon set: stroke-based, 24 px grid, stroke-width 2, round caps and joins
@@ -148,6 +150,21 @@ export type IconName =
           <polyline points="14 2 14 8 20 8" />
           <line x1="16" y1="13" x2="8" y2="13" />
           <line x1="16" y1="17" x2="8" y2="17" />
+        }
+        <!--
+          iOS's Share button — a box with an arrow leaving the top. Drawn rather than named,
+          because the install instruction has to point at a glyph a foreman can match against
+          the one in Safari's toolbar; "tap Share" alone sends him hunting.
+        -->
+        @case ('share') {
+          <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+          <polyline points="16 6 12 2 8 6" />
+          <line x1="12" y1="2" x2="12" y2="15" />
+        }
+        @case ('phone-home') {
+          <rect x="5" y="2" width="14" height="20" rx="3" />
+          <line x1="9" y1="12" x2="15" y2="12" />
+          <line x1="12" y1="9" x2="12" y2="15" />
         }
       }
     </svg>

@@ -500,7 +500,58 @@ describe('ConfirmPage', () => {
     await render(await givenEntry());
 
     expect(textarea().value).toBe('');
+  });
+
+  it('does not tell a man who already sent his words that the system failed him', async () => {
+    // The same reopened entry as above, read for what the *screen* says rather than what the box
+    // holds. He confirmed verbatim, left, and the report has not gone out yet — a real window,
+    // whether generation is async or a relay is misconfigured. Offering "send my own words" again,
+    // under a warn-toned "the system could not sort this day into items", beside a status chip
+    // reading "Potvrđeno", is the screen contradicting itself and calling the product broken on a
+    // day he had finished. The banner already ranks these facts correctly; the offer now asks it
+    // rather than re-deriving an overlapping condition of its own.
+    api.status = 'confirmed';
+    api.structure = null;
+    api.transcript = SPOKEN;
+    api.corrected = {
+      schema_version: 1,
+      work_done: [],
+      headcount: null,
+      materials: [],
+      blockers: [],
+      hidden_work: [],
+      notes: SPOKEN,
+      described_verbatim: true,
+    };
+    const html = await render(await givenEntry());
+
+    expect(html.textContent).toContain('Potvrđeno');
+    expect(html.textContent).not.toContain('Sistem nije uspeo da razvrsta ovaj dan po stavkama');
+    expect(buttonLabels()).not.toContain('Pošalji moje reči');
+  });
+
+  it('retires the verbatim offer over a quantity typed before its name', async () => {
+    // Field order is not a data-retention policy. A material row carrying `40 m2` and no name yet
+    // is content; while the payload dropped it for want of a name, the draft still read empty, the
+    // offer stayed live, and one tap would have sent his own words — discarding the numbers with
+    // no warning. The sibling spec above covers the same rule with the name typed first, which is
+    // the order that made this rare rather than impossible.
+    await givenTranscriptButNoStructure();
     expect(buttonLabels()).toContain('Pošalji moje reči');
+
+    await click('Dodaj materijal');
+    type(fieldsByLabel('Količina')[0], '40');
+    type(fieldsByLabel('Jedinica')[0], 'm2');
+
+    expect(buttonLabels()).not.toContain('Pošalji moje reči');
+
+    await click('Potvrdi unos');
+
+    // What he typed reaches the server as he left it, incomplete name included.
+    expect(api.sent).toMatchObject({
+      materials: [{ name: null, quantity: { value: 40, unit: 'm2' } }],
+    });
+    expect(api.sent).not.toHaveProperty('described_verbatim');
   });
 
   // ------------------------------------------------------------------- honest failures

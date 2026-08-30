@@ -1,0 +1,66 @@
+<!--
+  Teren app icon — the TEREN wordmark, founder decision 2026-08-30.
+
+  Replaces the Angular scaffold logo that shipped in public/icons/*.png.
+
+  Colour (design/tokens.md):
+    ground  accent-deep #C2410C — the sanctioned pairing for white letterforms (4.9:1, AA).
+            `accent` #E8674A is deliberately NOT used: tokens.md restricts it to large fills and
+            says "never text-sized type".
+    mark    white.
+    The canvas #EFEDE8 is not used as the ground: a warm off-white icon disappears against a light
+    wallpaper, and this mark has to be found on a crowded home screen.
+
+  Maskable safe zone: Android crops to a circle/squircle/rounded-square depending on launcher, so
+  the manifest's "maskable any" means only the centre 80% circle is guaranteed visible — radius
+  204.8 about (256,256). The ground is full-bleed so every crop shape stays filled; the wordmark
+  spans x 78..434 (356 wide) and y 211..301, which sits inside that circle with margin at the
+  vertical centre where the chord is widest.
+
+  The letters are geometry, not <text>: a rasteriser without the right font installed would
+  otherwise substitute or drop the wordmark silently. Geometric, squared forms — a technical
+  register that suits a site-diary product.
+
+  This is the swap point. A real designed logo replaces this one file and the icons are
+  re-rendered; nothing else changes.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="Teren">
+  <title>Teren</title>
+
+  <rect width="512" height="512" fill="#C2410C"/>
+
+  <g fill="#FFFFFF">
+    <!-- T  x 78 -->
+    <rect x="78"  y="211" width="60" height="20"/>
+    <rect x="98"  y="211" width="20" height="90"/>
+
+    <!-- E  x 152 -->
+    <rect x="152" y="211" width="20" height="90"/>
+    <rect x="152" y="211" width="60" height="20"/>
+    <rect x="152" y="246" width="50" height="20"/>
+    <rect x="152" y="281" width="60" height="20"/>
+
+    <!-- R  x 226 — stem, bowl (top bar + right side + mid bar), then a stroked diagonal leg.
+         The leg is stroked rather than a polygon so its join with the bowl stays clean at 72 px. -->
+    <rect x="226" y="211" width="20" height="90"/>
+    <rect x="226" y="211" width="60" height="20"/>
+    <rect x="266" y="211" width="20" height="55"/>
+    <rect x="226" y="246" width="60" height="20"/>
+    <line x1="252" y1="262" x2="276" y2="301" stroke="#FFFFFF" stroke-width="20"/>
+
+    <!-- E  x 300 -->
+    <rect x="300" y="211" width="20" height="90"/>
+    <rect x="300" y="211" width="60" height="20"/>
+    <rect x="300" y="246" width="50" height="20"/>
+    <rect x="300" y="281" width="60" height="20"/>
+
+    <!-- N  x 374 — two stems and a stroked diagonal running stem-centre to stem-centre.
+         Stroking (rather than a parallelogram spanning the full gap) is what keeps the two
+         counters open; the polygon version filled the top edge solid and the letter read as a
+         block. -->
+    <rect x="374" y="211" width="20" height="90"/>
+    <rect x="414" y="211" width="20" height="90"/>
+    <line x1="384" y1="211" x2="424" y2="301" stroke="#FFFFFF" stroke-width="21"/>
+  </g>
+</svg>

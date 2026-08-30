@@ -304,25 +304,27 @@ export class ConfirmPage {
   /**
    * Whether "send my own words" is on the table (PROJECT.md §11, founder ruling 3).
    *
-   * Four conditions, and each of them is the difference between an honest offer and a wrong one:
+   * Three conditions, and each is the difference between an honest offer and a wrong one:
    *
+   * - **the banner is `noStructure`** — the one question "are these words, unstructured, the best
+   *   record this entry has?", answered in one place. {@link confirmBanner} already ranks the
+   *   facts: an entry a human has confirmed reads `confirmed` and never `noStructure`, one with a
+   *   day extracted reads `awaiting`, one with no transcript reads `noTranscript`. This used to
+   *   re-derive an overlapping-but-different condition from `transcript()` and `hasStructure()`,
+   *   and the gap between the two was a live bug: reopening an entry he had already confirmed
+   *   verbatim, before its report went out, showed the warn-toned "the system could not sort this
+   *   day into items" card — with a live send button — under a status chip reading "Potvrđeno".
+   *   The screen contradicted itself and called the system broken on a day he had finished. Two
+   *   sources of truth for one question is what produced that, so there is now one;
    * - **editable** — a reported entry is sealed, and a `processing` one has nothing to confirm;
-   * - **there is a transcript** — the whole offer is *these words*; with none there is nothing to
-   *   approve and typing really is the only way forward;
-   * - **there is no structure** — with a day extracted, approving prose instead of checking it
-   *   would throw away the better record;
    * - **he has typed nothing** — the moment anything goes into the structured sections it is no
    *   longer a verbatim record, so the flag must not be sent. Hiding the action is how that is
    *   enforced rather than merely intended: there is no path from a non-empty draft to a
-   *   `described_verbatim` payload.
+   *   `described_verbatim` payload. `draftIsEmpty` counts a row carrying *any* typed content, not
+   *   merely a named one, so a quantity typed without its name still retires the offer.
    */
   protected readonly canConfirmVerbatim = computed(
-    () =>
-      this.editable() &&
-      this.transcript() !== null &&
-      !this.hasStructure() &&
-      this.empty() &&
-      !this.sending(),
+    () => this.editable() && this.bannerKey() === 'noStructure' && this.empty() && !this.sending(),
   );
 
   protected readonly statusKey = computed(() =>

@@ -1,7 +1,7 @@
 # Session progress — Milestone 1
 
 Live tracker, updated by the orchestrating session as agents report.
-**Last updated: 2026-08-30 — the money path is closed. Two reviewer gates still owed.**
+**Last updated: 2026-08-30 — money path closed, both review gates PASSED, suites verified by execution (447 backend / 407 PWA). B3a in flight.**
 
 ---
 
@@ -10,10 +10,10 @@ Live tracker, updated by the orchestrating session as agents report.
 | Milestone 1 item | State |
 | --- | --- |
 | B4 Processing pipeline | ☑ done, reviewed, gating race closed |
-| **B5 Confirmation screen** | ☑ done, reviewed — plus the verbatim path (gate owed) |
-| **B6 PDF + email** | ☑ done, reviewed — plus the founder polish (gate owed) |
+| **B5 Confirmation screen** | ☑ **DONE** — reviewed twice; verbatim path accept-with-fixes, fix landed |
+| **B6 PDF + email** | ☑ **DONE** — report polish + prose variant reviewed: **accept**, no gating defects |
 | C3 Archive + entry detail | ◐ **blocked on the photo read path** |
-| B3a Staging environment | ☐ **next** |
+| B3a Staging environment | ⏳ **in flight** — machinery only; no VPS or domain exists yet |
 | B7 Demo polish | ☐ |
 | C1 Offline queue hardening | ☐ mostly delivered by B3; needs an audit, not a build |
 | C2 Weather enrichment | ☐ |
@@ -23,8 +23,8 @@ Live tracker, updated by the orchestrating session as agents report.
 | C7 Production deploy | ☐ blocked on founder (Hetzner VPS + domain) |
 | C8 Pilot onboarding | ☐ blocked on founder (a real foreman) |
 
-**Suites: 447 backend tests, 403 PWA specs** — both verified independently, not taken on report.
-Started the day at 260 and 255.
+**Suites: 447 backend tests, 407 PWA specs** — both verified by execution in this session, not
+taken on an agent report. Started the day at 260 and 255.
 
 **The loop closes:** speak → transcript → confirm → PDF → email → sealed. Proven end to end against
 real Postgres, MinIO and SMTP.
@@ -35,8 +35,8 @@ real Postgres, MinIO and SMTP.
 
 | # | Item | Why it matters |
 | --- | --- | --- |
-| 1 | **Reviewer gate — verbatim pair** (confirm screen + prose report) | Every increment goes through its reviewer; these two have not. Both touch the money path |
-| 2 | **Reviewer gate — report polish + download** | Includes the first storage read path, and tenancy on a new endpoint |
+| 1 | ~~Reviewer gate — verbatim pair~~ | ☑ **accept-with-fixes**; the gating bug (an already-confirmed entry told the foreman the system had failed him, under a chip reading "Potvrđen") is fixed and mutation-proved |
+| 2 | ~~Reviewer gate — report polish + download~~ | ☑ **accept**, no gating defects — tenancy, checksum-before-serve and DST correctness all verified |
 | 3 | **Founder: look at a PDF** | `teren-VERBATIM-sr.pdf` and `teren-STRUCTURED-sr.pdf` are on the Desktop. **Nobody has opened either** — no PDF renderer on this machine |
 | 4 | **Founder: read the Serbian** | Report and email copy is Claude-written. One grammar bug was already caught (`prijavilo` → `prijavio`); assume more |
 | 5 | **Founder: commit and push** | A large amount of unreviewed-by-git work is sitting in the tree |

@@ -1,0 +1,113 @@
+# Teren — staging / production reverse proxy.
+#
+# Mounted read-only at /etc/caddy/Caddyfile by docker-compose.prod.yml. Caddy obtains and renews
+# the certificate for $TEREN_DOMAIN over ACME automatically; that is the whole reason it is here.
+# HTTPS is not a nicety: the upload path computes SHA-256 with crypto.subtle, which is
+# *undefined* outside a secure context and therefore fails by not existing (ARCHITECTURE §13).
+#
+# One hostname serves both the app and the API, which is what makes `apiBaseUrl: ''` in
+# src/environments/environment.ts correct and means no CORS preflight happens at all.
+
+{
+	# ACME registration address — set TEREN_ACME_EMAIL in .env. Let's Encrypt uses it for
+	# expiry warnings; without it Caddy still works but you get no warning if renewal breaks.
+	email {$TEREN_ACME_EMAIL}
+
+	# No `trusted_proxies` here, deliberately. Caddy IS the edge — nothing sits in front of it —
+	# so it must not honour an X-Forwarded-For a client sent itself. It sets that header for the
+	# API hop; it does not take one.
+}
+
+{$TEREN_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		# Caddy issues the certificate, so HSTS is safe to assert here — and only here. It is
+		# deliberately absent from Caddyfile.local: an HSTS header served from `localhost`
+		# would force https on *every* localhost port in the browser, including the dev server
+		# on :4200, and it is remembered for a year.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# --------------------------------------------------------------- API and operations
+	# `handle` blocks are mutually exclusive, so the static file server below never sees these.
+	@backend path /api/* /health /hangfire /hangfire/*
+	handle @backend {
+		# Bounds one request body. Media never passes through the API (ARCHITECTURE §2) — the
+		# phone PUTs directly to object storage — so every payload here is small JSON. The
+		# largest is a confirmation carrying a transcript and its corrections.
+		request_body {
+			max_size 8MB
+		}
+
+		reverse_proxy api:8080 {
+			# Long enough for the heaviest synchronous work the API does (a /complete
+			# verification pass is budgeted at 10 s by Storage:VerificationBudget), short
+			# enough that a wedged backend surfaces as an error rather than a hang.
+			transport http {
+				response_header_timeout 60s
+			}
+		}
+	}
+
+	# ------------------------------------------------------------------------ the PWA
+	handle {
+		root * /srv/teren
+
+		# --- Cache policy. Get this wrong and an installed PWA serves a stale shell forever.
+		#
+		# The regex is written out twice on purpose, once negated. Expressing it as "default
+		# no-cache, then override for hashed files" would depend on the execution order of two
+		# `header` directives, and a silently reordered cache header is exactly the class of
+		# bug that costs an evening of chasing ghosts.
+		@hashed path_regexp hashed_asset `-[A-Z0-9]{8,}\.(js|css|woff2?|ttf|otf|png|jpe?g|webp|avif|gif|svg|ico)$`
+		@unhashed not path_regexp unhashed_asset `-[A-Z0-9]{8,}\.(js|css|woff2?|ttf|otf|png|jpe?g|webp|avif|gif|svg|ico)$`
+
+		# Angular's production build fingerprints these (outputHashing: "all"), so the name
+		# changes whenever the bytes do and the old URL is never requested again.
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+
+		# Everything else keeps a stable name across deploys: index.html, ngsw.json,
+		# ngsw-worker.js, manifest.webmanifest, /i18n/*.json, /icons/*.png. `no-cache` means
+		# "store it, but revalidate before use" — not "do not store". A far-future max-age on
+		# ngsw.json is precisely how an installed app stops ever seeing a new version.
+		header @unhashed Cache-Control "no-cache"
+
+		# --- SPA fallback, narrowed on purpose.
+		#
+		# A blanket `try_files {path} /index.html` answers *every* miss with the HTML shell,
+		# including a missing ngsw.json or a hashed chunk the service worker asked for. The
+		# worker would then parse HTML as its manifest and fail in a way that reads like
+		# corruption. Restricting the rewrite to navigations — a GET the browser makes while
+		# accepting text/html — leaves asset misses to 404 honestly.
+		@spa {
+			method GET HEAD
+			header Accept *text/html*
+			not path /ngsw.json /ngsw-worker.js /safety-worker.js /worker-basic.min.js /manifest.webmanifest
+			not file
+		}
+		rewrite @spa /index.html
+
+		file_server
+	}
+}
+
+# ---------------------------------------------------------------------------------------------
+# Self-hosted object storage — uncomment ONLY if you run MinIO on this box instead of using
+# Hetzner Object Storage (the recommended option; see deploy/README.md).
+#
+# It has to be its own hostname, not a path under the main one. Presigned URLs are signed over
+# the host *and* the exact path, so a proxy that strips a `/s3` prefix invalidates the signature
+# and a proxy that keeps it sends MinIO a bucket name it does not have. Either way the phone
+# sees a failed upload that looks exactly like a CORS problem.
+#
+# With this enabled, set Storage__PublicEndpoint=https://media.your-domain and point
+# Storage__Endpoint at http://minio:9000 (the API's own hop stays inside the network).
+#
+# media.{$TEREN_DOMAIN} {
+# 	reverse_proxy minio:9000
+# }

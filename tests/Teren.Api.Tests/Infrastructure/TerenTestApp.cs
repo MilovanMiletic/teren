@@ -189,10 +189,14 @@ public sealed class TerenTestApp : IAsyncLifetime
     public TerenDbContext CreateDbContext(Guid? companyId) =>
         CreateDbContext(ApiConnectionString, companyId);
 
-    private static TerenDbContext CreateDbContext(string connectionString, Guid? companyId = null)
+    private static TerenDbContext CreateDbContext(
+        string connectionString,
+        Guid? companyId = null,
+        params Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor[] interceptors)
     {
         var options = new DbContextOptionsBuilder<TerenDbContext>()
             .UseNpgsql(connectionString)
+            .AddInterceptors(interceptors)
             .Options;
 
         return new TerenDbContext(options, new TenantContext { CompanyId = companyId });
@@ -203,12 +207,14 @@ public sealed class TerenTestApp : IAsyncLifetime
     /// The seeder tests need a database no other test has touched — that is the only way "a
     /// database at an older seed state gains exactly the missing rows" means anything.
     /// </summary>
-    public async Task<TerenDbContext> CreateScratchDatabaseAsync(Guid? companyId = null)
+    public async Task<TerenDbContext> CreateScratchDatabaseAsync(
+        Guid? companyId = null,
+        params Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor[] interceptors)
     {
         var name = "teren_scratch_" + Interlocked.Increment(ref _scratchDatabaseCounter);
         await ExecuteOnMaintenanceDatabaseAsync(
             "CREATE DATABASE " + name + " TEMPLATE " + TemplateDatabase);
-        return CreateDbContext(ConnectionStringFor(name), companyId);
+        return CreateDbContext(ConnectionStringFor(name), companyId, interceptors);
     }
 
     /// <summary>

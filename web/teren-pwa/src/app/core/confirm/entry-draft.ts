@@ -20,8 +20,9 @@ import { parseEntryStructure } from '../archive/entry-structure';
  *    id is local to the session and is never sent.
  *
  * 3. **Blank rows are allowed to exist.** "Add a material" has to put an empty row on screen
- *    before there is anything to put in it. {@link toCorrectedPayload} is what decides that a row
- *    with no name is not a material, so the screen never has to.
+ *    before there is anything to put in it. {@link toCorrectedPayload} is what decides that an
+ *    *untouched* row is not a material, so the screen never has to — and "untouched" means every
+ *    field empty, never just the name.
  *
  * The whole file is pure: no Angular, no Dexie, no HTTP. It is the part of the confirmation
  * screen that is worth testing without a screen.
@@ -199,14 +200,30 @@ export function draftFromStructure(raw: unknown): EntryDraft {
  * eval triple (ARCHITECTURE §9.3), a human answer that omitted a section would read, months
  * later, as the model having been right about a section nobody checked.
  *
- * Blank rows are dropped rather than sent: a row with no description is the screen's scaffolding,
- * not the foreman's answer.
+ * Blank rows are dropped rather than sent: an untouched row is the screen's scaffolding, not the
+ * foreman's answer.
+ *
+ * **"Blank" means every field empty, not "the naming field is empty."** These filters used to test
+ * the *identifying* field alone — `description` for work, `name` for a material — which quietly
+ * made the rest of the row conditional on it. Type `40` and `m2` into a material's quantity,
+ * leave the name for last, and the row did not survive being read back: it vanished here, so
+ * {@link draftIsEmpty} still called the draft empty, the "send my own words" offer stayed on
+ * screen, and one tap discarded the numbers he had typed without ever saying so. Rare only
+ * because most people type left to right — and a data-loss path that depends on field order is
+ * still a data-loss path. A row carrying *anything* a human put there is now his answer, and it
+ * goes to the server as he left it, incomplete fields included: `corrected` is the human third of
+ * the eval triple (ARCHITECTURE §9.3), and what he actually left is the honest record of it.
  */
 export function toCorrectedPayload(draft: EntryDraft): Record<string, unknown> {
   return {
     schema_version: ENTRY_SCHEMA_VERSION,
     work_done: draft.workDone
-      .filter((item) => text(item.description) !== null)
+      .filter(
+        (item) =>
+          text(item.description) !== null ||
+          text(item.location) !== null ||
+          quantityToWire(item.quantity) !== null,
+      )
       .map((item) => ({
         description: text(item.description),
         location: text(item.location),
@@ -214,20 +231,25 @@ export function toCorrectedPayload(draft: EntryDraft): Record<string, unknown> {
       })),
     headcount: headcountToWire(draft),
     materials: draft.materials
-      .filter((item) => text(item.name) !== null)
+      .filter(
+        (item) =>
+          text(item.name) !== null ||
+          quantityToWire(item.quantity) !== null ||
+          item.delivered !== null,
+      )
       .map((item) => ({
         name: text(item.name),
         quantity: quantityToWire(item.quantity),
         delivered: item.delivered,
       })),
     blockers: draft.blockers
-      .filter((item) => text(item.description) !== null)
+      .filter((item) => text(item.description) !== null || text(item.waitingOn) !== null)
       .map((item) => ({
         description: text(item.description),
         waiting_on: text(item.waitingOn),
       })),
     hidden_work: draft.hiddenWork
-      .filter((item) => text(item.description) !== null)
+      .filter((item) => text(item.description) !== null || item.mediaIds.length > 0)
       .map((item) => ({
         description: text(item.description),
         media_ids: item.mediaIds,
@@ -306,6 +328,13 @@ export function isVerbatimCorrected(raw: unknown): boolean {
  * produces a report with no content and a `confirmed` status claiming somebody checked it.
  * ARCHITECTURE §6 already says an entry with no audio and no text parks in `needs_review` rather
  * than flowing into a report empty — this is the same rule one step later, at the human.
+ *
+ * Answered by building the payload and looking at it, rather than by inspecting the draft
+ * directly, so that "empty" can never mean one thing here and another on the wire. That identity
+ * is what the confirmation screen leans on when it hides "send my own words" behind an empty
+ * draft: whatever survives into the payload is exactly what retires the offer, so there is no
+ * typed content the screen can consider absent and the wire still carry — nor any it can consider
+ * present and the wire silently drop.
  */
 export function draftIsEmpty(draft: EntryDraft): boolean {
   const payload = toCorrectedPayload(draft);

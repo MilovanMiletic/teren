@@ -24,6 +24,7 @@ import { AppHeader } from '../../ui/app-header';
 import { DurationPipe } from '../../ui/duration.pipe';
 import { StatusTone, entryStatusKey, entryStatusTone } from '../../ui/entry-status';
 import { Icon } from '../../ui/icon';
+import { InstallInvitation } from '../../ui/install-invitation';
 import { LanguageSwitcher } from '../../ui/language-switcher';
 import { PluralService } from '../../ui/plural.service';
 
@@ -35,7 +36,15 @@ import { PluralService } from '../../ui/plural.service';
 @Component({
   selector: 'app-home-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AppHeader, DatePipe, DurationPipe, Icon, LanguageSwitcher, TranslocoDirective],
+  imports: [
+    AppHeader,
+    DatePipe,
+    DurationPipe,
+    Icon,
+    InstallInvitation,
+    LanguageSwitcher,
+    TranslocoDirective,
+  ],
   templateUrl: './home-page.html',
   styleUrl: './home-page.css',
   host: {

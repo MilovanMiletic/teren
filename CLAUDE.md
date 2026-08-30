@@ -89,6 +89,12 @@ Engineering conventions:
 ```bash
 docker compose up -d                      # Postgres + MinIO
 dotnet run --project src/Teren.Api        # API on http://localhost:5080 (/health)
+dotnet run --project src/Teren.Api -- reset-demo   # dry run: what a reset would destroy
+dotnet run --project src/Teren.Api -- reset-demo --yes-delete-demo-data
+                                          # DESTRUCTIVE: wipes everything belonging to the demo
+                                          # company (reported entries included) and re-seeds it.
+                                          # Refuses unless ASPNETCORE_ENVIRONMENT=Development or
+                                          # Demo__ResetEnabled=true. See ARCHITECTURE §6.
 npm start --prefix web/teren-pwa          # PWA on http://localhost:4200
 dotnet build                              # whole solution
 dotnet test                               # backend tests (needs Docker; plain `dotnet test` — the
@@ -178,9 +184,9 @@ before being presented as done; gating fixes go back to the implementer and are 
 - **Suites: 403 PWA specs** and **447 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
   + Testcontainers over real Postgres, ~95 s; PdfPig in tests only, so report assertions read text
   back out of the rendered PDF). `dotnet test` needs Docker running.
-- **Check at session start:** the tree is green (`dotnet build` clean, 447 backend tests, 403 PWA
-  specs). **Two increments still owe their reviewer**: the verbatim-transcript pair (confirm screen
-  + prose report) and the report-polish/download pair. Run those gates before building further.
+- **Check at session start:** the tree is green (`dotnet build` clean, **447 backend tests, 407 PWA
+  specs**, both verified by execution 2026-08-30). **Every increment has now passed its reviewer** —
+  the verbatim pair, the report-polish/download pair and B3a all cleared their gates.
   The adaptive-rework *delta review* verdict is **permanently lost** (its session closed mid-run),
   so that increment never passed its gate; the salvage bug found afterwards was traced to async
   state sequencing, not to the rework. Design canvas still owes the 1280 desktop artboard variants.

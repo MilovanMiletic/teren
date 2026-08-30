@@ -1,0 +1,64 @@
+# Teren — the production proxy config, adapted for standing the production stack up on a laptop.
+#
+# Mounted at /etc/caddy/Caddyfile when the local override is in play:
+#   docker compose -f deploy/docker-compose.prod.yml -f deploy/docker-compose.local.yml up -d
+#
+# It differs from deploy/Caddyfile in exactly three ways, and each difference is a thing that
+# cannot be proven without a domain:
+#   1. the site address is https://localhost:8443, not a real hostname on port 443;
+#   2. `tls internal` — Caddy's own CA, because ACME needs a public name it can be challenged on;
+#   3. no HSTS. Asserting HSTS from `localhost` would pin https for *every* localhost port in the
+#      browser for a year, breaking `ng serve` on :4200 and the API on :5080. That is a real
+#      hazard, not a hypothetical one.
+# Everything below the header block — routing, cache policy, SPA fallback — is byte-identical to
+# production, because that is the part being rehearsed.
+
+{
+	# No ACME account: nothing here is publicly resolvable.
+	local_certs
+}
+
+https://localhost:8443 {
+	tls internal
+
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	@backend path /api/* /health /hangfire /hangfire/*
+	handle @backend {
+		request_body {
+			max_size 8MB
+		}
+		reverse_proxy api:8080 {
+			transport http {
+				response_header_timeout 60s
+			}
+		}
+	}
+
+	handle {
+		root * /srv/teren
+
+		@hashed path_regexp hashed_asset `-[A-Z0-9]{8,}\.(js|css|woff2?|ttf|otf|png|jpe?g|webp|avif|gif|svg|ico)$`
+		@unhashed not path_regexp unhashed_asset `-[A-Z0-9]{8,}\.(js|css|woff2?|ttf|otf|png|jpe?g|webp|avif|gif|svg|ico)$`
+
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		header @unhashed Cache-Control "no-cache"
+
+		@spa {
+			method GET HEAD
+			header Accept *text/html*
+			not path /ngsw.json /ngsw-worker.js /safety-worker.js /worker-basic.min.js /manifest.webmanifest
+			not file
+		}
+		rewrite @spa /index.html
+
+		file_server
+	}
+}

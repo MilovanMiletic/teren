@@ -1,0 +1,113 @@
+# Local rehearsal of the production stack. Overlay, never used alone:
+#
+#   docker compose --env-file deploy/.env.local \
+#     -f deploy/docker-compose.prod.yml -f deploy/docker-compose.local.yml up -d
+#
+# (deploy/deploy.sh --target local does exactly that, with the migrate step in the right place.)
+#
+# What it adds is only the managed services a real host would rent rather than run: object
+# storage, a mail endpoint, and TLS in front of storage. It changes nothing about api, web,
+# postgres or the Caddy routing — those are the parts under test, and an override that
+# "helpfully" adjusted them would be rehearsing a stack that does not exist anywhere.
+#
+# It runs under its own project name (TEREN_STACK=teren-localprod in .env.local) on non-default
+# ports, so it cannot touch the development stack from the repository-root docker-compose.yml —
+# different containers, different volumes, different ports. `docker compose up -d`,
+# `dotnet run --project src/Teren.Api` and `npm start --prefix web/teren-pwa` keep working
+# unchanged while this is up.
+
+services:
+  postgres:
+    ports:
+      # Loopback only, and a non-default port: 5432 belongs to the development stack.
+      - "127.0.0.1:${TEREN_LOCAL_DB_PORT:-55432}:5432"
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${TEREN_STORAGE_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${TEREN_STORAGE_SECRET_KEY}
+
+      # CORS, and this is the line that makes the local rehearsal worth anything.
+      #
+      # MinIO does not implement the S3 PutBucketCors API — `mc cors set` against it returns "A
+      # header you provided implies functionality that is not implemented". Its CORS is a
+      # SERVER-level setting, and its default is `*`: every origin allowed. That default is
+      # exactly why the 2026-08-29 browser-upload verification proved less than it looked like it
+      # proved — it demonstrated that an unconfigured store lets everything through.
+      #
+      # Pinning it to the app's own origin means an upload that works here works because the
+      # store was configured to allow it, which is the same reason it will or will not work
+      # against Hetzner Object Storage. Hetzner's store is Ceph RGW-based and DOES implement
+      # bucket CORS, so there deploy/storage/apply-cors.sh applies cors.xml.template instead.
+      # Two mechanisms, one policy, and both are in the repository.
+      MINIO_API_CORS_ALLOW_ORIGIN: ${TEREN_APP_ORIGIN}
+    volumes:
+      - minio-data:/data
+    ports:
+      - "127.0.0.1:${TEREN_LOCAL_MINIO_PORT:-9100}:9000"
+      - "127.0.0.1:${TEREN_LOCAL_MINIO_CONSOLE_PORT:-9101}:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Creates the bucket, and only that. CORS is applied by deploy/storage/apply-cors.sh, which
+  # deploy.sh runs on every deploy against local MinIO and a managed provider alike — one code
+  # path, so the rules that are rehearsed here are literally the rules that get applied there.
+  #
+  # It was briefly done in this entrypoint instead, which failed for a reason worth recording:
+  # the minio/mc image has no `sed`, so it cannot render the origin into the CORS template. An
+  # init container that can only apply a *static* policy would have meant two implementations
+  # and, in time, two different policies.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set target http://minio:9000 ${TEREN_STORAGE_ACCESS_KEY} ${TEREN_STORAGE_SECRET_KEY} &&
+      mc mb --ignore-existing target/${TEREN_STORAGE_BUCKET} &&
+      echo 'bucket ${TEREN_STORAGE_BUCKET} ready'
+      "
+
+  # HTTPS in front of MinIO. See deploy/Caddyfile.media.local for why this is not optional once
+  # the app itself is served over https.
+  media:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - minio
+    ports:
+      - "127.0.0.1:${TEREN_LOCAL_MEDIA_PORT:-9443}:9443"
+    volumes:
+      - ./Caddyfile.media.local:/etc/caddy/Caddyfile:ro
+      - media-caddy-data:/data
+      - media-caddy-config:/config
+
+  # The same mail catcher the development stack uses, for the same reason: it makes the whole
+  # PDF-and-email path provable before any relay account exists. Loopback-bound, never proxied.
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+      MP_MAX_MESSAGES: 500
+    ports:
+      - "127.0.0.1:${TEREN_LOCAL_MAILPIT_SMTP_PORT:-1125}:1025"
+      - "127.0.0.1:${TEREN_LOCAL_MAILPIT_UI_PORT:-8125}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  minio-data:
+  media-caddy-data:
+  media-caddy-config:

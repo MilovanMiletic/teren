@@ -8,6 +8,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#EFEDE8" />
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
+    <!-- iOS ignores the web manifest when adding to the home screen and reads this instead.
+         Without it, Safari screenshots the page and uses that as the icon. -->
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <!-- Full-screen on iOS once added to the home screen, matching the manifest's `standalone`. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Teren" />
     <link rel="manifest" href="manifest.webmanifest" />
   </head>
   <body>

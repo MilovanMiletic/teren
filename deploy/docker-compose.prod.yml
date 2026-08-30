@@ -1,0 +1,168 @@
+# Teren — the staging and production stack.
+#
+# Staging and production are THIS file with different environment variables. If they ever
+# diverge into two files, staging stops being evidence about production (ARCHITECTURE §13).
+#
+#   Deploy:  deploy/deploy.sh            (build → ship → migrate → restart → verify)
+#   Never:   docker compose up -d        by hand, without the explicit migrate step
+#
+# Nothing here has a default that is a secret. Every value comes from the env file, and the
+# deploy script refuses to run if a required one is missing.
+
+name: ${TEREN_STACK:-teren-prod}
+
+# The API and the one-shot migrate command must see byte-identical configuration — a migration
+# applied against a different database than the one the API then talks to is the worst kind of
+# green deploy. One anchor, used twice, makes that structural instead of a thing to remember.
+x-api-environment: &api-environment
+  ASPNETCORE_ENVIRONMENT: Production
+  TZ: ${TEREN_TZ:-Europe/Belgrade}
+
+  ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=${TEREN_DB_NAME};Username=${TEREN_DB_USER};Password=${TEREN_DB_PASSWORD}"
+
+  # Caddy terminates TLS and forwards over the internal network. Safe only because the api
+  # service below publishes no ports — see the comment in src/Teren.Api/Program.cs.
+  Hosting__BehindProxy: "true"
+
+  # Object storage. Endpoint is what the API itself talks to; PublicEndpoint is what gets baked
+  # into the presigned URLs the phone uses. They differ whenever storage is reachable at two
+  # addresses, and getting PublicEndpoint wrong produces a failed upload that looks exactly like
+  # a CORS bug — see deploy/README.md.
+  Storage__Endpoint: ${TEREN_STORAGE_ENDPOINT}
+  Storage__PublicEndpoint: ${TEREN_STORAGE_PUBLIC_ENDPOINT}
+  Storage__AccessKey: ${TEREN_STORAGE_ACCESS_KEY}
+  Storage__SecretKey: ${TEREN_STORAGE_SECRET_KEY}
+  Storage__Bucket: ${TEREN_STORAGE_BUCKET}
+  Storage__Region: ${TEREN_STORAGE_REGION:-us-east-1}
+  Storage__ForcePathStyle: ${TEREN_STORAGE_FORCE_PATH_STYLE:-true}
+
+  # M0 static device token (ARCHITECTURE §12). It must match the token compiled into the PWA
+  # bundle — see TEREN_DEVICE_TOKEN in .env.example and the build arg in deploy/web.Dockerfile.
+  Auth__DeviceToken: ${TEREN_DEVICE_TOKEN}
+
+  # Missing AI keys deliberately do not stop the host: entries park in needs_review with an
+  # honest failure_reason instead (ARCHITECTURE §4).
+  Stt__Azure__Key: ${TEREN_STT_AZURE_KEY:-}
+  Stt__Azure__Region: ${TEREN_STT_AZURE_REGION:-}
+  Anthropic__ApiKey: ${TEREN_ANTHROPIC_API_KEY:-}
+
+  # Report delivery. Never point this at port 25 on the VPS (ARCHITECTURE §10).
+  Reporting__FromAddress: ${TEREN_REPORT_FROM_ADDRESS:-}
+  Reporting__FromName: ${TEREN_REPORT_FROM_NAME:-Teren}
+  Reporting__ReplyToAddress: ${TEREN_REPORT_REPLY_TO:-}
+  Reporting__Smtp__Host: ${TEREN_SMTP_HOST:-}
+  Reporting__Smtp__Port: ${TEREN_SMTP_PORT:-587}
+  Reporting__Smtp__Security: ${TEREN_SMTP_SECURITY:-StartTls}
+  Reporting__Smtp__Username: ${TEREN_SMTP_USERNAME:-}
+  Reporting__Smtp__Password: ${TEREN_SMTP_PASSWORD:-}
+
+  # Without these the dashboard is unreachable rather than open (it serves loopback only when
+  # unconfigured, and behind a proxy nothing is loopback). Set them or accept no dashboard.
+  Hangfire__DashboardUser: ${TEREN_HANGFIRE_USER:-}
+  Hangfire__DashboardPassword: ${TEREN_HANGFIRE_PASSWORD:-}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${TEREN_DB_NAME}
+      POSTGRES_USER: ${TEREN_DB_USER}
+      POSTGRES_PASSWORD: ${TEREN_DB_PASSWORD}
+      # Postgres's own idea of the collation/encoding for a database it creates from scratch.
+      # Serbian Latin text is stored as UTF-8 either way; this only makes it explicit.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    # No published port. The database is reachable only from the compose network; a dump runs
+    # through `docker compose exec` (deploy/backup/pg-backup.sh).
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TEREN_DB_USER} -d ${TEREN_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # Migrations, as an explicit step and nothing else. `profiles` keeps it out of `up`: it runs
+  # only when something asks for it by name, which is what deploy.sh does between stopping the
+  # old API and starting the new one.
+  #
+  #   docker compose --profile tools run --rm migrate
+  #
+  # Never fold this into the API's entrypoint. A crash-looping container would re-attempt the
+  # schema change on every restart, and two API replicas would race each other.
+  migrate:
+    image: ${TEREN_API_IMAGE:-teren-api:local}
+    profiles: ["tools"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: *api-environment
+    command: ["migrate"]
+
+  # Same image, same environment, one argument different: applies migrations AND seeds the demo
+  # project. Idempotent. The seeded project ids are a contract with the PWA (ARCHITECTURE §6) —
+  # without them every POST /api/entries 404s and captured entries can never leave the phone.
+  #
+  #   docker compose --profile tools run --rm seed
+  seed:
+    image: ${TEREN_API_IMAGE:-teren-api:local}
+    profiles: ["tools"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: *api-environment
+    command: ["seed"]
+
+  api:
+    image: ${TEREN_API_IMAGE:-teren-api:local}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: *api-environment
+    # No published port, deliberately: Caddy is the only way in. This is the precondition that
+    # makes Hosting__BehindProxy safe.
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    logging: &json-logging
+      driver: json-file
+      options:
+        # A VPS with a small disk and an unbounded log file is a scheduled outage.
+        max-size: "10m"
+        max-file: "5"
+
+  web:
+    image: ${TEREN_WEB_IMAGE:-teren-web:local}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      # Whole mappings, not just host ports: the local rehearsal moves BOTH sides (Caddy listens
+      # on 8443 inside the container there, because the site address carries the port).
+      - "${TEREN_HTTP_PUBLISH:-80:80}"
+      - "${TEREN_HTTPS_PUBLISH:-443:443}"
+      - "${TEREN_HTTPS_PUBLISH_UDP:-443:443/udp}"
+    environment:
+      TEREN_DOMAIN: ${TEREN_DOMAIN}
+      TEREN_ACME_EMAIL: ${TEREN_ACME_EMAIL:-}
+    volumes:
+      - ${TEREN_CADDYFILE:-./Caddyfile}:/etc/caddy/Caddyfile:ro
+      # Certificates and ACME account keys. Losing this volume means re-issuing on next start,
+      # which Let's Encrypt rate-limits — treat it as state, not cache.
+      - caddy-data:/data
+      - caddy-config:/config
+    logging: *json-logging
+
+volumes:
+  postgres-data:
+  caddy-data:
+  caddy-config:

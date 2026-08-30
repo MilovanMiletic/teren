@@ -134,6 +134,39 @@ describe('entry draft', () => {
     expect(draftIsEmpty(draft)).toBe(true);
   });
 
+  it('keeps a row he filled in from the wrong end', () => {
+    // "Blank" is every field empty, not "the naming field is empty". These filters used to test
+    // the identifying field alone, which made the rest of the row conditional on it: a quantity
+    // typed before the name it belongs to was dropped here, the draft then read empty, and the
+    // confirmation screen went on offering to send his own words instead — one tap from throwing
+    // the numbers away without a word. Rare only because most people type left to right.
+    const draft = emptyDraft();
+    draft.materials = [{ ...newMaterial(), quantity: { value: '40', unit: 'm2' } }];
+    draft.workDone = [{ ...newWorkItem(), location: 'kupatilo' }];
+
+    const payload = toCorrectedPayload(draft) as {
+      work_done: unknown[];
+      materials: unknown[];
+    };
+
+    expect(payload.materials).toEqual([
+      { name: null, quantity: { value: 40, unit: 'm2' }, delivered: null },
+    ]);
+    expect(payload.work_done).toEqual([
+      { description: null, location: 'kupatilo', quantity: null },
+    ]);
+    expect(draftIsEmpty(draft)).toBe(false);
+  });
+
+  it('counts a delivery answer as an answer, though nothing was typed', () => {
+    // `delivered` is tri-state and starts at "he did not say", so moving it off null is a human
+    // saying something — the one field on this screen that carries content without a keystroke.
+    const draft = emptyDraft();
+    draft.materials = [{ ...newMaterial(), delivered: false }];
+
+    expect(draftIsEmpty(draft)).toBe(false);
+  });
+
   it('does not call a draft with only a note empty', () => {
     // The typed fallback's minimum viable record. If this were "empty" the confirm button would
     // be disabled over a day somebody had just written out by hand.

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Bucket CORS for Teren media. This is an APPLIED artefact, not a note: deploy/storage/apply-cors.sh
+  puts it on the bucket, and the local rehearsal stack applies it too (minio-init in
+  deploy/docker-compose.local.yml), so the rules under test are the rules that ship.
+
+  Why it must exist at all. The phone uploads media *directly* to object storage with a presigned
+  PUT (ARCHITECTURE §2, §8) — the bytes never pass through the API. That is a cross-origin request
+  from the app's origin to the storage origin, so the browser sends an OPTIONS preflight first and
+  refuses the PUT unless the bucket answers it. Nothing in the API can compensate for a bucket
+  that does not.
+
+  Browser CORS to storage was verified on 2026-08-29, but only against MinIO's permissive
+  defaults on a laptop. That is evidence about MinIO's defaults, not about a bucket at a managed
+  provider — Hetzner Object Storage starts with no CORS configuration at all, and the symptom is
+  an upload that fails at the preflight with nothing in the API log, because the API was never
+  called.
+
+  __TEREN_ORIGIN__ is substituted with the app's exact origin (scheme + host + port) at apply
+  time. It is deliberately not "*": a wildcard would let any page on the internet drive an upload
+  with a URL it managed to obtain.
+-->
+<CORSConfiguration>
+  <CORSRule>
+    <AllowedOrigin>__TEREN_ORIGIN__</AllowedOrigin>
+
+    <!-- PUT is the upload (§8 step 4). GET and HEAD are for the media read path that C3 still
+         owes (presigned GET, ARCHITECTURE §8) — allowing them now costs nothing and means the
+         bucket is not the thing blocking that increment. -->
+    <AllowedMethod>PUT</AllowedMethod>
+    <AllowedMethod>GET</AllowedMethod>
+    <AllowedMethod>HEAD</AllowedMethod>
+
+    <!-- The presigned PUT carries Content-Type and the SigV4 headers the SDK signed. Naming them
+         individually would break the day the signing library adds one. -->
+    <AllowedHeader>*</AllowedHeader>
+
+    <!-- ETag is the only response header the upload path has any use for. -->
+    <ExposeHeader>ETag</ExposeHeader>
+
+    <MaxAgeSeconds>3000</MaxAgeSeconds>
+  </CORSRule>
+</CORSConfiguration>

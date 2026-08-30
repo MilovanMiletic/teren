@@ -7,6 +7,17 @@
         "title": "Čuvanje na telefonu ne radi",
         "body": "Pregledač ne dozvoljava lokalno čuvanje podataka. Snimanje je isključeno dok se to ne reši — ništa od ranije nije izgubljeno."
       }
+    },
+    "install": {
+      "title": "Dodajte Teren na početni ekran",
+      "body": "Otvara se kao aplikacija i radi i tamo gde nema signala.",
+      "action": "Dodaj",
+      "dismiss": "Ne sada",
+      "ios": {
+        "hint": "U Safariju dodirnite dugme Podeli, pa izaberite Dodaj na početni ekran.",
+        "share": "Podeli",
+        "add": "Dodaj na početni ekran"
+      }
     }
   },
   "common": {

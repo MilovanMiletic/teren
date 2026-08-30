@@ -104,7 +104,7 @@ teren/
 ├── tools/
 │   └── SttSpike/               # A1 — throwaway transcription benchmark (delete after A3)
 ├── evals/                      # planned (B4) — extraction fixtures from correction triples
-├── deploy/                     # planned (B3a) — compose files, Caddyfile, backup scripts
+├── deploy/                     # B3a — Dockerfiles, compose, Caddyfile, deploy.sh, backup + CORS scripts
 ├── docker-compose.yml          # Postgres + MinIO for local dev
 └── docs/                       # planned (A3) — stt-evaluation.md and friends
 ```
@@ -363,6 +363,46 @@ mirrors them as its offline fallback list; if the two ever drift, every `POST /a
 and locally captured entries become unsendable. Seeding is **idempotent per row, not per run**: a
 database seeded at an earlier state gains exactly the rows it lacks and existing rows are never
 updated.
+
+**Demo reset (B7):** `dotnet run --project src/Teren.Api -- reset-demo --yes-delete-demo-data`.
+Because the seed is idempotent *per row*, it can add what is missing but can never undo a demo:
+each demo the distributor gives leaves a real entry behind ("test test", a photo of a desk) which
+is confirmed, reported and then **sealed permanently** by `trg_entry_guard_delete`. Ten demos
+later the archive is junk with the three good Serbian entries buried in it. `reset-demo` deletes
+everything belonging to the demo company and re-seeds it, in one transaction.
+
+- **Guarded three ways.** The word `reset-demo` has to be typed (no ambient default); the host has
+  to be a demo host — `ASPNETCORE_ENVIRONMENT=Development` **or** `Demo__ResetEnabled=true`, the
+  latter because staging runs as `Production` (§13) and the environment name alone cannot tell the
+  demo box from a real one; and `--yes-delete-demo-data` has to be given. Without the flag the
+  command reports what it *would* destroy and exits 2 without touching anything. `--dry-run` does
+  the same and exits 0. A host that has declared nothing is refused before it even reads.
+- **Company scope is asserted, not trusted.** Every statement is `WHERE company_id = <demo>`, and
+  the row counts of every *other* company are compared before and after the deletes inside the
+  same transaction; one row of difference rolls the whole thing back.
+- **The immutability guard comes back with the data.** Only `trg_entry_guard_delete` is stood
+  down, only inside the transaction, and it is re-enabled and then re-read from `pg_trigger`
+  before the commit. `ALTER TABLE … DISABLE TRIGGER` is transactional DDL, so *any* failure
+  between the disable and the commit restores the trigger together with the rows.
+  `trg_entry_guard_update` is never touched — the reset deletes and re-seeds, it never edits.
+- **Delete order** is reports → media → entries → sites → company, because `fk_media_entry`,
+  `fk_report_entry` and `fk_entry_project` are RESTRICT rather than CASCADE. Entries are peeled
+  leaf-first, because `fk_entry_supersedes_entry` is RESTRICT too and a correction chain (C4)
+  would otherwise fail on whatever order Postgres happened to choose.
+- **Objects and jobs are dealt with after the commit**, because neither is transactional.
+  Everything under `company/<demo-company-id>/` is removed from the bucket — orphaned bytes have
+  no row left to be evidence for, and nothing else in the system ever deletes them. Pending
+  Hangfire jobs (enqueued/fetched/scheduled/processing) are deleted; the recurring sweep and the
+  job history are left alone. Deleting all pending work is safe because the only two enqueue
+  paths produce states `PipelineSweeper` re-picks up within the minute, so the purge can delay
+  work but cannot lose it. Committing before sweeping is deliberate: the worst case is leftover
+  objects, which the next reset removes — never bytes destroyed for rows that still exist.
+- **Idempotent**, and it ends by printing rows removed, objects removed, jobs removed, the final
+  state (including the site ids) and the guard's real state.
+
+The two destructive seams — `IDemoObjectPurge` and `IDemoJobPurge` — are registered in the
+container **only** when the process was started with `reset-demo`. The running API therefore has
+no injectable way to erase an object or cancel a job at all: no endpoint, no job, no accident.
 
 ### Entry structure JSONB (v1)
 
@@ -852,7 +892,7 @@ compiles; only a phone tells you the product works.
 |---|---|---|---|
 | **Local** | `docker compose up` + `dotnet run` + `ng serve` on the founder's machine | B0 | Fast loop; API and data logic |
 | **Phone-testable dev** | The local stack exposed over HTTPS through a tunnel | B0 | The founder opens the app on his own phone the same evening something is built |
-| **Staging** | Small VPS running the same compose stack at a stable subdomain | B3a | Runs continuously without the laptop; where background jobs, email and the demo actually get exercised |
+| **Staging** | Small VPS running the same compose stack at a stable subdomain | B3a — **machinery built and proven locally 2026-08-30; no host bought yet** | Runs continuously without the laptop; where background jobs, email and the demo actually get exercised |
 | **Production** | Same stack, `teren.rs`, backups and alerting | C7 | Real customers |
 
 **The tunnel needs a stable *https* hostname, not a random one — and https is not optional.**
@@ -878,16 +918,69 @@ environment before device binding (C5) and production hardening (C7).
 
 ### Deployment and monitoring
 
-- **Deployment:** single Hetzner VPS, `docker compose` (api, postgres, caddy), **Caddy** for
+**Built at B3a (2026-08-30). It all lives in `deploy/`, and `deploy/README.md` is the runbook** —
+what to buy in what order, the first deploy, backups, and the traps. What follows is the shape;
+that file has the detail.
+
+- **Deployment:** single Hetzner VPS, `docker compose` (api, postgres, web/caddy), **Caddy** for
   automatic TLS. Object storage is managed and external. Staging and production are the same
-  compose file with different environment variables — if they diverge, staging stops being
-  evidence about production.
-- **Backups:** nightly `pg_dump` to object storage, 30-day retention. A restore rehearsal is part
-  of C7 — an unrehearsed backup is a rumour, and this product's whole promise is that evidence
-  survives.
-- **Monitoring:** `/health`, Hangfire dashboard behind auth, Serilog to stdout with the entry id
-  on pipeline lines, and email alerts on failed jobs. No observability platform until something
-  actually hurts.
+  compose file (`deploy/docker-compose.prod.yml`) with different environment variables — if they
+  diverge, staging stops being evidence about production. `deploy/docker-compose.local.yml` is an
+  overlay that adds only the *managed* services a real host would rent (object storage, mail, TLS
+  in front of storage) so the whole stack can be stood up on a laptop; it changes nothing about
+  api, web, postgres or the routing, because those are the parts being rehearsed.
+- **One command:** `deploy/deploy.sh`, whose order is the point of it —
+  *preflight → build → ship → database up → **migrate** → app up → bucket CORS → verify*.
+- **Migrations are never implicit.** `dotnet Teren.Api.dll migrate` runs as its own compose
+  service (`--profile tools`), against a healthy database, before the new API serves anything. A
+  container that migrated on start-up would re-attempt the schema change on every restart of a
+  crash loop, and two replicas would race. Forgetting the step has bitten twice; a deploy that
+  cannot forget is the fix.
+- **Two images.** `deploy/api.Dockerfile` (multi-stage, non-root `app` uid 1654, no SDK in the
+  final layer) and `deploy/web.Dockerfile` (Angular production build served by Caddy, which also
+  proxies `/api` — one origin, which is what makes `apiBaseUrl: ''` correct and means no CORS
+  preflight for the app at all).
+- **The API trusts `X-Forwarded-Proto`/`-For` only when `Hosting:BehindProxy` is set**, and that
+  is safe only because the compose file publishes no port for the api service. Publish one and it
+  becomes a header-spoofing hole. Without it, `UseHttpsRedirection` would answer every request —
+  the container healthcheck included — with a 307 to a port nothing listens on.
+- **The runtime image needs more than the .NET runtime**, and each addition closes a failure that
+  surfaces far from its cause: `icu-libs` + `icu-data-full` (Alpine defaults to invariant
+  globalization, under which a Serbian report renders `12.5` where a Serbian reader expects
+  `12,5` — silently, because `ReportStrings` falls back to invariant by design), `tzdata`
+  (**without it every report fails**: B6 reports carry project-local timestamps and confirming
+  parked entries at `time_zone_unknown: 'Europe/Belgrade' is not a time zone this host can
+  resolve`, while `/health` said `ok` throughout), `fontconfig` + `freetype` for QuestPDF's Skia,
+  and `curl` for the healthcheck.
+- **Cache policy is load-bearing for the PWA.** Content-hashed assets are `immutable` for a year;
+  everything with a stable name — `index.html`, `ngsw.json`, `ngsw-worker.js`,
+  `manifest.webmanifest`, `/i18n/*.json`, `/icons/*` — is `no-cache` (store, but revalidate). A
+  far-future `max-age` on `ngsw.json` is exactly how an installed app stops ever seeing a new
+  version. The SPA fallback is narrowed to navigations (`Accept: text/html`, file absent) so a
+  missing asset 404s honestly instead of handing the service worker an HTML shell to parse as its
+  manifest.
+- **Backups:** nightly `pg_dump -Fc` (cron on the host, not a scheduler container — a backup that
+  needs the stack it backs up to be healthy is not a backup), verified by reading its table of
+  contents back, copied to object storage, 30-day retention both places.
+  `deploy/backup/pg-restore.sh` restores. **Two deliberate exclusions:** object storage is not in
+  the dump (the rows point at media that must still exist in that bucket), and neither is
+  Hangfire's schema — restoring job state would resurrect a queue whose reports have already been
+  delivered, and §10's rule about not putting three copies of the same day in an inbox applies.
+  The rehearsal C7 asks for has now been done once, and it found a real defect on the first
+  attempt: a restore that cleared only the `public` schema died halfway on "schema hangfire
+  already exists" and left the database with no application tables at all.
+- **Object-storage CORS is an applied artefact** (`deploy/storage/`), run by every deploy rather
+  than remembered once. **The two stores this project uses do not agree on the mechanism:**
+  Hetzner Object Storage (Ceph RGW) implements the S3 bucket CORS API, and **MinIO does not** —
+  `mc cors set` answers "functionality that is not implemented", because MinIO's CORS is the
+  server-level `MINIO_API_CORS_ALLOW_ORIGIN`, whose default is `*`. That default is why the
+  2026-08-29 browser-upload verification proved less than it appeared to: it showed that an
+  *unconfigured* store lets everything through. The local stack now pins MinIO to the app origin,
+  and a wrong origin is refused.
+- **Monitoring:** `/health`, Hangfire dashboard behind Basic auth (unreachable rather than open
+  when unconfigured), Serilog to stdout with the entry id on pipeline lines, json-file logging
+  capped at 10 MB × 5 so a small VPS disk is not a scheduled outage. Email alerts on failed jobs
+  and any observability platform still wait until something actually hurts.
 
 ---
 

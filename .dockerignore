@@ -1,0 +1,52 @@
+# Build context for deploy/api.Dockerfile and deploy/web.Dockerfile (context = repo root).
+#
+# This file is about two things, and the second one is not obvious: keeping the context small
+# keeps `docker build` fast, and it keeps the *disk* under control on a machine that has run out
+# of it before. node_modules alone is several hundred megabytes that the image builds re-create
+# from the lockfile anyway.
+#
+# It is also a safety net: never let a local secret or a local database volume enter an image
+# layer, where it would survive every later `rm` in the same Dockerfile.
+
+# Version control and editors
+.git
+.gitignore
+.vs
+.vscode
+.idea
+.claude
+.config
+.github
+
+# .NET build output — the image builds its own
+**/bin
+**/obj
+artifacts
+TestResults
+
+# Node / Angular build output and caches
+**/node_modules
+**/dist
+**/.angular
+**/npm-debug.log*
+
+# Never bake a secret or a local data volume into a layer
+**/.env
+**/.env.*
+!**/.env.example
+**/appsettings.*.local.json
+**/*.pfx
+**/*.key
+.data
+postgres-data
+minio-data
+
+# Not part of any image
+docs
+design
+archive
+Pages
+tools
+tests
+*.md
+!web/teren-pwa/README.md
