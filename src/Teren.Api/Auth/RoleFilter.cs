@@ -33,7 +33,9 @@ namespace Teren.Api.Auth;
 /// so <b>401 beats 403 beats 400</b>: an anonymous caller learns nothing about which roles a route
 /// admits, and a caller of the wrong role learns nothing about the shape of its payload. Group
 /// filters run outside route filters, so admitting roles on the group is what puts this in the
-/// middle; <c>FilterOrderTests</c> asserts the resulting behaviour rather than the wiring.
+/// middle. The two tests that assert the resulting <em>behaviour</em> rather than the wiring are
+/// <c>RoleGateTests.An_anonymous_caller_learns_nothing_about_which_roles_a_route_admits</c> and
+/// <c>RoleGateTests.A_caller_of_the_wrong_role_learns_nothing_about_the_payload_shape</c>.
 /// </para>
 /// </summary>
 public sealed class RoleFilter(params AppUserRole[] allowed) : IEndpointFilter

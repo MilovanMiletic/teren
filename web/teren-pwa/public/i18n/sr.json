@@ -22,6 +22,7 @@
   },
   "common": {
     "language": "Jezik",
+    "profile": "Moj nalog",
     "languageName": {
       "sr": "Srpski",
       "en": "English"
@@ -498,18 +499,13 @@
           "body": "Kod ide na imejl adresu koja je upisana za vas. Ako nemate sačuvanu adresu, tražite kod od poslovođe ili vlasnika."
         }
       },
-      "success": {
-        "title": "Ovaj telefon je spreman",
-        "body": "Snimate za firmu {{company}}, kao {{name}}.",
-        "released": "Unosi koji su čekali pristup sada se šalju.",
-        "action": "Počni snimanje"
-      },
       "error": {
         "offline": "Nema interneta, pa kod nije mogao da se proveri. Kod nije potrošen — pokušajte ponovo kada se mreža vrati.",
         "server": "Server trenutno ne odgovara. Kod nije potrošen — pokušajte ponovo za koji trenutak.",
         "rejected": "Korisničko ime i kod ne idu zajedno. Proverite oba pa pokušajte ponovo — kod važi sedam dana i koristi se jednom, pa tražite novi ako je stariji.",
         "notAvailable": "Ovaj server još ne prima pridruživanje kodom. Kod nije potrošen — javite vlasniku firme.",
         "tooManyAttempts": "Previše pokušaja sa ovog uređaja. Sačekajte nekoliko minuta pa pokušajte ponovo.",
+        "unreadable": "Server je prihvatio pridruživanje, ali ova verzija aplikacije ne ume da pročita odgovor. Ovaj kod je možda već potrošen — tražite novi i ažurirajte aplikaciju.",
         "unknown": "Pridruživanje nije uspelo, a aplikacija ne ume da kaže zašto. Kod nije potrošen — pokušajte ponovo."
       },
       "aside": {
@@ -543,7 +539,7 @@
       },
       "success": {
         "title": "Prijava je uspela",
-        "body": "Dobrodošli, {{name}}. Ekrani za kancelariju se još prave, pa ovde za sada nema šta da se otvori."
+        "body": "Dobrodošli, {{name}}. Otvaram vašu kancelariju…"
       },
       "error": {
         "offline": "Nema interneta, pa prijava nije mogla da se proveri. Pokušajte ponovo kada se mreža vrati.",
@@ -551,13 +547,177 @@
         "rejected": "Pogrešna imejl adresa ili lozinka.",
         "notAvailable": "Ovaj server još ne prima prijavu imejl adresom i lozinkom.",
         "tooManyAttempts": "Previše pokušaja prijave sa ovog uređaja. Sačekajte nekoliko minuta pa pokušajte ponovo.",
+        "unreadable": "Server je prihvatio prijavu, ali ova verzija aplikacije ne ume da pročita odgovor. Ažurirajte aplikaciju pa pokušajte ponovo.",
         "unknown": "Prijava nije uspela, a aplikacija ne ume da kaže zašto. Pokušajte ponovo."
       },
       "aside": {
         "title": "Ko se ovde prijavljuje",
         "body": "Vlasnik firme prati sva gradilišta, radnike i njihove kodove za pridruživanje.",
         "worker": "Poslovođa na gradilištu se ne prijavljuje lozinkom. On se jednom pridruži kodom."
+      },
+      "awaiting": {
+        "body": "Dobrodošli, {{name}}. Ekrani za Teren se još prave, pa ovde za sada nema šta da se otvori."
       }
+    }
+  },
+  "profile": {
+    "title": "Moj nalog",
+    "loading": "Učitavanje naloga…",
+    "name": {
+      "label": "IME",
+      "unknown": "Ime nije poznato"
+    },
+    "role": {
+      "worker": "Na gradilištu",
+      "company_admin": "Vlasnik firme",
+      "super_admin": "Teren tim",
+      "unknown": "Uloga koju ova verzija aplikacije ne prepoznaje"
+    },
+    "username": {
+      "label": "KORISNIČKO IME",
+      "hint": "Ovo je vaše ime u Terenu. Ostaje vaše i kad promenite telefon — na novom telefonu unesete njega i kod."
+    },
+    "details": {
+      "label": "PODACI",
+      "none": "Nema drugih podataka o ovom nalogu."
+    },
+    "company": {
+      "label": "Firma"
+    },
+    "device": {
+      "label": "Telefon"
+    },
+    "activated": {
+      "label": "Aktiviran"
+    },
+    "language": {
+      "label": "JEZIK",
+      "hint": "Jezik aplikacije na ovom telefonu. Izveštaj klijentu ide na jeziku gradilišta."
+    },
+    "stale": {
+      "title": "Nije provereno na serveru",
+      "body": "Prikazano je ono što telefon pamti od aktivacije."
+    },
+    "unavailable": {
+      "title": "Podaci o nalogu nisu učitani",
+      "body": "Telefon ne pamti podatke o nalogu, pa ovde nema šta da se prikaže. Snimci i dalje stoje na telefonu."
+    },
+    "reason": {
+      "offline": "Nema interneta, pa podaci nisu provereni na serveru.",
+      "unauthorized": "Server nije prihvatio ovaj telefon, pa podaci nisu provereni. Snimci ostaju na telefonu i ništa se ne briše.",
+      "notConfigured": "Ova verzija aplikacije nema podešen server, pa podaci nisu provereni.",
+      "unavailable": "Server se ne odaziva, pa podaci nisu provereni."
+    },
+    "newPhone": {
+      "title": "Novi telefon ili drugi nalog",
+      "body": "Unesite korisničko ime i kod da telefon pripada vama. Ništa snimljeno se ne briše — unosi koji čekaju slanje ostaju na telefonu.",
+      "action": "Unesite novi kod"
+    }
+  },
+  "company": {
+    "title": "Firma",
+    "reload": "Osveži",
+    "loading": "Učitavanje radnika…",
+    "signedInAs": "Prijavljeni ste kao {{name}}",
+    "signOut": "Odjavi se",
+    "workers": {
+      "label": "POSLOVOĐE"
+    },
+    "stale": {
+      "title": "Nije provereno na serveru",
+      "body": "Ovo možda nije sve što vaša firma ima."
+    },
+    "reason": {
+      "offline": "Nema interneta, pa ništa nije moglo da se proveri na serveru.",
+      "signedOut": "Server više ne prihvata ovu prijavu. Prijavite se ponovo.",
+      "forbidden": "Ovaj nalog to ne sme. Radnicima upravlja samo vlasnik firme.",
+      "notSignedIn": "Niste prijavljeni, pa ništa nije moglo da se pročita.",
+      "refused": "Server je odbio zahtev. Osvežite pa pokušajte ponovo.",
+      "unavailable": "Server trenutno ne odgovara."
+    },
+    "empty": {
+      "title": "Još nema poslovođa",
+      "body": "Dodajte prvog i dajte mu kod. Traje minut."
+    },
+    "summary": {
+      "label": "FIRMA",
+      "workers": "Poslovođe",
+      "phones": "Aktivni telefoni"
+    },
+    "worker": {
+      "disabled": "Isključen",
+      "hasPhone": "Telefon aktivan",
+      "noPhone": "Nema telefon",
+      "hasCode": "Kod ga čeka",
+      "email": "Imejl: {{email}}",
+      "noEmail": "Nema upisanu imejl adresu, pa ne može sam da zatraži novi kod — mora da pita vas."
+    },
+    "code": {
+      "label": "KOD ZA PRIDRUŽIVANJE",
+      "loading": "Čitanje koda…",
+      "failed": "Kod nije mogao da se pročita",
+      "expires": "Važi do {{date}}",
+      "notEmailed": "Ništa nije poslato imejlom. Pročitajte mu kod ili mu pošaljite poruku ispod.",
+      "copy": "Kopiraj kod",
+      "copyMessage": "Kopiraj poruku",
+      "copied": "Kod je kopiran.",
+      "copiedMessage": "Poruka je kopirana. Pošaljite je samo njemu.",
+      "copyFailed": "Aplikacija nije uspela da koristi ostavu. Označite tekst i kopirajte ručno.",
+      "messageLabel": "PORUKA ZA NJEGA",
+      "oneAtATime": "Jedan čovek, jedna poruka. Kod poslat u grupu omogućava drugome da upiše dan pod njegovim imenom.",
+      "issue": "Napravi kod",
+      "issueNew": "Napravi novi kod",
+      "issuing": "Pravljenje koda…",
+      "disabledHint": "Isključen je iz firme. Vratite ga pre nego što mu napravite kod.",
+      "none": {
+        "body": "Trenutno nema kod koji bi mogao da ukuca. Napravite mu ga i pošaljite."
+      },
+      "reissue": {
+        "title": "Da napravim novi kod?",
+        "body": "Kod iznad prestaje da važi čim se napravi novi. Ako ga je već dobio i upravo ga kuca, sačekajte.",
+        "confirm": "Da, napravi novi"
+      }
+    },
+    "phones": {
+      "label": "TELEFONI",
+      "none": "Nijedan telefon mu još nije pridružen.",
+      "unnamed": "Telefon",
+      "lastSeen": "Poslednji kontakt {{date}}",
+      "revokedOn": "Opozvan {{date}}",
+      "never": "Još se nije javio",
+      "revoked": "Opozvan",
+      "revoke": "Opozovi",
+      "revoking": "Opozivanje…",
+      "unconfirmed": "Server nije odgovorio, pa se ne zna da li je telefon opozvan. Osvežite pre nego što pokušate ponovo.",
+      "confirm": {
+        "title": "Opozvati {{phone}} — {{name}}?",
+        "body": "Od sledećeg javljanja server odbija taj telefon. On i dalje snima i ništa se sa telefona ne briše, ali ono što je snimio prestaje da se šalje dok se ponovo ne pridruži novim kodom.",
+        "action": "Opozovi telefon"
+      }
+    },
+    "add": {
+      "open": "Dodaj poslovođu",
+      "body": "Dovoljno je ime. Kod dobija odmah.",
+      "title": "Novi poslovođa",
+      "name": {
+        "label": "IME I PREZIME",
+        "placeholder": "Zoran Jovanović"
+      },
+      "email": {
+        "label": "IMEJL ADRESA (NIJE OBAVEZNO)",
+        "placeholder": "zoran@firma.rs",
+        "hint": "Sa adresom može sam da zatraži novi kod kada mu se pokvari telefon. Bez nje, traži od vas."
+      },
+      "submit": "Dodaj i napravi kod",
+      "submitting": "Dodavanje…",
+      "conflict": {
+        "username": "To ime je zauzeto dok je dodavan. Ništa nije sačuvano — pokušajte ponovo.",
+        "email": "Ta imejl adresa je već na jednom Teren nalogu. Izostavite je ili upišite drugu."
+      }
+    },
+    "aside": {
+      "title": "Kako kodovi rade",
+      "body": "Kod važi jednom i traje sedam dana. Telefon se pridružuje njegovim korisničkim imenom i kodom, pa oboje šaljite baš tom čoveku — nikada u grupu."
     }
   }
 }

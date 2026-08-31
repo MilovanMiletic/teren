@@ -27,7 +27,9 @@ export type IconName =
   | 'lock'
   | 'mail'
   | 'eye'
-  | 'eye-off';
+  | 'eye-off'
+  | 'user'
+  | 'copy';
 
 /**
  * The icon set: stroke-based, 24 px grid, stroke-width 2, round caps and joins
@@ -64,6 +66,10 @@ export type IconName =
           <path d="M17 16.95A7 7 0 0 1 5 12v-1" />
           <path d="M19 11v1a7 7 0 0 1-.11 1.23" />
           <path d="M12 19v4" />
+        }
+        @case ('copy') {
+          <rect x="9" y="9" width="12" height="12" rx="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
         }
         @case ('chevron-down') {
           <path d="M6 9l6 6 6-6" />
@@ -187,6 +193,10 @@ export type IconName =
           <path d="M6.61 6.61A18.15 18.15 0 0 0 1 12s4 8 11 8a9.74 9.74 0 0 0 5.39-1.61" />
           <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
           <line x1="1" y1="1" x2="23" y2="23" />
+        }
+        @case ('user') {
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+          <circle cx="12" cy="7" r="4" />
         }
       }
     </svg>

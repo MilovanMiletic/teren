@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Net.Http.Headers;
 using Npgsql;
 using Teren.Api.Auth;
 using Teren.Api.Contracts;
@@ -72,6 +73,18 @@ public static class EntryEndpoints
             .WithName("GetEntryReport")
             .WithSummary("Download the PDF report that was sent for this entry.")
             .Produces<FileResult>(StatusCodes.Status200OK, "application/pdf")
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        // Nested under /entries on purpose, and not only because that is where the client already
+        // holds both ids. This group carries RoleGates.Evidence, so the photo read path inherits
+        // layer 1 of the privacy claim by construction — a sibling group would have had to
+        // remember it, and the one route in the product that hands anybody the contents of a
+        // customer's evidence is the worst place to rely on remembering.
+        group.MapGet("/{id}/media/{mediaId}", GetEntryMediaAsync)
+            .WithName("GetEntryMedia")
+            .WithSummary("Stream one photograph or voice note of this entry.")
+            .Produces<FileResult>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
@@ -950,6 +963,235 @@ public static class EntryEndpoints
             verified.Content,
             contentType: "application/pdf",
             fileDownloadName: fileName);
+    }
+
+    // --------------------------------- GET /api/entries/{id}/media/{mediaId}
+
+    /// <summary>
+    /// The photo read path — the half of C3 that was missing, and the reason an owner opening the
+    /// diary on his tablet saw text where the evidence should be. Photos go up with a presigned
+    /// PUT and are sealed at <c>/complete</c>; until this route existed nothing could ever hand
+    /// them back, so an entry's photographs were visible only on the phone that took them, in that
+    /// phone's own local store.
+    ///
+    /// <para><b>Authenticated bytes, not a presigned GET</b> — the same decision B6 took for the
+    /// report, taken again here on stronger grounds. A presigned GET would be cheaper and keeps
+    /// bytes out of the API, which is what §8 uses for the <em>upload</em> direction. The
+    /// asymmetry is deliberate:</para>
+    /// <list type="bullet">
+    /// <item>A presigned URL is a <b>bearer credential that outlives the request</b>. For its whole
+    /// TTL it works for whoever holds it — forwarded, pasted into a chat, sitting in a browser
+    /// history or a proxy log — and it is outside the role gate, outside the tenant filter and
+    /// outside device revocation for that window. Revoke a stolen phone and its outstanding photo
+    /// URLs keep working. For a <em>write</em> permission to one key that the phone is about to
+    /// fill anyway, that is an acceptable trade; for <em>read</em> access to a client's site diary,
+    /// which is the thing this product asks to be trusted with, it is not.</item>
+    /// <item>Every access here passes the role gate and the tenant filter, so "Teren staff cannot
+    /// look at a customer's photographs" stays true of the photographs themselves and not merely
+    /// of the rows describing them.</item>
+    /// <item>The bytes are <b>proven against the checksum the phone declared</b> before any of them
+    /// is served (<see cref="VerifiedObjectReader"/>). Storage handing a client the wrong file
+    /// directly is not something a presigned URL leaves anybody able to notice.</item>
+    /// </list>
+    /// <para>The cost is API bandwidth. It is bounded and small: photographs are compressed on the
+    /// phone to ~300 KB, an entry carries at most 20, and this is a read an owner performs a
+    /// handful of times a day — not the upload path, which is unbounded in a way that made the §2
+    /// rule necessary. If it ever shows up on a bill, the answer is a CDN in front of this route,
+    /// not a URL nobody can take back.</para>
+    ///
+    /// <para><b>The client cannot use this in <c>&lt;img src&gt;</c> directly</b>: an image
+    /// element sends no <c>Authorization</c> header. The PWA fetches the URL with its bearer token
+    /// and renders the blob, exactly as it already does for the report download.</para>
+    ///
+    /// <para><b>Cacheable, and safely so.</b> Sealed media never changes — the bytes at a media id
+    /// are fixed by the checksum in the record — so this is a genuine <c>immutable</c> case. It is
+    /// <c>private</c>, never <c>public</c>: the response is only ever the right answer for the
+    /// caller who presented that token, and a shared cache holding a company's site photographs is
+    /// precisely the leak the presigned URL was rejected for. <c>Vary: Authorization</c> keeps a
+    /// re-activated phone's new token from reading the old one's cache entry. What a browser
+    /// already fetched stays in that browser after a revocation, and that is the same bytes the
+    /// device had legitimately rendered a moment earlier — revocation stops new reads, which is
+    /// what it can mean here.</para>
+    ///
+    /// <para>The answers, and the distinctions the client branches on:
+    /// <list type="bullet">
+    /// <item><b>404</b> — no such media <em>on that entry, for this company</em>. Another
+    /// company's photograph, a media id that does not exist, and a real media id paired with the
+    /// wrong entry are one answer, because any difference between them is an oracle.</item>
+    /// <item><b>409 <c>media_not_ready</c></b> — yours, but <c>/complete</c> never certified the
+    /// bytes. Worth re-checking; not worth an error message about lost evidence.</item>
+    /// <item><b>409 <c>media_unavailable</c></b> — certified once, and the object is gone or no
+    /// longer matches its checksum. A server-side fault, said plainly.</item>
+    /// <item><b>503</b> — storage did not answer inside <c>Storage:MediaReadBudget</c>. Nothing is
+    /// concluded about the evidence.</item>
+    /// </list></para>
+    /// </summary>
+    private static async Task<IResult> GetEntryMediaAsync(
+        string id,
+        string mediaId,
+        HttpContext http,
+        TerenDbContext db,
+        IObjectStorage storage,
+        IOptions<StorageOptions> storageOptions,
+        ILogger<Media> logger,
+        CancellationToken ct)
+    {
+        if (!Guid.TryParse(id, out var entryId) || !Guid.TryParse(mediaId, out var mediaGuid))
+        {
+            return ApiProblems.BadRequest("The ids in the path are not both valid UUIDs.");
+        }
+
+        // One query, two conditions, and that shape is the tenancy guarantee rather than a
+        // convenience: the global filter removes every other company's rows, and `EntryId ==` is
+        // what stops a real media id of this company being read through somebody else's entry.
+        // Whichever of the three ways it misses, the caller gets the same answer.
+        var media = await db.Media.AsNoTracking()
+            .FirstOrDefaultAsync(m => m.Id == mediaGuid && m.EntryId == entryId, ct);
+
+        if (media is null)
+        {
+            return ApiProblems.NotFound(
+                $"Media {mediaGuid} was not found on entry {entryId}.");
+        }
+
+        // Only what /complete certified. `verified` is the one status that means the bytes in
+        // storage were checked against the declaration; serving anything else would put a file
+        // nobody vouched for in front of a client as this entry's evidence.
+        if (media.UploadStatus != MediaUploadStatus.Verified)
+        {
+            return ApiProblems.Conflict(
+                ApiProblemCodes.MediaNotReady,
+                $"Media {mediaGuid} is {MediaUploadStatusNames.ToWire(media.UploadStatus)}; only "
+                + "media verified at completion can be served.");
+        }
+
+        // The checksum IS the identity of the bytes, so it is the honest strong validator. It also
+        // pays for itself: a revalidation is answered below without touching object storage at
+        // all, which on a small VPS is the difference between an archive scroll costing twenty
+        // downloads and costing none.
+        var etag = new EntityTagHeaderValue($"\"{media.Sha256.TrimEnd()}\"");
+
+        ApplyMediaCacheHeaders(http.Response, etag);
+
+        if (IfNoneMatchSatisfied(http.Request, etag))
+        {
+            return Results.StatusCode(StatusCodes.Status304NotModified);
+        }
+
+        // Bounded like /complete's verification pass, and for the same reason: the read borrows
+        // the bulk storage client (a 10 MB photograph would not survive the 5 s phone budget), and
+        // that client waits two minutes. Nobody staring at a tablet waits two minutes.
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        budget.CancelAfter(storageOptions.Value.MediaReadBudget);
+
+        VerifiedObject? verified;
+        try
+        {
+            // The key comes from the row, never from the route: no id a caller types reaches
+            // object storage as a path. Bounded by the declared size so a substituted object
+            // cannot make the temp volume the attack surface.
+            verified = await VerifiedObjectReader.OpenVerifiedAsync(
+                storage, media.ObjectKey, media.Sha256.TrimEnd(), budget.Token, media.ByteSize);
+        }
+        catch (OperationCanceledException) when (budget.IsCancellationRequested
+                                                 && !ct.IsCancellationRequested)
+        {
+            // The budget ran out, not the caller's patience. 503 + Retry-After, and no conclusion
+            // about the evidence: this says nothing about whether the photograph is intact.
+            throw new ObjectStorageUnavailableException(
+                "Reading this photograph took longer than the allowed budget.");
+        }
+        catch (EvidenceIntegrityException ex)
+        {
+            // Ids and the reason, never a byte of what was found there.
+            logger.LogError(
+                "Entry {EntryId}: media {MediaId} is in storage but is not what the record says — "
+                + "{Reason}", entryId, mediaGuid, ex.Message);
+
+            return ApiProblems.Conflict(
+                ApiProblemCodes.MediaUnavailable,
+                $"The stored bytes for media {mediaGuid} do not match the record.");
+        }
+
+        if (verified is null)
+        {
+            logger.LogError(
+                "Entry {EntryId}: media {MediaId} was verified at completion but nothing is "
+                + "stored at its key.", entryId, mediaGuid);
+
+            return ApiProblems.Conflict(
+                ApiProblemCodes.MediaUnavailable,
+                $"Media {mediaGuid} is no longer in storage.");
+        }
+
+        // Inline, and the content type comes from the sealed row — never from anything the caller
+        // sent and never from what storage claims. MediaPolicy admits only jpeg/png/webp and a
+        // short list of audio containers, so there is no HTML or SVG to render; `nosniff` is set
+        // above anyway, because "inline" plus content-type sniffing is how a stored file becomes
+        // script on the app's own origin.
+        //
+        // The file name is the media id and the extension the server itself derived at
+        // declaration. Ids only, like the object key: a photograph's file name must not become the
+        // one place a site address leaks (ARCHITECTURE §8).
+        http.Response.Headers.ContentDisposition =
+            $"inline; filename=\"{media.Id:D}{Path.GetExtension(media.ObjectKey)}\"";
+
+        // Range processing on: it costs a parameter and it is what lets a voice note be scrubbed
+        // and a big photograph resume. It is safe here precisely because the whole object was
+        // spooled and verified first — every range served is cut from bytes already proven.
+        return Results.File(
+            verified.Content,
+            contentType: media.ContentType,
+            fileDownloadName: null,
+            lastModified: null,
+            entityTag: etag,
+            enableRangeProcessing: true);
+    }
+
+    /// <summary>
+    /// One year, <c>immutable</c>, and <b>private</b>. Sealed evidence never changes bytes, so the
+    /// long life is honest; <c>private</c> is what keeps it out of any cache but the one belonging
+    /// to the caller who presented the token. Set before the 304 branch as well as the 200, since
+    /// a revalidation must not lose the directives that make the next read free.
+    /// </summary>
+    private static void ApplyMediaCacheHeaders(HttpResponse response, EntityTagHeaderValue etag)
+    {
+        response.Headers.CacheControl = "private, max-age=31536000, immutable";
+        response.Headers.ETag = etag.ToString();
+
+        // The token is part of what makes this response correct, so it is part of the cache key.
+        // A phone re-activated with a new token must not read the old token's entries.
+        response.Headers.Vary = "Authorization";
+
+        // "inline" plus sniffing is how stored bytes become executable content on the origin
+        // serving them. The declared type is the only type.
+        response.Headers.XContentTypeOptions = "nosniff";
+    }
+
+    /// <summary>
+    /// Whether the caller already holds these exact bytes. Checked here, before storage is
+    /// touched, rather than left to the framework's own precondition handling further down — the
+    /// point of a conditional request on this route is to skip the download and the hashing, not
+    /// merely to skip writing the body.
+    /// </summary>
+    private static bool IfNoneMatchSatisfied(HttpRequest request, EntityTagHeaderValue etag)
+    {
+        var header = request.Headers.IfNoneMatch;
+        if (header.Count == 0)
+        {
+            return false;
+        }
+
+        if (!EntityTagHeaderValue.TryParseList(header, out var candidates))
+        {
+            // Unparseable: treat it as absent and serve the bytes. Never as a match.
+            return false;
+        }
+
+        // Weak comparison, per RFC 9110 §13.1.2: If-None-Match compares weakly, and the tag is
+        // strong here anyway.
+        return candidates.Any(candidate =>
+            candidate.Tag == "*" || candidate.Compare(etag, useStrongComparison: false));
     }
 
     // ------------------------------------------------------------------- helpers

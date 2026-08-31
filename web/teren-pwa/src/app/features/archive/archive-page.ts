@@ -14,6 +14,7 @@ import { map, of, switchMap } from 'rxjs';
 
 import { EntryListItemResponse } from '../../core/api/api-types';
 import { ArchiveRow, groupArchiveRowsByDay, mergeArchiveRows } from '../../core/archive/archive-rows';
+import { ARCHIVE_ENTRY_PARAM } from '../../core/archive/archive-route';
 import { ArchiveService, RemoteStatus } from '../../core/archive/archive.service';
 import { ConnectivityService } from '../../core/connectivity.service';
 import { EntryStore } from '../../core/db/entry-store';
@@ -97,7 +98,7 @@ export class ArchivePage {
    * gesture still means "close the record" because it is still a navigation.
    */
   protected readonly selectedId = toSignal(
-    inject(ActivatedRoute).queryParamMap.pipe(map((params) => params.get('entry'))),
+    inject(ActivatedRoute).queryParamMap.pipe(map((params) => params.get(ARCHIVE_ENTRY_PARAM))),
     { initialValue: null },
   );
 
@@ -227,7 +228,7 @@ export class ArchivePage {
   }
 
   protected open(row: ArchiveRow): void {
-    void this.router.navigate(['/diary'], { queryParams: { entry: row.id } });
+    void this.router.navigate(['/diary'], { queryParams: { [ARCHIVE_ENTRY_PARAM]: row.id } });
   }
 
   /**

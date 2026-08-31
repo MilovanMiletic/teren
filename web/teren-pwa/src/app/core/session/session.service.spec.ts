@@ -47,6 +47,10 @@ describe('SessionService', () => {
       // *any* value of the constant, including the empty string that would mean a demo phone
       // silently stopped uploading. The point of the fallback is that this phone can still send.
       expect(sessions.usable()).toBe(true);
+      // …and yet it is **not** activated. The gate asks this question and not `usable()`, which
+      // the fallback above makes true on every install until D7/F9. A gate written on `usable()`
+      // would be inert, and `/welcome` a screen nobody could reach.
+      expect(sessions.activated()).toBe(false);
     });
   });
 
@@ -62,6 +66,19 @@ describe('SessionService', () => {
       expect(sessions.token()).toBe('trn_d_a-real-device-token');
       expect(sessions.session()?.username).toBe('zoran.jovanovic');
       expect(sessions.usable()).toBe(true);
+      // Read during construction, so the gate can answer on the first frame.
+      expect(sessions.activated()).toBe(true);
+    });
+
+    it('is not activated by a row it could not fully read', () => {
+      // The gate must side with "ask him for a code" over "let a bearer it cannot describe
+      // through": a half-session is the one outcome worse than none.
+      store({ token: 'trn_d_x', username: 'zoran.jovanovic' });
+
+      const sessions = TestBed.inject(SessionService);
+
+      expect(sessions.session()).toBeNull();
+      expect(sessions.activated()).toBe(false);
     });
 
     it('prefers the stored token over the build-time one', () => {

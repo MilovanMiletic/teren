@@ -42,7 +42,9 @@ public sealed class DemoResetIdentityTests(TerenTestApp app)
 
         result.Removed.AppUsers.ShouldBe(2);
         result.Removed.Devices.ShouldBe(1);
-        result.Removed.ActivationCodes.ShouldBe(1);
+        // The junk code plus the seeded demo code: `seed` mints a live one now, and a reset
+        // clears the demo company down to the bone before re-seeding it.
+        result.Removed.ActivationCodes.ShouldBe(2);
         result.Removed.PasswordTokens.ShouldBe(1);
         result.Removed.AdminSessions.ShouldBe(1);
         result.Removed.AdminAudits.ShouldBe(1);
@@ -50,7 +52,9 @@ public sealed class DemoResetIdentityTests(TerenTestApp app)
         // Back to a demo that can actually be given: two people and one working phone.
         result.FinalState.AppUsers.ShouldBe(2);
         result.FinalState.Devices.ShouldBe(1);
-        result.FinalState.ActivationCodes.ShouldBe(0);
+        // Exactly one: the fixed demo code, without which a fresh phone cannot get past the
+        // welcome screen and the reset would hand back an undemonstrable demo.
+        result.FinalState.ActivationCodes.ShouldBe(1);
         result.FinalState.AdminSessions.ShouldBe(0);
     }
 
@@ -159,14 +163,18 @@ public sealed class DemoResetIdentityTests(TerenTestApp app)
     {
         var now = DateTime.UtcNow;
 
+        // A code that was already spent joining a phone during an earlier demo. It has to be a
+        // CONSUMED row rather than a live one: `seed` now mints the fixed demo code, and
+        // ux_activation_code_live permits exactly one live code per worker — a second live row
+        // here would be refused by the database, which is the design working.
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"""
              INSERT INTO activation_code
                  (id, company_id, user_id, created_by_user_id, code_hash, code_display,
-                  created_at, expires_at)
+                  created_at, expires_at, consumed_at)
              VALUES ({Guid.NewGuid()}, {DemoSeeder.CompanyId}, {DemoSeeder.WorkerId},
-                     {DemoSeeder.CompanyAdminId}, {new string('a', 64)}, {"XKD4-7HMP"},
-                     {now}, {now.AddDays(7)})
+                     {DemoSeeder.CompanyAdminId}, {new string('a', 64)}, {null as string},
+                     {now}, {now.AddDays(7)}, {now})
              """,
             Ct);
 

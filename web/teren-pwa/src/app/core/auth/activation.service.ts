@@ -4,6 +4,8 @@ import { classifyApiError } from '../api/api-failure';
 import { EntryStore } from '../db/entry-store';
 import { PROJECT_CACHE_KEY } from '../projects/api-project-source';
 import { ProjectService, SELECTED_PROJECT_KEY } from '../projects/project.service';
+import { AdminSession } from '../session/admin-session';
+import { AdminSessionService } from '../session/admin-session.service';
 import { Session } from '../session/session';
 import { SessionService } from '../session/session.service';
 import { UploadService } from '../sync/upload.service';
@@ -53,6 +55,22 @@ export type AuthFailure =
   | 'notAvailable'
   /** 429 — the rate limiter (§7: 10 attempts / 5 minutes by IP). Waiting genuinely fixes it. */
   | 'tooManyAttempts'
+  /**
+   * **The server said yes and this build could not read the answer.**
+   *
+   * Its own member rather than `unknown`, because it is the one failure where the usual reassurance
+   * is a lie. Every other sentence on the code screen can honestly end "the code is not used up" —
+   * nothing was sent, or the server refused it. Here the opposite is true: a 200 means the code
+   * **was** spent and the device row **does** exist, and only the client's reading of the response
+   * failed. That is not a hypothetical; it is what the founder met on a real phone on 2026-08-31,
+   * where the screen told him his code was untouched and he burned a second single-use code
+   * proving otherwise.
+   *
+   * The known trigger — the nested-versus-flat divergence between the plan and the endpoint — is
+   * fixed. The member stays because the shape can drift again, and the next drift must not be able
+   * to produce that sentence.
+   */
+  | 'unreadable'
   | 'unknown';
 
 /**
@@ -72,6 +90,7 @@ const ALL_AUTH_FAILURES: Record<AuthFailure, true> = {
   rejected: true,
   notAvailable: true,
   tooManyAttempts: true,
+  unreadable: true,
   unknown: true,
 };
 
@@ -86,9 +105,15 @@ export interface ActivationResult {
   /**
    * How many stuck entries started moving again because of this activation.
    *
-   * Worth surfacing: a foreman who was handed a new code because his device was revoked has a
-   * morning's work sitting in the outbox, and "your 6 entries are on their way" is the sentence
-   * that tells him the thing he actually cares about.
+   * **Nothing shows this yet, and that is a deferral rather than an oversight.** The activation
+   * screen used to end on a success panel that could have carried it; F4 replaced that with an
+   * immediate navigation to wherever he was going, which is the right trade — a man who has just
+   * typed a code wants the record button, not a receipt. The sentence it was written for ("your 6
+   * entries are on their way") belongs on the revocation surface, which is **F8**: Home and the
+   * pending screen, where the stuck entries are actually visible.
+   *
+   * It is computed and returned regardless, because the count is only knowable at the moment of
+   * release and `activate()` is the only place that holds it.
    */
   released: number;
 }
@@ -104,6 +129,13 @@ export interface LoginResult {
   /** `company_admin` | `super_admin`, as the server said it. Null on failure. */
   role: string | null;
   displayName: string | null;
+  /**
+   * The credential this browser now holds, or null when the sign-in produced none.
+   *
+   * Non-null does **not** mean there is a screen to go to: a super admin signs in perfectly well
+   * and his surface is F7. The login screen branches on {@link LoginResult.role}, not on this.
+   */
+  adminSession: AdminSession | null;
 }
 
 /**
@@ -146,6 +178,7 @@ export interface LoginResult {
 export class ActivationService {
   private readonly gateway = inject(AUTH_GATEWAY);
   private readonly sessions = inject(SessionService);
+  private readonly admins = inject(AdminSessionService);
   private readonly entries = inject(EntryStore);
   private readonly uploads = inject(UploadService);
   private readonly projects = inject(ProjectService);
@@ -180,8 +213,10 @@ export class ActivationService {
     const session = toSession(response);
     if (!session) {
       // A 200 this build cannot read. Storing part of it is the one outcome worse than failing:
-      // the app would believe it is activated and send a bearer it cannot describe.
-      return { ok: false, failure: 'unknown', session: null, released: 0 };
+      // the app would believe it is activated and send a bearer it cannot describe. `unreadable`
+      // rather than `unknown` because the server accepted the code — the screen must not tell him
+      // it is still good.
+      return { ok: false, failure: 'unreadable', session: null, released: 0 };
     }
 
     // Before adopting: the cached site list belongs to whoever this phone was before.
@@ -225,32 +260,48 @@ export class ActivationService {
   }
 
   /**
-   * Sign an admin in.
+   * Sign an admin in, and store the credential he just proved.
    *
-   * **Nothing is adopted here, and that is not an oversight.** `Session` describes a *device*
-   * bound to a worker — it carries a device id and a username, and `API_CONFIG` hands its token
-   * to every `/api` call as this phone's bearer. Writing an admin session token into that slot
-   * would make the app claim a device it does not have, on the one path where provenance ends up
-   * on an evidence row. The admin surfaces arrive at F5–F7 and bring the storage decision with
-   * them; until then this proves the credential and says so.
+   * ## Where it is stored, and where it deliberately is not
+   *
+   * In `AdminSessionService`, under its own `localStorage` key, **never in `SessionService`**.
+   * `Session` describes a *device* bound to a worker — it carries a device id and a username, and
+   * `API_CONFIG` hands its token to every `/api` call as this phone's bearer. Writing an admin
+   * session token into that slot would make the app claim a device it does not have on the one
+   * path where provenance ends up on an evidence row. Until F6 there was no second slot and this
+   * method therefore stored nothing; the slot is the thing F6 added, and the separation is the
+   * whole reason it is a second one rather than a wider first.
+   *
+   * ## Why an unreadable answer is a failure and not a partial sign-in
+   *
+   * Same rule as {@link activate}: a whole credential or none. A session token with no role would
+   * have the app sending a bearer it cannot describe to a surface it cannot decide the shape of —
+   * and unlike an activation, nothing is *spent* by a failed sign-in, so the honest thing costs
+   * only a second attempt.
    */
   async login(email: string, password: string): Promise<LoginResult> {
     let response: LoginResponse;
     try {
       response = await this.gateway.login({ email: normaliseEmail(email), password });
     } catch (error) {
-      return { ok: false, failure: classify(error), role: null, displayName: null };
+      return { ok: false, failure: classify(error), role: null, displayName: null, adminSession: null };
     }
 
-    if (!text(response.session_token)) {
-      return { ok: false, failure: 'unknown', role: null, displayName: null };
+    const session = toAdminSession(response);
+    if (!session) {
+      // A 200 whose body this build cannot read. Nothing is spent by a sign-in, but the sentence
+      // still has to say "the app could not read the answer" rather than invent a reason.
+      return { ok: false, failure: 'unreadable', role: null, displayName: null, adminSession: null };
     }
+
+    this.admins.adopt(session);
 
     return {
       ok: true,
       failure: null,
-      role: text(response.role),
-      displayName: text(response.display_name),
+      role: session.role,
+      displayName: session.displayName,
+      adminSession: session,
     };
   }
 }
@@ -291,11 +342,18 @@ function classify(error: unknown): AuthFailure {
  * asking for a code.
  */
 function toSession(response: ActivateResponse): Session | null {
+  // Nested per plan §8, flat per the endpoint that actually shipped. `auth-types.ts` records the
+  // divergence and why reading both is the client's job rather than a decision it should be
+  // making. All-or-nothing still holds *within* a shape: a response carrying `worker` is read
+  // only from `worker`, so a half-populated nested object cannot be completed from stray
+  // top-level fields.
+  const worker = response.worker ?? response;
+
   const token = text(response.device_token);
   const deviceId = text(response.device_id);
-  const userId = text(response.worker?.user_id);
-  const username = text(response.worker?.username);
-  const displayName = text(response.worker?.display_name);
+  const userId = text(worker.user_id);
+  const username = text(worker.username);
+  const displayName = text(worker.display_name);
   const companyId = text(response.company?.id);
   const companyName = text(response.company?.name);
 
@@ -314,6 +372,42 @@ function toSession(response: ActivateResponse): Session | null {
     // The server does not send this; it is what *this phone* remembers about when it was bound,
     // and it is only ever shown back to its owner.
     activatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Every field, or nothing — the same all-or-nothing rule {@link toSession} applies, for the same
+ * reason. A role this build has never heard of resolves to `null` rather than to an `unknown`
+ * member: the profile screen *describes* a person and can say "a role this app does not
+ * recognise", while this value *authorises* a screen, and a screen is not something to open on a
+ * word nobody understood.
+ */
+function toAdminSession(response: LoginResponse): AdminSession | null {
+  const token = text(response.session_token);
+  const expiresAt = text(response.expires_at);
+  const role = text(response.role);
+  const userId = text(response.user_id);
+  const displayName = text(response.display_name);
+
+  if (!token || !expiresAt || !userId || !displayName) {
+    return null;
+  }
+  if (role !== 'company_admin' && role !== 'super_admin') {
+    return null;
+  }
+
+  return {
+    token,
+    expiresAt,
+    role,
+    userId,
+    displayName,
+    // Null for a super admin by construction, and narrowed rather than required for exactly that
+    // reason (§4, `ck_app_user_company_scope`).
+    companyId: text(response.company?.id),
+    companyName: text(response.company?.name),
+    // The server does not send this; it is what this browser remembers about when it signed in.
+    signedInAt: new Date().toISOString(),
   };
 }
 

@@ -356,15 +356,21 @@
   }
 }
 
+/*
+ * The phone's global chrome: language, and the way to his own account. Two controls of the same
+ * height, centred as one row, at the foot of the scroll where neither can move the record button.
+ */
 .home-footer {
   display: flex;
+  align-items: center;
   justify-content: center;
+  gap: var(--space-2);
   padding-top: var(--space-2);
   padding-bottom: var(--space-6);
 }
 
 @media (min-width: 768px) {
-  /* From medium up the switcher is in the header, where it is always in reach. */
+  /* From medium up both controls are in the header, where they are always in reach. */
   .home-footer {
     display: none;
   }

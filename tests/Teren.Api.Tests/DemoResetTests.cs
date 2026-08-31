@@ -25,10 +25,10 @@ public sealed class DemoResetTests(TerenTestApp app)
 
     private const string DemoDeviceToken = TerenTestApp.DeviceToken;
 
-    /// <summary>1 company + 3 sites + 3 entries + 2 users + 1 device — the same number
-    /// DemoSeederTests pins, because a reset that re-seeded a different shape than a seed would
-    /// be a reset that quietly changed the demo.</summary>
-    private const int FullSeedRowCount = 10;
+    /// <summary>1 company + 3 sites + 3 entries + 2 users + 1 device + 1 activation code — the
+    /// same number DemoSeederTests pins, because a reset that re-seeded a different shape than a
+    /// seed would be a reset that quietly changed the demo.</summary>
+    private const int FullSeedRowCount = 11;
 
     private static readonly Guid OtherCompanyId = Guid.Parse("11111111-2222-3333-4444-555555555555");
     private static readonly Guid OtherProjectId = Guid.Parse("11111111-2222-3333-4444-555555555556");
@@ -172,7 +172,7 @@ public sealed class DemoResetTests(TerenTestApp app)
 
         result.FinalState.ShouldBe(new DemoRowCounts(
             Companies: 1, Projects: 3, Entries: 3, Media: 0, Reports: 0,
-            AppUsers: 2, Devices: 1, ActivationCodes: 0, PasswordTokens: 0,
+            AppUsers: 2, Devices: 1, ActivationCodes: 1, PasswordTokens: 0,
             AdminSessions: 0, AdminAudits: 0));
 
         var entries = await AllEntriesAsync(db);
@@ -279,7 +279,7 @@ public sealed class DemoResetTests(TerenTestApp app)
         second.FinalState.ShouldBe(first.FinalState);
         second.Removed.ShouldBe(new DemoRowCounts(
             Companies: 1, Projects: 3, Entries: 3, Media: 0, Reports: 0,
-            AppUsers: 2, Devices: 1, ActivationCodes: 0, PasswordTokens: 0,
+            AppUsers: 2, Devices: 1, ActivationCodes: 1, PasswordTokens: 0,
             AdminSessions: 0, AdminAudits: 0));
         second.ReportedEntriesRemoved.ShouldBe(1);
         second.Reseeded.ShouldBe(FullSeedRowCount);
@@ -295,7 +295,7 @@ public sealed class DemoResetTests(TerenTestApp app)
 
         result.Removed.Total.ShouldBe(0);
         result.Reseeded.ShouldBe(FullSeedRowCount);
-        result.FinalState.ShouldBe(new DemoRowCounts(1, 3, 3, 0, 0, 2, 1, 0, 0, 0, 0));
+        result.FinalState.ShouldBe(new DemoRowCounts(1, 3, 3, 0, 0, 2, 1, 1, 0, 0, 0));
     }
 
     [Fact]
@@ -482,7 +482,7 @@ public sealed class DemoResetTests(TerenTestApp app)
 
         plan.Present.ShouldBe(new DemoRowCounts(
             Companies: 1, Projects: 3, Entries: 8, Media: 5, Reports: 5,
-            AppUsers: 2, Devices: 1, ActivationCodes: 0, PasswordTokens: 0,
+            AppUsers: 2, Devices: 1, ActivationCodes: 1, PasswordTokens: 0,
             AdminSessions: 0, AdminAudits: 0));
         plan.ReportedEntries.ShouldBe(6);
         plan.Objects.ShouldBe(1);

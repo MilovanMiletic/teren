@@ -54,12 +54,17 @@ export class RescueService {
  * The entry the user is looking at right now, read from the URL.
  *
  * **This is a hard coupling to `app.routes.ts` and it has no compiler to protect it.** The saved
- * screen is `entry/:entryId` (it was `unos/:entryId` until F4b), and the only thing that keeps
- * this pattern honest is a spec that derives the parameterised routes from the route table and
- * checks this function against them. Rename the route without touching this line and nothing
- * fails to build — a foreman standing on the saved screen picking photos simply stops being
- * exempt, and his draft gets swept out from under him. That surfaces a week later as "the app
- * lost my recording", which is the worst bug this product can have.
+ * screen is `entry/:entryId` (it was `unos/:entryId` until F4b). Rename the route without
+ * touching this line and nothing fails to build — a foreman standing on the saved screen picking
+ * photos simply stops being exempt, and his draft gets swept out from under him. That surfaces a
+ * week later as "the app lost my recording", which is the worst bug this product can have. It is
+ * not hypothetical: the F4 back-out left this regex on `/entry/` while the table still said
+ * `unos/:entryId`, so the exemption was dead on main and no spec noticed.
+ *
+ * The only thing keeping this pattern honest is therefore a spec that *derives* the path from the
+ * route table by component identity rather than restating it — `rescue.service.spec.ts` via
+ * `testing/route-table.ts`. Hardcoded strings on both sides do not count: they agree with each
+ * other while both disagree with the app.
  *
  * Read from `location.pathname` rather than from the router on purpose: this runs at bootstrap,
  * before the first navigation has resolved, and it must answer synchronously.

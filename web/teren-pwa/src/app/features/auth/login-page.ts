@@ -1,9 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Params, Router } from '@angular/router';
 import { TranslocoDirective } from '@jsverse/transloco';
 
 import { ActivationService, AuthFailure } from '../../core/auth/activation.service';
 import { ConnectivityService } from '../../core/connectivity.service';
+import { RETURN_URL_PARAM, safeReturnUrl } from '../../core/session/return-url';
 import { Icon } from '../../ui/icon';
 import { LanguageSwitcher } from '../../ui/language-switcher';
 import { AuthMark } from './auth-mark';
@@ -22,10 +23,19 @@ import { AuthMark } from './auth-mark';
  *
  * ## What happens after a successful sign-in, stated plainly
  *
- * Nothing is stored, and the screen says so. `Session` describes a *device* bound to a worker;
- * writing an admin session token into that slot would make every `/api` call claim a device this
- * phone does not have. The admin surfaces arrive at F5–F7 and bring that decision with them —
- * see `ActivationService.login`.
+ * **A company admin is taken to his office** (`/company`, F6), or to wherever `?next=` said he was
+ * going. That is the redirect this file's previous comment promised for "the day an admin session
+ * is stored", and F6 is that day: `ActivationService.login` now writes an `AdminSession` under its
+ * own key — never into `SessionService`, which describes a *device* bound to a worker and whose
+ * token every `/api` call sends as this phone's bearer.
+ *
+ * **A super admin is not.** He signs in perfectly well and his surface is F7, so the screen says
+ * so and stops. Sending him to `/company` would be sending him to a screen whose every request the
+ * server answers 403 — a redirect into a wall, which is worse than a sentence.
+ *
+ * Neither case navigates to Home. A sign-in leaves `SessionService.activated()` false, so a
+ * redirect there would be turned round by the gate and land the man back on Welcome — the app
+ * bouncing him between two screens as its way of saying "it worked".
  *
  * ## The omission a reviewer should expect to notice
  *
@@ -43,6 +53,7 @@ import { AuthMark } from './auth-mark';
 })
 export class LoginPage {
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly activation = inject(ActivationService);
   protected readonly connectivity = inject(ConnectivityService);
 
@@ -53,27 +64,65 @@ export class LoginPage {
   protected readonly busy = signal(false);
   protected readonly failure = signal<AuthFailure | null>(null);
   protected readonly signedInAs = signal<string | null>(null);
+  /**
+   * Signed in, with nowhere in this build to go — a super admin, whose surface is F7.
+   *
+   * A separate signal from {@link signedInAs} because the two sentences differ: one says the
+   * credential was accepted, the other says this version of the app has no screen for his role.
+   * A company admin never sees the second, because he is already on `/company` by then.
+   */
+  protected readonly awaitingSurface = signal(false);
 
   protected readonly emailGiven = computed(() => this.email().trim().length > 0);
   protected readonly passwordGiven = computed(() => this.password().length > 0);
 
+  /**
+   * Whether the form may complain about a missing field.
+   *
+   * **Not simply `touched()`, and the difference is a defect the founder photographed.** A
+   * successful sign-in clears the password — it is not kept a moment longer than the request that
+   * used it — and the empty field then satisfied `touched() && !passwordGiven()`, so the screen
+   * showed "Prijava je uspela" and "Upišite lozinku" side by side with the field ringed red: one
+   * successful login, and the form demanding a password it had deleted itself.
+   *
+   * {@link submit} also clears `touched` on success, which is the primary fix. This guard is the
+   * one that survives the next edit: any later path that leaves `touched` set while a sign-in
+   * stands — a second submit, a field cleared programmatically — still cannot make the screen
+   * contradict itself.
+   */
+  protected readonly validating = computed(() => this.touched() && this.signedInAs() === null);
+
   protected readonly errorKey = computed<string | null>(() => {
-    if (this.touched() && !this.emailGiven()) {
+    if (this.validating() && !this.emailGiven()) {
       return 'auth.login.emailRequired';
     }
-    if (this.touched() && !this.passwordGiven()) {
+    if (this.validating() && !this.passwordGiven()) {
       return 'auth.login.passwordRequired';
     }
     const failure = this.failure();
     return failure ? `auth.login.error.${failure}` : null;
   });
 
+  /** Back to Welcome with `?next=` intact — see `ActivatePage.back` for why it is preserved. */
   protected back(): void {
-    void this.router.navigate(['/welcome']);
+    void this.router.navigate(['/welcome'], { queryParamsHandling: 'preserve' });
   }
 
+  /**
+   * The way out for a foreman who followed the wrong link — carrying his destination with him.
+   *
+   * He is the man `?next=` was written for: the gate sent him to Welcome holding the URL of an
+   * entry, he tapped the wrong door, and the parameter has to survive both taps or he arrives
+   * activated and none the wiser about where he was going.
+   */
   protected join(): void {
-    void this.router.navigate(['/activate']);
+    void this.router.navigate(['/activate'], { queryParams: this.forward() });
+  }
+
+  /** The return URL, re-validated at this hop. Same rule, same reason as `WelcomePage.forward`. */
+  private forward(): Params {
+    const next = safeReturnUrl(this.route.snapshot.queryParamMap.get(RETURN_URL_PARAM));
+    return next ? { [RETURN_URL_PARAM]: next } : {};
   }
 
   protected onEmail(value: string): void {
@@ -127,6 +176,24 @@ export class LoginPage {
     // The password is not kept a moment longer than the request that used it.
     this.password.set('');
     this.reveal.set(false);
+    // …and the form stops being a form he has to complete. Clearing the password while leaving
+    // this set is what put "Upišite lozinku" under "Prijava je uspela", with the field ringed red.
+    this.touched.set(false);
     this.signedInAs.set(result.displayName ?? this.email().trim());
+
+    if (result.role === 'company_admin') {
+      // His office, or the deep link that sent him here. `safeReturnUrl` again at this hop: the
+      // parameter arrives from outside far more often than it arrives from the gate, and this is
+      // the read that actually navigates.
+      const next = safeReturnUrl(this.route.snapshot.queryParamMap.get(RETURN_URL_PARAM));
+      void (next
+        ? this.router.navigateByUrl(next)
+        : this.router.navigate(['/company']));
+      return;
+    }
+
+    // A super admin. The credential is stored and good; `/platform` is F7, so the screen says
+    // that rather than sending him somewhere that would only answer 403.
+    this.awaitingSurface.set(true);
   }
 }

@@ -7,7 +7,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { TranslocoDirective } from '@jsverse/transloco';
 
 import {
@@ -17,25 +17,31 @@ import {
 } from '../../core/auth/activation-code';
 import { ActivationService, AuthFailure } from '../../core/auth/activation.service';
 import { ConnectivityService } from '../../core/connectivity.service';
-import { Session } from '../../core/session/session';
+import { RETURN_URL_PARAM, safeReturnUrl } from '../../core/session/return-url';
 import { Icon } from '../../ui/icon';
-import { InstallInvitation } from '../../ui/install-invitation';
 import { LanguageSwitcher } from '../../ui/language-switcher';
 import { AuthMark } from './auth-mark';
 
 /**
- * What the screen is showing.
- *
- * Only a successful activation replaces the form — that phone is bound and the fields have
- * nothing left to do. "A code is on its way" is a notice *inside* the form, deliberately: it
- * keeps the username he typed, and it keeps the code field mounted so nothing he entered is
- * thrown away by a state change.
- */
-type Outcome = 'form' | 'activated';
-
-/**
  * Joining a site: a username and a one-time code, typed once, on this phone
  * (`plans/profile-and-identity.md` §10.3).
+ *
+ * ## What a successful activation does (F4)
+ *
+ * **It leaves.** The screen used to raise a "this phone is ready" panel and stay where it was.
+ * What the founder actually met on a real phone was worse than a screen that did not move: the
+ * client and the shipped endpoint disagreed about the response shape (`core/auth/auth-types.ts`),
+ * so a *successful* activation was read as unreadable and the screen said joining had failed and
+ * that his code was not used up — both false. He pressed the button again and spent a second
+ * single-use code, whose 401 looked like proof the first attempt had failed too. The contract is
+ * fixed there; the missing destination is fixed here, because a panel with a button on it is
+ * still a place a man can be left standing. He is taken through the door: to the URL the gate
+ * interrupted (`?next=`, carried here by Welcome) or to the record button.
+ *
+ * What that panel carried is not lost. The install invitation, which is worth the most and was
+ * the strongest argument for stopping here, is on Home and shows there instead; a queue that
+ * started moving again shows in the sync state, which is first-class UI on every screen; and who
+ * this phone belongs to is `/profile`'s subject (F5), not a one-off notice a man sees once.
  *
  * ## The design debt this screen carries
  *
@@ -67,12 +73,13 @@ type Outcome = 'form' | 'activated';
 @Component({
   selector: 'app-activate-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AuthMark, Icon, InstallInvitation, LanguageSwitcher, TranslocoDirective],
+  imports: [AuthMark, Icon, LanguageSwitcher, TranslocoDirective],
   templateUrl: './activate-page.html',
   styleUrls: ['./auth-layout.css', './auth-form.css', './activate-page.css'],
 })
 export class ActivatePage {
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly activation = inject(ActivationService);
   protected readonly connectivity = inject(ConnectivityService);
 
@@ -103,10 +110,7 @@ export class ActivatePage {
   protected readonly busy = signal(false);
   protected readonly sendingCode = signal(false);
   protected readonly failure = signal<AuthFailure | null>(null);
-  protected readonly outcome = signal<Outcome>('form');
   protected readonly codeSent = signal(false);
-  protected readonly session = signal<Session | null>(null);
-  protected readonly released = signal(0);
 
   protected readonly folded = computed(() => foldActivationCode(this.code()));
   protected readonly codeComplete = computed(() => isCompleteActivationCode(this.folded()));
@@ -124,12 +128,16 @@ export class ActivatePage {
     return failure ? `auth.code.error.${failure}` : null;
   });
 
+  /**
+   * Back to Welcome, carrying the return URL with it.
+   *
+   * `queryParamsHandling: 'preserve'` rather than a rebuilt parameter list: the only thing in this
+   * screen's query string is `?next=`, and dropping it here would strand a deep link on the one
+   * gesture a man makes when he has picked the wrong door — he taps back, taps "Prijavi se", and
+   * the entry he was sent here to open is forgotten.
+   */
   protected back(): void {
-    void this.router.navigate(['/welcome']);
-  }
-
-  protected home(): void {
-    void this.router.navigate(['/']);
+    void this.router.navigate(['/welcome'], { queryParamsHandling: 'preserve' });
   }
 
   protected onUsername(value: string): void {
@@ -235,9 +243,20 @@ export class ActivatePage {
       return;
     }
 
-    this.session.set(result.session);
-    this.released.set(result.released);
-    this.outcome.set('activated');
+    // **Go somewhere.** Until F4 this screen set a success flag and stopped. A man who has just
+    // been let in belongs on the other side of the door — at whatever he was trying to reach when
+    // the gate stopped him, and otherwise at the record button. See the class comment for the
+    // wire-shape defect that was underneath the founder's report of this.
+    //
+    // `navigateByUrl`, because `next` is a whole URL and may carry the archive's `?entry=<id>`;
+    // `safeReturnUrl` is applied here and not trusted from the address bar, because this screen is
+    // reachable by typing its own URL.
+    void this.router.navigateByUrl(this.returnUrl());
+  }
+
+  /** Where a successful activation lands. Always somewhere; the record button when in doubt. */
+  private returnUrl(): string {
+    return safeReturnUrl(this.route.snapshot.queryParamMap.get(RETURN_URL_PARAM)) ?? '/';
   }
 
   /**

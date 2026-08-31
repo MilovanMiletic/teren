@@ -14,6 +14,7 @@ import { TranslocoDirective } from '@jsverse/transloco';
 import { of, switchMap } from 'rxjs';
 
 import { AppStatus } from '../../core/app-status.service';
+import { ARCHIVE_ENTRY_PARAM } from '../../core/archive/archive-route';
 import { ConnectivityService } from '../../core/connectivity.service';
 import { EntryStore } from '../../core/db/entry-store';
 import { DayLabel, dayLabel, localDay } from '../../core/db/local-day';
@@ -27,6 +28,8 @@ import { Icon } from '../../ui/icon';
 import { InstallInvitation } from '../../ui/install-invitation';
 import { LanguageSwitcher } from '../../ui/language-switcher';
 import { PluralService } from '../../ui/plural.service';
+import { CompanyLink } from '../../ui/company-link';
+import { ProfileLink } from '../../ui/profile-link';
 
 /**
  * The home screen (`design/Home.dc.html`): which site, was today recorded, the record button, what
@@ -38,11 +41,13 @@ import { PluralService } from '../../ui/plural.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AppHeader,
+    CompanyLink,
     DatePipe,
     DurationPipe,
     Icon,
     InstallInvitation,
     LanguageSwitcher,
+    ProfileLink,
     TranslocoDirective,
   ],
   templateUrl: './home-page.html',
@@ -207,7 +212,7 @@ export class HomePage {
       this.openConfirm(entry.id);
       return;
     }
-    void this.router.navigate(['/diary'], { queryParams: { entry: entry.id } });
+    void this.router.navigate(['/diary'], { queryParams: { [ARCHIVE_ENTRY_PARAM]: entry.id } });
   }
 
   /**

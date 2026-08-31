@@ -20,6 +20,7 @@ import {
   EntryResponse,
   ListEntriesQuery,
   MediaUploadTarget,
+  MeResponse,
   ProjectResponse,
   ReportDownload,
 } from './api-types';
@@ -88,6 +89,18 @@ export class TerenApiClient {
 
   async listProjects(): Promise<ProjectResponse[]> {
     return this.get<ProjectResponse[]>('/api/projects');
+  }
+
+  /**
+   * Who this credential belongs to (F5).
+   *
+   * The one read-only call in the product whose answer is a person rather than evidence. It is
+   * also, incidentally, the "is my credential still good" probe — but nothing on the capture path
+   * may ever await it: the route gate answers from `localStorage` synchronously and stays that
+   * way (`core/session/device.guard.ts`).
+   */
+  async getMe(): Promise<MeResponse> {
+    return this.get<MeResponse>('/api/me');
   }
 
   /**

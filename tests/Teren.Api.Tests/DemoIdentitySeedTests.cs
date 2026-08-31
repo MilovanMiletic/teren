@@ -147,7 +147,7 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
 
         var inserted = await DemoSeeder.SeedAsync(db, deviceToken: null, ct: Ct);
 
-        inserted.ShouldBe(9); // the full seed less the device
+        inserted.ShouldBe(10); // the full seed less the device
         (await CountAsync(db, "SELECT count(*)::int AS \"Value\" FROM device")).ShouldBe(0);
         (await CountAsync(db, "SELECT count(*)::int AS \"Value\" FROM app_user")).ShouldBe(2);
     }
@@ -181,6 +181,205 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
 
         orphaned.ShouldBe(0);
     }
+
+    // ---------------------------------------------------------------- the demo activation code
+
+    [Fact]
+    public async Task Seeding_mints_the_fixed_demo_activation_code()
+    {
+        // Without it a fresh install or a new browser reaches /welcome and stops there: F4's gate
+        // keys on having a session, there is no admin screen to issue a code from until F6, and
+        // the seeded company admin has no password. "Main is always demo-ready" (invariant 6) is
+        // this row.
+        await using var db = await app.CreateScratchDatabaseAsync();
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+
+        var display = await ScalarAsync(
+            db,
+            """
+            SELECT code_display AS "Value" FROM activation_code
+            WHERE user_id = {0} AND consumed_at IS NULL AND superseded_at IS NULL
+            """,
+            DemoSeeder.WorkerId);
+        var hash = await ScalarAsync(
+            db,
+            """
+            SELECT code_hash AS "Value" FROM activation_code
+            WHERE user_id = {0} AND consumed_at IS NULL AND superseded_at IS NULL
+            """,
+            DemoSeeder.WorkerId);
+
+        display.ShouldBe("DEM0-TEST");
+        display.ShouldBe(DemoSeeder.DemoActivationCodeDisplay);
+
+        // The property that actually matters: what the demo script tells a man to type folds to
+        // exactly the code that was hashed. A display value that did not would be a code that is
+        // written down everywhere and works nowhere.
+        hash.ShouldBe(CredentialTokens.Hash(ActivationCodeFormat.Fold(display)));
+        ActivationCodeFormat.TryParse(display, out var typed).ShouldBeTrue();
+        typed.ShouldBe(DemoSeeder.DemoActivationCode);
+    }
+
+    [Fact]
+    public async Task The_demo_code_outlives_the_seven_day_default()
+    {
+        // A real code is a credential emailed to one man and dies in seven days by design. This
+        // one is seeded data published in the repository, and a code that quietly expired a week
+        // after the last seed is discovered by the distributor mid-pitch.
+        await using var db = await app.CreateScratchDatabaseAsync();
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+
+        var stillLiveInAYear = await CountAsync(
+            db,
+            $"""
+             SELECT count(*)::int AS "Value" FROM activation_code
+             WHERE user_id = '{DemoSeeder.WorkerId}'
+               AND consumed_at IS NULL AND superseded_at IS NULL
+               AND expires_at > now() + interval '1 year'
+             """);
+
+        stillLiveInAYear.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Seeding_twice_leaves_exactly_one_live_demo_code()
+    {
+        // ux_activation_code_live would refuse a second one anyway — this is the assertion that
+        // the seeder does not try, and that a re-seed still reports no work.
+        await using var db = await app.CreateScratchDatabaseAsync();
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+
+        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct)).ShouldBe(0);
+
+        (await LiveCodeCountAsync(db)).ShouldBe(1);
+        (await CountAsync(db, "SELECT count(*)::int AS \"Value\" FROM activation_code"))
+            .ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_consumed_demo_code_is_re_minted_by_the_next_seed()
+    {
+        // The demo script asks the distributor to spend this code once, on his own phone. Without
+        // the re-mint, the next man to open the app on a fresh browser finds a demo he cannot
+        // join, and `seed` reports success while he does.
+        await using var db = await app.CreateScratchDatabaseAsync();
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+             UPDATE activation_code SET consumed_at = now(), code_display = NULL
+             WHERE user_id = {DemoSeeder.WorkerId}
+             """,
+            Ct);
+
+        (await LiveCodeCountAsync(db)).ShouldBe(0);
+        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct)).ShouldBe(1);
+
+        (await LiveCodeCountAsync(db)).ShouldBe(1);
+        (await ScalarAsync(
+                db,
+                """
+                SELECT code_display AS "Value" FROM activation_code
+                WHERE user_id = {0} AND consumed_at IS NULL AND superseded_at IS NULL
+                """,
+                DemoSeeder.WorkerId))
+            .ShouldBe(DemoSeeder.DemoActivationCodeDisplay);
+
+        // The spent row stays spent. Single use is the one point the design refuses to bend on,
+        // and "the seed heals the demo" must never become "the seed un-consumes a code".
+        (await CountAsync(
+                db,
+                $"""
+                 SELECT count(*)::int AS "Value" FROM activation_code
+                 WHERE user_id = '{DemoSeeder.WorkerId}' AND consumed_at IS NOT NULL
+                 """))
+            .ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task An_expired_demo_code_is_superseded_and_replaced()
+    {
+        // ux_activation_code_live still counts an expired-but-unconsumed row as live (its
+        // predicate cannot mention now()), so the replacement is only possible if the seeder
+        // retires it first — and retiring it is also where its plaintext finally goes.
+        await using var db = await app.CreateScratchDatabaseAsync();
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+             UPDATE activation_code SET expires_at = now() - interval '1 day'
+             WHERE user_id = {DemoSeeder.WorkerId}
+             """,
+            Ct);
+
+        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct)).ShouldBe(2); // superseded + minted
+
+        (await LiveCodeCountAsync(db)).ShouldBe(1);
+        (await CountAsync(
+                db,
+                $"""
+                 SELECT count(*)::int AS "Value" FROM activation_code
+                 WHERE user_id = '{DemoSeeder.WorkerId}'
+                   AND superseded_at IS NOT NULL AND code_display IS NOT NULL
+                 """))
+            .ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_code_someone_else_issued_is_retired_so_the_fixed_one_comes_back()
+    {
+        // An admin pressing "issue a new code" for the demo worker supersedes the fixed one. The
+        // seed is the way back, exactly as it is for a revoked demo phone.
+        await using var db = await app.CreateScratchDatabaseAsync();
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+             UPDATE activation_code SET superseded_at = now(), code_display = NULL
+             WHERE user_id = {DemoSeeder.WorkerId}
+             """,
+            Ct);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+             INSERT INTO activation_code
+                 (id, company_id, user_id, created_by_user_id, code_hash, code_display,
+                  created_at, expires_at)
+             VALUES ({Guid.NewGuid()}, {DemoSeeder.CompanyId}, {DemoSeeder.WorkerId},
+                     {DemoSeeder.CompanyAdminId}, {new string('a', 64)}, {"XKD4-7HMP"},
+                     {DateTime.UtcNow}, {DateTime.UtcNow.AddDays(7)})
+             """,
+            Ct);
+
+        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct)).ShouldBe(2);
+
+        (await LiveCodeCountAsync(db)).ShouldBe(1);
+        (await ScalarAsync(
+                db,
+                """
+                SELECT code_display AS "Value" FROM activation_code
+                WHERE user_id = {0} AND consumed_at IS NULL AND superseded_at IS NULL
+                """,
+                DemoSeeder.WorkerId))
+            .ShouldBe(DemoSeeder.DemoActivationCodeDisplay);
+    }
+
+    [Fact]
+    public async Task The_demo_code_is_part_of_the_same_written_down_contract()
+    {
+        // Pinned as a literal like the site ids, and for the same reason: it is written down in
+        // CLAUDE.md and in docs/demo-script.md, and a change here would silently invalidate both.
+        DemoSeeder.DemoActivationCode.ShouldBe("DEM0TEST");
+        DemoSeeder.DemoActivationCodeDisplay.ShouldBe("DEM0-TEST");
+    }
+
+    private static Task<int> LiveCodeCountAsync(DbContext db) =>
+        CountAsync(
+            db,
+            $"""
+             SELECT count(*)::int AS "Value" FROM activation_code
+             WHERE user_id = '{DemoSeeder.WorkerId}'
+               AND consumed_at IS NULL AND superseded_at IS NULL AND expires_at > now()
+             """);
 
     private static async Task<string> ScalarAsync(DbContext db, string sql, Guid id) =>
         (await db.Database.SqlQueryRaw<string>(sql, id).ToListAsync(Ct)).Single();

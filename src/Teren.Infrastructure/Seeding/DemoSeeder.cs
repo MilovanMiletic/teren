@@ -46,6 +46,40 @@ public static class DemoSeeder
     /// <summary>What the admin would recognise the demo phone by in a device list.</summary>
     public const string DemoDeviceName = "Zoranov telefon";
 
+    /// <summary>
+    /// The demo worker's activation code, in canonical (folded) form — the 8 characters that get
+    /// hashed. <b>This value is a contract</b>, in the same class as the three demo project ids:
+    /// it is written down in CLAUDE.md and in <c>docs/demo-script.md</c>, and the distributor
+    /// types it once to join a fresh phone. Change it and the written-down code stops working
+    /// with nothing anywhere saying why.
+    /// <para>
+    /// Valid Crockford base32 and obviously demo material. It is shown as <c>DEM0-TEST</c>; a man
+    /// who reads that as <c>DEMO-TEST</c> and types the letter O is also let in, because
+    /// <see cref="ActivationCodeFormat.Fold"/> maps <c>O</c> to <c>0</c> — the same decode-time
+    /// folding every real code relies on.
+    /// </para>
+    /// </summary>
+    public const string DemoActivationCode = "DEM0TEST";
+
+    /// <summary>The form the demo script prints and the admin screen will show: <c>DEM0-TEST</c>.
+    /// Derived, never a second literal, so the two halves cannot drift apart.</summary>
+    public static readonly string DemoActivationCodeDisplay =
+        ActivationCodeFormat.Format(DemoActivationCode);
+
+    /// <summary>
+    /// How long the demo code lives — deliberately not the 7 days a real code gets.
+    /// <para>
+    /// A real code is a credential emailed to one named man, and its short life is what limits
+    /// the damage of a forwarded message. The demo code is neither: it is seeded data, published
+    /// in the repository, for a company whose entire contents are sample rows. Expiry buys
+    /// nothing here and costs the one thing the demo exists for — a code that quietly died a week
+    /// after the last <c>seed</c> is discovered by the distributor mid-pitch, in front of a
+    /// customer, with no admin screen yet built to issue another. Ten years is "not while anyone
+    /// is watching"; <c>seed</c> re-mints it anyway whenever it has been spent.
+    /// </para>
+    /// </summary>
+    private static readonly TimeSpan DemoActivationCodeLifetime = TimeSpan.FromDays(3650);
+
     public static async Task<int> SeedAsync(
         DbContext db, string? deviceToken = null, CancellationToken ct = default)
     {
@@ -445,6 +479,11 @@ public static class DemoSeeder
              "Zoran Jovanović", WorkerEmail, now],
             ct);
 
+        // The demo cannot be given without this. F4's canMatch gate sends a browser with no
+        // session to /welcome, and there is no admin screen to issue a code from until F6 — so a
+        // seeded demo with no live code is a demo that stops at the welcome screen.
+        inserted += await SeedDemoActivationCodeAsync(db, now, ct);
+
         if (string.IsNullOrWhiteSpace(deviceToken))
         {
             // A legitimate configuration, not a failure: it is the D7 end state, where the PWA
@@ -486,5 +525,73 @@ public static class DemoSeeder
             ct);
 
         return inserted;
+    }
+
+    /// <summary>
+    /// The demo worker's one live activation code, with the fixed <see cref="DemoActivationCode"/>
+    /// value the demo script tells the distributor to type.
+    /// <para>
+    /// <b>Re-minted, in the same spirit as the three withdrawal stamps above.</b> A consumed,
+    /// superseded or expired code leaves the demo unjoinable while <c>seed</c> reports success —
+    /// the same silent one-way door that revoking the demo phone used to be. Consuming the code
+    /// is not an accident either: it is what the demo script now asks the distributor to do once.
+    /// </para>
+    /// <para>
+    /// <b>The discipline here is <c>ActivationCodes.IssueAsync</c>'s, deliberately duplicated
+    /// rather than called.</b> That method lives in <c>Teren.Api</c>, which this assembly cannot
+    /// reference, and the identity rows here are written as raw SQL on this connection on purpose
+    /// (see <see cref="SeedIdentityAsync"/>). The two rules it enforces are enforced here too:
+    /// <c>ux_activation_code_live</c> permits at most one live code per worker, so anything else
+    /// live is superseded first — <em>including an unconsumed but expired row</em>, which that
+    /// partial index still counts as live because its predicate cannot mention <c>now()</c>; and
+    /// <c>ck_activation_code_display_cleared</c> refuses to let a dead code keep holding its
+    /// plaintext, so the supersede nulls <c>code_display</c> in the same statement.
+    /// </para>
+    /// </summary>
+    private static async Task<int> SeedDemoActivationCodeAsync(
+        DbContext db, DateTime now, CancellationToken ct)
+    {
+        var hash = CredentialTokens.Hash(DemoActivationCode);
+
+        // In the steady state — the demo code live and unexpired — this matches nothing, which is
+        // what keeps a second `seed` a no-op.
+        var superseded = await db.Database.ExecuteSqlRawAsync(
+            """
+            UPDATE activation_code
+               SET superseded_at = {1}, code_display = NULL
+             WHERE user_id = {0}
+               AND consumed_at IS NULL
+               AND superseded_at IS NULL
+               AND NOT (code_hash = {2} AND expires_at > {1})
+            """,
+            [WorkerId, now, hash],
+            ct);
+
+        // The NOT EXISTS is what makes a re-seed idempotent; the ON CONFLICT is the database
+        // having the last word, so two seeds racing produce one code rather than an unhandled
+        // unique violation. Its predicate has to repeat ux_activation_code_live's, because
+        // Postgres only infers a partial index from an inference clause that names it.
+        var minted = await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO activation_code
+                (id, company_id, user_id, created_by_user_id, code_hash, code_display,
+                 created_at, expires_at)
+            SELECT {0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}
+             WHERE NOT EXISTS (
+                   SELECT 1 FROM activation_code
+                    WHERE user_id = {2}
+                      AND consumed_at IS NULL
+                      AND superseded_at IS NULL
+                      AND expires_at > {6})
+            ON CONFLICT (user_id) WHERE consumed_at IS NULL AND superseded_at IS NULL
+            DO NOTHING
+            """,
+            [
+                Guid.NewGuid(), CompanyId, WorkerId, CompanyAdminId, hash,
+                DemoActivationCodeDisplay, now, now.Add(DemoActivationCodeLifetime),
+            ],
+            ct);
+
+        return superseded + minted;
     }
 }

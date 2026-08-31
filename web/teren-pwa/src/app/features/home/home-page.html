@@ -180,9 +180,24 @@
     </div>
   </div>
 
-  <!-- Compact only: the switcher lives at the foot of the scroll, off the capture path. -->
+  <!--
+    Compact only: the global chrome lives at the foot of the scroll, off the capture path.
+
+    The language switcher has sat here since the adaptive rework; the way to his own account joined
+    it on 2026-08-31, when the founder moved that control into the app header. The header does not
+    exist below 768, so a header-only icon would leave the foreman — the primary user, on a phone —
+    with no route to `/profile` at all. Here it is reachable without a single pixel of chrome
+    landing above the record button, and Home's centre column stays about entries and reports.
+  -->
   <div class="column home-footer">
     <app-language-switcher />
+    <!--
+      Only ever visible to a signed-in company admin — the founder's own phone is the case, being
+      both an activated device and an admin. It renders itself away for a foreman, so the capture
+      path gains no chrome from it (F6).
+    -->
+    <app-company-link />
+    <app-profile-link />
   </div>
 
   @if (pickerOpen()) {

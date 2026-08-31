@@ -5,12 +5,16 @@ import { TranslocoTestingModule } from '@jsverse/transloco';
 
 import { EntryListItemResponse, EntryListResponse } from '../../core/api/api-types';
 import { TerenApiClient } from '../../core/api/teren-api.client';
+import { ARCHIVE_ENTRY_PARAM } from '../../core/archive/archive-route';
 import { EntryStore } from '../../core/db/entry-store';
 import { captureEntry } from '../../testing/capture-fixture';
 import { TEREN_DB, TerenDb } from '../../core/db/teren-db';
 import { DEMO_PROJECTS } from '../../core/projects/project-source';
 import { flushLiveQueries, waitUntil } from '../../testing/flush';
 import { ProjectService } from '../../core/projects/project.service';
+import { SESSION_STORAGE_KEY } from '../../core/session/session';
+import { routeUrlFor } from '../../testing/route-table';
+import { ProfilePage } from '../profile/profile-page';
 import en from '../../../../public/i18n/en.json';
 import sr from '../../../../public/i18n/sr.json';
 import { HomePage } from './home-page';
@@ -36,6 +40,19 @@ class FakeApi {
 
 describe('HomePage', () => {
   let db: TerenDb;
+  /**
+   * The profile screen's URL, out of the real route table, resolved once before any test.
+   *
+   * In `beforeAll` on purpose: `routeUrlFor` runs a real dynamic `import()`, and doing that inside
+   * a 5 s test is how a suite gains a timeout unrelated to the behaviour under test
+   * (`device.guard.spec.ts` records the same reasoning).
+   */
+  let profileUrl: string;
+
+  beforeAll(async () => {
+    profileUrl = await routeUrlFor(ProfilePage);
+  });
+
   let fixture: ComponentFixture<HomePage>;
   let store: EntryStore;
   let api: FakeApi;
@@ -246,12 +263,74 @@ describe('HomePage', () => {
     const rows = [...element.querySelectorAll<HTMLButtonElement>('.recent__row')];
     // Newest first, and `done` was captured second.
     rows[0].click();
-    expect(navigate).toHaveBeenCalledWith(['/diary'], { queryParams: { entry: done } });
+    expect(navigate).toHaveBeenCalledWith(['/diary'], {
+      queryParams: { [ARCHIVE_ENTRY_PARAM]: done },
+    });
 
     rows[1].click();
     // The archive is a read-only record: sending him there over an entry that is waiting for him
     // would show the problem and hide the only control that fixes it.
     expect(navigate).toHaveBeenCalledWith(['/confirm', waiting]);
+  });
+
+  /**
+   * The way to his own account, and — on a phone — the only one there is.
+   *
+   * F5 put an account pill in Home's centre column. The founder took it out on 2026-08-31: the
+   * centre column is about entries and reports, and the profile belongs in the header beside the
+   * language switcher. But `app-header.ts` is hidden below 768, so a header-only icon would leave
+   * the foreman with no route to his own account at all — which
+   * `plans/profile-and-identity.md` decision 9 (*every screen is visible on every device*) does
+   * not allow.
+   *
+   * So the compact affordance sits at the foot of the scroll beside the language switcher, which
+   * is the placement that component already uses for the same reason. **Delete it and this spec
+   * goes red** — that is its whole job. Asserted inside `.home-footer` specifically, because the
+   * header renders in jsdom regardless of the media query that hides it, and a query across the
+   * whole screen would find the header's copy and pass on a phone that had lost it.
+   */
+  it('keeps a way to his own account on a phone, at the foot of the scroll', async () => {
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate');
+    const element = await render();
+
+    const link = element.querySelector<HTMLButtonElement>('.home-footer .profile-link');
+    expect(link, 'the phone has no way to reach the profile screen').not.toBeNull();
+    // Beside the language switcher, not somewhere else in the footer.
+    expect(element.querySelector('.home-footer app-language-switcher')).not.toBeNull();
+
+    link?.click();
+    // Resolved from the shipped route table, never spelled out here.
+    expect(navigate).toHaveBeenCalledWith([profileUrl]);
+  });
+
+  /**
+   * The other half of the founder's instruction: *"centered screen should only be about the
+   * entries and reports"*.
+   *
+   * The F5 pill carried his name under the recent entries. Nothing in the content column may
+   * carry the account any more — the icon in the chrome is the whole affordance.
+   */
+  it('no longer carries an account row in the content column', async () => {
+    localStorage.setItem(
+      SESSION_STORAGE_KEY,
+      JSON.stringify({
+        token: 'trn_d_token',
+        deviceId: '11111111-1111-1111-1111-111111111111',
+        userId: '22222222-2222-2222-2222-222222222222',
+        username: 'zoran.jovanovic',
+        displayName: 'Zoran Jovanović',
+        companyId: '33333333-3333-3333-3333-333333333333',
+        companyName: 'Vodoinstal Petrović d.o.o.',
+        activatedAt: '2026-08-30T08:00:00.000Z',
+      }),
+    );
+
+    const element = await render();
+
+    expect(element.querySelector('.account')).toBeNull();
+    // The name it used to show is on the profile screen now, and nowhere on Home.
+    expect(element.querySelector('.content')?.textContent).not.toContain('Zoran Jovanović');
   });
 
   it('keeps what it knew when the server cannot be reached', async () => {

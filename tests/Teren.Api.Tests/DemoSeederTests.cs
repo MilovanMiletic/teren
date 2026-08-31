@@ -18,7 +18,7 @@ namespace Teren.Api.Tests;
 public sealed class DemoSeederTests(TerenTestApp app)
 {
     // 1 company + 3 sites + 3 entries + 2 users + 1 device
-    private const int FullSeedRowCount = 10;
+    private const int FullSeedRowCount = 11;
 
     /// <summary>The demo device's token. The seeded device's token_hash is SHA-256 of this, which
     /// is the whole compatibility hinge: the token already in the PWA bundle authenticates for
@@ -88,8 +88,9 @@ public sealed class DemoSeederTests(TerenTestApp app)
 
         var inserted = await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
 
-        // Two sites, three entries, two users and the device; the company and site 1 were there.
-        inserted.ShouldBe(8);
+        // Two sites, three entries, two users, the device and the demo activation code; the
+        // company and site 1 were there.
+        inserted.ShouldBe(9);
         (await db.Set<Company>().IgnoreQueryFilters().CountAsync(Ct)).ShouldBe(1);
         (await db.Set<Project>().IgnoreQueryFilters().CountAsync(Ct)).ShouldBe(3);
         (await db.Set<Entry>().IgnoreQueryFilters().CountAsync(Ct)).ShouldBe(3);

@@ -403,11 +403,27 @@ Wire format snake_case throughout.
 
 | Route | Body → Response |
 | --- | --- |
-| `POST /auth/activate` | `{username, activation_code, device_name}` → `{device_token, worker, company}` |
+| `POST /auth/activate` | `{username, activation_code, device_name}` → `{device_token, device_id, device_name, user_id, username, display_name, language, company: {id, name}}` |
 | `POST /auth/activation-code` | `{username}` → **always 202**, whether or not the username exists. Emails a fresh single-use code when the worker has an address. Decision 14's self-service path. |
-| `POST /auth/login` | `{email, password}` → `{session_token, expires_at, role, display_name, company}` |
+| `POST /auth/login` | `{email, password}` → `{session_token, expires_at, role, user_id, display_name, company}` |
 | `POST /auth/password` | `{token, password}` → sets password, consumes token, revokes existing sessions. Serves invite *and* reset. |
 | `POST /auth/password-reset` | `{email}` → **always 202**, whether or not the account exists |
+
+
+> **Amendment, 2026-08-31 (founder decision).** The activate row above used to read
+> `{device_token, worker, company}`, with the person's fields nested under `worker`. **The shipped
+> API is flat and the plan is what changed**, because `LoginResponse` and `MeResponse` already put
+> person fields flat with `company` nested — a `worker` wrapper here would have been the only
+> nested-person response in the API. This was not a paper disagreement: the client read
+> `response.worker?.user_id`, got `undefined`, refused the session and told the founder his code
+> had not been spent, while the device row existed and the code was gone. He pressed again and
+> burned a second code. Both reviewers reached the same conclusion independently.
+> `ActivationTests.The_activate_response_carries_exactly_the_field_names_the_client_reads` now
+> pins the serialized field names, exhaustively, against the JSON rather than against the C#
+> record — a test that reads the type cannot see a serializer naming change, and neither the PWA
+> specs (which test a mock) nor the other backend tests could see this one.
+> The login row also gained `user_id`, which the shipped `LoginResponse` has always carried:
+> additive, harmless, and folded into the same amendment.
 
 **Authenticated:** `GET /api/me` (the PWA's "is my credential still good" probe),
 `POST /api/auth/logout`.
@@ -634,6 +650,20 @@ promises**.
   Validate the return URL (single leading `/`, no `//`, no `://`).
 - Auth routes register **before** `'**'`. `'**' → redirectTo: ''` re-runs matching, so the guard fires
   on the redirect target — worth its own spec.
+
+**What the gate costs, and what pays for it (2026-08-31).** The guard keys on *having a session*, not
+on the session being usable — gating on usable would be inert while `environment.deviceToken` is still
+in the bundle. The consequence is that a fresh install or a new browser has no session, lands on
+`/welcome`, and until F6 there is no screen anywhere that can issue it a code: the seeded company admin
+has no password, so the admin surface cannot be reached either. That breaks CLAUDE.md invariant 6
+(main is always demo-ready). **`DemoSeeder` therefore mints the demo worker a fixed live code,
+`DEM0-TEST`**, re-minted by every `seed` the way the three withdrawal stamps are cleared, and
+effectively non-expiring because a code that dies a week after the last seed is discovered mid-pitch.
+It is a contract in the same class as the three demo project ids: written down in CLAUDE.md and in
+`docs/demo-script.md`. **It is also a published credential to the demo company** — anyone reading the
+repo can activate a phone as `zoran.jovanovic` there, which revokes the demo device until the next
+`seed`. Acceptable while the demo company holds nothing but sample rows and the only deployment is
+local; **revisit it at B3a**, when that company lives behind a public URL.
 
 **Revocation is not a gate.** A revoked device keeps its session and keeps reaching the record button.
 A foreman whose admin fat-fingered a revoke at 4pm must still capture the day. It surfaces as a notice

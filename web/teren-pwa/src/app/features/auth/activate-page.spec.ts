@@ -1,9 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { TranslocoTestingModule } from '@jsverse/transloco';
 
 import { ActivationService } from '../../core/auth/activation.service';
 import { ConnectivityService } from '../../core/connectivity.service';
+import { RETURN_URL_PARAM } from '../../core/session/return-url';
 import { Session } from '../../core/session/session';
 import en from '../../../../public/i18n/en.json';
 import sr from '../../../../public/i18n/sr.json';
@@ -33,7 +34,10 @@ describe('ActivatePage', () => {
     login: vi.fn(),
   };
 
-  function render(connectivity: unknown = online): void {
+  let router: Router;
+
+  /** Render the screen as the gate would have left it — optionally holding a destination. */
+  function render(connectivity: unknown = online, next?: string): void {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [
@@ -52,11 +56,22 @@ describe('ActivatePage', () => {
         provideRouter([]),
         { provide: ActivationService, useValue: activation },
         { provide: ConnectivityService, useValue: connectivity },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              queryParamMap: convertToParamMap(next ? { [RETURN_URL_PARAM]: next } : {}),
+            },
+          },
+        },
       ],
     });
     fixture = TestBed.createComponent(ActivatePage);
     fixture.detectChanges();
     element = fixture.nativeElement as HTMLElement;
+    router = TestBed.inject(Router);
+    vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
   }
 
   function field(id: string): HTMLInputElement {
@@ -160,7 +175,7 @@ describe('ActivatePage', () => {
     expect(activation.activate).not.toHaveBeenCalled();
   });
 
-  it('sends the canonical code, and shows who this phone has become', async () => {
+  it('sends the canonical code, and then goes to the record button', async () => {
     render();
     type(field('activate-username'), 'zoran.jovanovic');
     type(field('activate-code'), 'xkd4-7hmp');
@@ -168,32 +183,50 @@ describe('ActivatePage', () => {
     await submit();
 
     expect(activation.activate).toHaveBeenCalledWith('zoran.jovanovic', 'XKD47HMP');
-    expect(element.textContent).toContain('Ovaj telefon je spreman');
-    expect(element.textContent).toContain('Zoran Jovanović');
-    expect(element.textContent).toContain('Gradnja d.o.o.');
-    // Activation is the single best moment in this product's life to ask about installing.
-    expect(element.querySelector('app-install-invitation')).toBeTruthy();
+    // The defect the founder met on a real phone: this screen used to raise a success panel and
+    // stay put, he read a screen that had not moved as a failure, pressed the button again and
+    // burned a second single-use code. A man who has just been let in goes through the door.
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/');
   });
 
-  it('says a stuck queue is moving again, and only when it is', async () => {
-    render();
+  it('finishes the journey the gate interrupted', async () => {
+    // `?next=` arrives here from Welcome, which got it from the guard. This is the last hop: the
+    // entry his boss sent him a link to is what he sees next, not a list he has to search.
+    render(online, '/diary?entry=8f0d');
     type(field('activate-username'), 'zoran.jovanovic');
     type(field('activate-code'), 'xkd47hmp');
-    await submit();
-    expect(element.textContent).not.toContain('sada se šalju');
 
+    await submit();
+
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/diary?entry=8f0d');
+  });
+
+  it('will not be sent off this origin by a poisoned destination', async () => {
+    // An open redirect on a join screen is worth something to an attacker: it is the ideal place
+    // to collect a username and a single-use code.
+    render(online, '//evil.com');
+    type(field('activate-username'), 'zoran.jovanovic');
+    type(field('activate-code'), 'xkd47hmp');
+
+    await submit();
+
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/');
+  });
+
+  it('stays where it is when the code is refused, however many times', async () => {
     activation.activate.mockResolvedValue({
-      ok: true,
-      failure: null,
-      session: SESSION,
-      released: 6,
+      ok: false,
+      failure: 'rejected',
+      session: null,
+      released: 0,
     });
     render();
     type(field('activate-username'), 'zoran.jovanovic');
     type(field('activate-code'), 'xkd47hmp');
+
     await submit();
 
-    expect(element.textContent).toContain('sada se šalju');
+    expect(router.navigateByUrl).not.toHaveBeenCalled();
   });
 
   it('keeps what he typed when the server refuses it', async () => {

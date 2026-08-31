@@ -1,0 +1,165 @@
+<div class="screen" *transloco="let t">
+  <!--
+    Medium and up: the application header carries the wordmark, the date and the way back. Its
+    profile control is switched off here and only here — this is the screen it leads to.
+  -->
+  <app-header [showBack]="true" [showProfile]="false" (back)="back()" />
+
+  <header class="column head band-top">
+    <button
+      type="button"
+      class="btn-icon head__back"
+      [attr.aria-label]="t('common.back')"
+      (click)="back()"
+    >
+      <app-icon name="chevron-left" [size]="20" />
+    </button>
+    <h1 class="t-h1 head__title">{{ t('profile.title') }}</h1>
+  </header>
+
+  <div class="column content">
+    @if (loading()) {
+      <p class="card state t-meta" role="status">{{ t('profile.loading') }}</p>
+    } @else {
+      @if (unconfirmed() && known() && reasonKey(); as reason) {
+        <!--
+          The server was not reached, and the screen says so before it says anything else. A
+          profile is believed: a company name left over from an activation months ago would be
+          read as current unless this row is here.
+        -->
+        <div class="card notice notice--warn unconfirmed" role="status">
+          <app-icon name="wifi-off" [size]="20" class="notice__icon" />
+          <div class="notice__text">
+            <span class="notice__title">{{ t('profile.stale.title') }}</span>
+            <span class="t-meta">{{ t(reason) }}</span>
+            <!-- Said separately from the reason, because it is the part he acts on. -->
+            <span class="t-meta">{{ t('profile.stale.body') }}</span>
+          </div>
+        </div>
+      }
+
+      @if (!known()) {
+        <!--
+          Nothing was confirmed and nothing is remembered — a phone still running on the build-time
+          token, or one whose storage was cleared. An empty profile and a profile that failed to
+          load look identical unless one of them says which it is.
+        -->
+        <div class="card state state--empty" role="status">
+          <span class="state__mark" aria-hidden="true">
+            <app-icon name="user" [size]="32" />
+          </span>
+          <h2 class="t-h2">{{ t('profile.unavailable.title') }}</h2>
+          <p class="t-body state__body">{{ t(reasonKey() ?? 'profile.reason.unavailable') }}</p>
+          <!--
+            And the part that keeps this from reading as lost data: the evidence is untouched.
+            "Nothing is deleted locally" is a promise this screen is well placed to keep saying.
+          -->
+          <p class="t-meta state__body">{{ t('profile.unavailable.body') }}</p>
+        </div>
+      } @else {
+        <!-- Left at expanded: who he is. The substance of the screen. -->
+        <div class="pane pane--primary">
+          <section class="card card--hero identity" [attr.aria-label]="t('profile.title')">
+            <div class="identity__head">
+              <span class="identity__avatar" aria-hidden="true">
+                <app-icon name="user" [size]="26" />
+              </span>
+              <div class="identity__who">
+                <span class="t-label">{{ t('profile.name.label') }}</span>
+                <span class="identity__name">{{ displayName() ?? t('profile.name.unknown') }}</span>
+                @if (role(); as current) {
+                  <!--
+                    Under the name rather than beside it: a chip in the same row competes with a
+                    Serbian surname for a phone's width, and the name is what loses.
+                    The role appears only when the server said it — never inferred from a session.
+                  -->
+                  <span class="chip chip--neutral identity__role">
+                    {{ t('profile.role.' + current) }}
+                  </span>
+                }
+              </div>
+            </div>
+
+            @if (username(); as name) {
+              <!--
+                Decision 7, made visible. This is what a man types on a replacement phone, so it
+                is a value on the screen rather than a line of small print.
+              -->
+              <div class="identity__username">
+                <span class="t-label">{{ t('profile.username.label') }}</span>
+                <span class="identity__value">{{ name }}</span>
+                <p class="t-meta identity__hint">{{ t('profile.username.hint') }}</p>
+              </div>
+            }
+          </section>
+
+          <section class="details-section">
+            <h2 class="t-label section__label">{{ t('profile.details.label') }}</h2>
+            <dl class="card details">
+              @if (companyName(); as company) {
+                <div class="details__row">
+                  <dt class="t-meta details__key">{{ t('profile.company.label') }}</dt>
+                  <dd class="details__value">{{ company }}</dd>
+                </div>
+              }
+              @if (deviceName(); as device) {
+                <div class="details__row">
+                  <dt class="t-meta details__key">{{ t('profile.device.label') }}</dt>
+                  <dd class="details__value">{{ device }}</dd>
+                </div>
+              }
+              @if (activatedAt(); as activated) {
+                <!-- The one fact only the phone holds: when it was bound to him. -->
+                <div class="details__row">
+                  <dt class="t-meta details__key">{{ t('profile.activated.label') }}</dt>
+                  <dd class="details__value t-num">{{ activated | date: 'd. M. y.' }}</dd>
+                </div>
+              }
+              @if (!companyName() && !deviceName() && !activatedAt()) {
+                <div class="details__row">
+                  <dd class="details__value t-meta details__none">
+                    {{ t('profile.details.none') }}
+                  </dd>
+                </div>
+              }
+            </dl>
+          </section>
+        </div>
+
+        <!-- Right at expanded: the two things he can actually do from here. -->
+        <div class="pane pane--secondary">
+          <!--
+            The switcher itself, not a copy of it: language is a setting of this phone, and the
+            one control that changes it lives here as it does on Home and in the app header. No
+            card around it — it is a white pill already, and a white pill on a white card is two
+            surfaces saying the same thing.
+          -->
+          <section class="language">
+            <h2 class="t-label section__label">{{ t('profile.language.label') }}</h2>
+            <app-language-switcher />
+            <p class="t-meta language__hint">{{ t('profile.language.hint') }}</p>
+          </section>
+
+          <!--
+            The answer to "this is not me", and to a phone that fell off a scaffold. It navigates
+            and nothing else: `/activate` replaces the credential and touches no evidence, which
+            is what PROJECT.md principle 3 requires of every door on this screen.
+          -->
+          <button
+            type="button"
+            class="card card-interactive reactivate"
+            [attr.aria-label]="t('profile.newPhone.action')"
+            (click)="reactivate()"
+          >
+            <app-icon name="lock" [size]="20" class="reactivate__icon" />
+            <span class="reactivate__text">
+              <span class="reactivate__title">{{ t('profile.newPhone.title') }}</span>
+              <span class="t-meta">{{ t('profile.newPhone.body') }}</span>
+            </span>
+            <app-icon name="chevron-right" [size]="18" class="reactivate__chevron" />
+          </button>
+        </div>
+      }
+    }
+  </div>
+</div>

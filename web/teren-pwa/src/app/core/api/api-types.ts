@@ -247,3 +247,46 @@ export interface ReportDownload {
    */
   contentDisposition: string | null;
 }
+
+/**
+ * `GET /api/me` — who is holding this credential (`MeEndpoints.cs`).
+ *
+ * **Every field is optional on the way in**, and that is a statement about the server rather than
+ * about the screen. The endpoint declares `role`, `user_id`, `display_name` and `language` as
+ * non-null, but a phone can be pointed at an older build of the API — a stale staging box, a
+ * cached origin — and a profile screen that rendered `undefined` where a man's name belongs would
+ * be worse than one that says it could not read the answer. `ProfileService` narrows this into a
+ * model whose absent fields are explicitly `null`, and the screen draws only the rows it has.
+ *
+ * `username`, `company` and `device` are legitimately null for a super admin, who belongs to no
+ * company and holds no phone (§4, `ck_app_user_company_scope`). The screen must not assume a
+ * worker.
+ */
+export interface MeResponse {
+  /** `worker` | `company_admin` | `super_admin`. */
+  role?: string | null;
+  user_id?: string | null;
+  display_name?: string | null;
+  /**
+   * **The worker's durable identity** (plan decision 7). It outlives any phone; the device
+   * credential merely proves it. Null for the two admin roles, who sign in by email.
+   */
+  username?: string | null;
+  /** The UI language the server holds for this person. Not this phone's setting. */
+  language?: string | null;
+  company?: CompanyRefResponse | null;
+  device?: DeviceRefResponse | null;
+}
+
+/** The company a person belongs to, by id and name. Null for a super admin. */
+export interface CompanyRefResponse {
+  id?: string | null;
+  name?: string | null;
+}
+
+/** The phone this credential is bound to. Null for an admin, who has no device. */
+export interface DeviceRefResponse {
+  id?: string | null;
+  /** What the admin sees in his device list — "Zoranov telefon". */
+  name?: string | null;
+}

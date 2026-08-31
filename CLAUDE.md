@@ -121,17 +121,33 @@ before being presented as done; gating fixes go back to the implementer and are 
 
 ## Current state (update as it changes)
 
-- **Phase:** ROADMAP **B0–B7 ☑, C3 ◐, identity work in progress** (2026-08-30). The current subject
+- **Phase:** ROADMAP **B0–B7 ☑, C3 ◐, identity work in progress** (2026-08-31). The current subject
   is **profiles and identity** — `plans/profile-and-identity.md` is the approved specification and
   ROADMAP's *Identity and profiles* table is the live increment tracker. **Start there.** Done and
-  reviewed: F1, D1, F2. **Built and UNREVIEWED: F3, D2, D3** — three increments owe their gate, which
-  is the largest unaudited surface this project has carried; review them before building anything on
-  top. F4/F4b was started and backed out (it left the PWA unbuildable); it restarts from scratch.
+  reviewed: F1, D1, F2, **D2 (accept)**, **D3 (accept-with-fixes, fixes in)**. **F3 was REJECTED**
+  on 2026-08-31; its two gating defects were route bugs fixed by **F4b** (built, awaiting review),
+  and its third is a founder action. **F4 — the `canMatch` gate — is next.**
   **The single most important ordering fact:** a login screen secures nothing while
   `environment.deviceToken` is still baked into the PWA bundle — anyone can read it from devtools
   and call the API directly. Emptying it (D7/F9) is what shuts the door, and it must not happen
   until activation is proven end to end against the real API, or the founder is locked out of his
   own app with no way back in but editing an environment file.
+- **Activation cannot be proven end to end yet, and the reason is not the screens.** *Nothing in
+  `src/` ever creates a `PasswordToken`* — every site only reads or consumes one. So an admin can
+  never set a password → no company_admin session can exist → `/api/workers/{id}/activation-code`
+  is unreachable → **no activation code can be issued through the product at all.** A super admin
+  is correctly walled out of that surface, so he is not a way round it. Minting the first
+  company_admin password (via D4/D6 or a deliberate bootstrap command) is now the real blocker in
+  front of the token flip.
+- **A route rename is producer-side only — which is why a half-finished one is invisible.**
+  `ee37f04` shipped an app that could not be navigated: every consumer was on English paths while
+  `app.routes.ts` alone had been hand-restored to Serbian, so only `/` and the three auth routes
+  matched and everything else fell through the wildcard to Home. `ng build` was clean and 538 specs
+  were green. The specs that should have caught it were structurally blind — `provideRouter([])`
+  and hardcoded path strings, both asserting the *future* behaviour. **F4b added the guards that
+  are the compiler this coupling does not have** (`src/app/testing/route-table.ts` resolves paths
+  from the real `routes` array keyed on component class *by reference* — name-keyed lookup fails
+  because the build renames classes). Never rename a path without running them.
 - Design system + 10 artboards in
   `design/` (tokens.md is binding). B2 capture flow done incl. review fixes (Dexie v2, per-second
   chunk persistence, orphan rescue) **plus the adaptive-layout rework** (app header ≥768 with
@@ -192,19 +208,40 @@ before being presented as done; gating fixes go back to the implementer and are 
 - **Demo seed is now three sites** (`d3a0c1f0-5b8e-4f1a-9c62-` + `000000000002/3/4`), and those ids
   are a **contract** with `web/.../core/projects/project-source.ts`: if they drift, every
   `POST /api/entries` 404s and captured entries can never leave the phone. See ARCHITECTURE §6.
-- **Suites: 538 PWA specs** and **786 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
+- **The demo activation code is a contract too, for the same reason.** Since F4's `canMatch` gate, a
+  fresh install has no session and lands on `/welcome`, so the demo needs a code that exists before
+  anyone can issue one — there is no admin screen until F6. `DemoSeeder` mints `zoran.jovanovic` a
+  fixed live code, **`DEM0-TEST`** (canonical `DEM0TEST`; typing the letter O also works, Crockford
+  folds `O→0`). Effectively non-expiring, and **re-minted by every `seed`** the way the three
+  withdrawal stamps are cleared — so a spent demo code heals. It is written down in
+  `docs/demo-script.md`: change it in `DemoSeeder` and the written-down code silently stops working.
+  **It is a real credential to the demo company published in the repo**, and redeeming it revokes the
+  demo phone until the next `seed`. Harmless on a laptop; **needs a decision at B3a**, when that
+  company goes behind a public URL.
+- **Suites: 578 PWA specs** and **796 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
   + Testcontainers over real Postgres, ~66 s; PdfPig in tests only, so report assertions read text
   back out of the rendered PDF). `dotnet test` needs Docker running.
   *The figures here were stale before 2026-08-30 (403/447 recorded against an actual 436/476) —
   both were re-measured off the tree, not carried forward.*
-- **Check at session start:** the tree is green (`dotnet build` clean, **786 backend tests, 538 PWA
-  specs**, both verified by execution 2026-08-30 at session end).
+- **Check at session start:** the tree is green (`dotnet build` clean, **796 backend tests, 578 PWA
+  specs**, both verified by execution 2026-08-31 at session end).
+  ***Re-run both suites after every review.*** Twice on 2026-08-31 a reviewer or a stopped implementer
+  left its own mutation in the working tree — a typo'd unique-constraint name that turned a duplicate
+  email into a 500, and a removed `pathMatch: 'full'` that made the PWA suite hang forever instead of
+  running in five seconds. Both agents were stopped before reporting, so neither said so.
+  *The PWA suite is **load-flaky**: under memory pressure it produces a different random set of 5 s
+  vitest timeouts each run, in specs unrelated to the change. Green and stable at load average < 6 —
+  re-run under lower load before believing a failure. On 2026-08-31 the machine (23/31 GB used, swap
+  exhausted) SIGKILLed a test run and took **Docker Desktop** down with it, which surfaced as API
+  500s; `systemctl --user start docker-desktop` then `docker compose up -d` restores it.*
   *If `dotnet build` reports `MSB3027 ... file is locked by Microsoft Visual Studio`, that is the
   founder's IDE or a running API holding the output, not a code error — **never kill `dotnet.exe`**;
-  build to a scratch path with `-p:BaseOutputPath=` instead.* **Every increment has now passed its reviewer** —
-  the verbatim pair, the report-polish/download pair, B3a, and the identity pair (D1, F1+F2) all
-  cleared their gates. **Neither D1 nor F1+F2 had a delta review after its gating fixes** — both
-  implementers mutation-proved the fixes instead, as B4 did.
+  build to a scratch path with `-p:BaseOutputPath=` instead.* **Gates as of 2026-08-31:** the verbatim pair, the
+  report-polish/download pair, B3a, D1, F1+F2, and now **D2 (accept)** and **D3 (accept-with-fixes)**
+  have cleared. **F3 was rejected** and has never been re-reviewed; **F4b and F4 are both reviewed accept-with-fixes** with their code fixes in. F4's two remaining gating items are founder-decided but unbuilt: the seeded demo code and the plan §8 contract amendment. **D1, F1+F2 and D3 had no delta review
+  after their gating fixes** — and D3's implementer was *stopped before reporting its mutation
+  proofs*, so that increment's fixes are verified only by a clean build and 788 green tests plus a
+  reading of the diff. Treat "mutation-proven" as unproven for D3.
   The adaptive-rework *delta review* verdict is **permanently lost** (its session closed mid-run),
   so that increment never passed its gate; the salvage bug found afterwards was traced to async
   state sequencing, not to the rework. Design canvas still owes the 1280 desktop artboard variants.

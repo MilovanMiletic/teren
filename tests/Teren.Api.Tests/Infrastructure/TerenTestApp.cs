@@ -85,6 +85,11 @@ public sealed class TerenTestApp : IAsyncLifetime
 
     public InsertRaceInterceptor RaceInterceptor { get; } = new();
 
+    /// <summary>Records the statement sequence a request issues — see
+    /// <see cref="ActivationStatementShapeTests"/>, which is the deterministic half of the
+    /// timing-oracle guard.</summary>
+    public CommandTapInterceptor CommandTap { get; } = new();
+
     public string ApiConnectionString { get; private set; } = string.Empty;
 
     public WebApplicationFactory<Program> Factory =>
@@ -134,6 +139,9 @@ public sealed class TerenTestApp : IAsyncLifetime
             "Storage__UploadUrlTtl", UploadUrlTtl.ToString("c"));
         // The floor the options validator allows, so the budget test costs two seconds, not ten.
         Environment.SetEnvironmentVariable("Storage__VerificationBudget", "00:00:02");
+        // Same trick for the media read budget: the floor, so the test that proves slow storage
+        // becomes a 503 costs two seconds rather than twenty.
+        Environment.SetEnvironmentVariable("Storage__MediaReadBudget", "00:00:02");
 
         // B6. The relay itself is faked, but everything in front of it is real — including the
         // options binding, so a range the validator would refuse fails the fixture rather than
@@ -338,6 +346,7 @@ public sealed class TerenTestApp : IAsyncLifetime
         Delivery.Reset();
         Renderer.Reset();
         RaceInterceptor.Disarm();
+        CommandTap.Reset();
 
         await using var db = CreateDbContext(companyId: null);
         // Every table any test can write to, identity included. This list, DemoReset's ordered
@@ -497,7 +506,7 @@ public sealed class TerenTestApp : IAsyncLifetime
                 // insert race deterministic.
                 services.AddDbContext<TerenDbContext>(options => options
                     .UseNpgsql(app.ApiConnectionString)
-                    .AddInterceptors(app.RaceInterceptor));
+                    .AddInterceptors(app.RaceInterceptor, app.CommandTap));
 
                 // The identity context gets the same interceptor, because the race that matters
                 // most now lives there: two phones typing one activation code. Without this,
@@ -505,7 +514,7 @@ public sealed class TerenTestApp : IAsyncLifetime
                 services.AddDbContext<TerenIdentityDbContext>(options => options
                     .UseNpgsql(app.ApiConnectionString, npgsql => npgsql
                         .MigrationsHistoryTable(TerenIdentityDbContext.MigrationsHistoryTable))
-                    .AddInterceptors(app.RaceInterceptor));
+                    .AddInterceptors(app.RaceInterceptor, app.CommandTap));
             });
         }
     }

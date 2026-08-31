@@ -1,0 +1,330 @@
+/*
+ * The worker's own account, in three deliberate layouts.
+ *
+ *   compact   <768      one column: who he is, then what he can change
+ *   medium    768–1023  the same order on a 640 column, with the detail rows two-up — the screen
+ *                       is short, so the tablet gains proportion rather than a second pane
+ *   expanded  ≥1024     a 12-column application layout: identity and details on the left, the
+ *                       controls (language, re-activation) on the right
+ *
+ * **No artboard exists for this screen** — `design/` carries Welcome and Login but nothing for a
+ * profile. Every shape here is borrowed from something the founder already approved: the head row
+ * and the two-pane grid from the archive, the hero card and the tappable row-card from Home, the
+ * labelled section from Home's "recent entries". Every value comes from `design/tokens.md`.
+ */
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+
+.head__title {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+/* From medium up the app header carries the back affordance; one is enough. */
+@media (min-width: 768px) {
+  .head {
+    padding-top: var(--space-6);
+    padding-bottom: 0;
+  }
+
+  .head__back {
+    display: none;
+  }
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-8);
+}
+
+@media (min-width: 1024px) {
+  .content {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: var(--space-6);
+    align-items: start;
+    padding-top: var(--space-5);
+  }
+
+  /* Both notices are about the whole screen, not about one pane. */
+  .unconfirmed,
+  .state {
+    grid-column: 1 / -1;
+  }
+
+  .pane--primary {
+    grid-column: span 7;
+  }
+
+  .pane--secondary {
+    grid-column: span 5;
+  }
+}
+
+/* ---- Loading and the honest empty state ---------------------------------------------------- */
+
+.state {
+  margin: 0;
+  padding: var(--space-5) 18px;
+}
+
+.state--empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8) var(--space-5);
+  text-align: center;
+}
+
+.state__mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--color-canvas);
+  color: var(--color-ink-3);
+}
+
+.state__body {
+  margin: 0;
+  max-width: 44ch;
+  color: var(--color-ink-2);
+}
+
+/* ---- Identity ------------------------------------------------------------------------------ */
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5);
+}
+
+.identity__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.identity__avatar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--color-accent-tint-1);
+  color: var(--color-accent-deep);
+}
+
+.identity__who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.identity__name {
+  font-size: var(--text-h1);
+  font-weight: 700;
+  /* A long Serbian name must wrap, never push a chip off the card. */
+  overflow-wrap: anywhere;
+}
+
+.identity__role {
+  align-self: flex-start;
+  margin-top: var(--space-2);
+}
+
+/*
+ * The username, given the weight the plan gives it: this is the thing a man types on a
+ * replacement phone, and the reason this screen exists at all.
+ */
+.identity__username {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4) 18px;
+  border-radius: var(--radius-field);
+  background: var(--color-canvas);
+}
+
+.identity__value {
+  font-size: var(--text-h2);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.identity__hint {
+  margin: 0;
+}
+
+@media (min-width: 768px) {
+  .identity {
+    padding: var(--space-6);
+  }
+
+  .identity__avatar {
+    width: 60px;
+    height: 60px;
+  }
+}
+
+/* ---- Details ------------------------------------------------------------------------------- */
+
+.details-section,
+.language {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.section__label {
+  margin: 0;
+  padding-left: var(--space-1);
+}
+
+.details {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.details__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-4) 18px;
+  border-bottom: 1px solid var(--color-card-line);
+}
+
+.details__row:last-child {
+  border-bottom: 0;
+}
+
+.details__key {
+  margin: 0;
+}
+
+.details__value {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* Nothing to list is a sentence, not an empty card. */
+.details__none {
+  font-weight: 400;
+}
+
+/*
+ * Medium and up: two rows abreast. A key and a short value use a third of a 640 column, and
+ * stacking three of them down a tablet is a phone layout that was allowed to grow taller.
+ */
+@media (min-width: 768px) {
+  .details {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .details__row {
+    border-bottom: 0;
+    border-right: 1px solid var(--color-card-line);
+  }
+
+  /* Only the internal seams: a divider on the card's own edge is a border on a card. */
+  .details__row:nth-child(2n),
+  .details__row:last-child {
+    border-right: 0;
+  }
+
+  .details__row:nth-child(n + 3) {
+    border-top: 1px solid var(--color-card-line);
+  }
+
+  /*
+   * An odd last row takes the whole width, so its divider is a full seam rather than a line that
+   * stops halfway across the card. Three details is the normal case for a worker, so this is the
+   * layout that actually ships, not an edge case.
+   */
+  .details__row:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Back to one column in the narrower right-hand pane at expanded would be cramped; two fit. */
+@media (min-width: 1024px) {
+  .details__row {
+    padding: var(--space-5) var(--space-5);
+  }
+}
+
+/* ---- Language ------------------------------------------------------------------------------- */
+
+.language {
+  align-items: flex-start;
+}
+
+.language__hint {
+  margin: 0;
+  padding-left: var(--space-1);
+  max-width: 46ch;
+}
+
+/* ---- Re-activation --------------------------------------------------------------------------- */
+
+.reactivate {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 72px;
+  padding: var(--space-4) 18px;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.reactivate__icon {
+  flex: none;
+  color: var(--color-ink-2);
+}
+
+.reactivate__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.reactivate__title {
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+
+.reactivate__chevron {
+  flex: none;
+  color: var(--color-ink-2);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .reactivate:hover .reactivate__icon {
+    color: var(--color-accent-deep);
+  }
+}

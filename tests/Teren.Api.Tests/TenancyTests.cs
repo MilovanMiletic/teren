@@ -327,6 +327,8 @@ public sealed class TenancyTests(TerenTestApp app) : ApiTestBase(app)
             .ShouldBe(HttpStatusCode.Unauthorized);
         (await anonymous.Get($"/api/entries/{entryId}")).StatusCode
             .ShouldBe(HttpStatusCode.Unauthorized);
+        (await anonymous.Get($"/api/entries/{entryId}/media/{Guid.NewGuid()}")).StatusCode
+            .ShouldBe(HttpStatusCode.Unauthorized);
         (await anonymous.PostNothing("/api/auth/logout")).StatusCode
             .ShouldBe(HttpStatusCode.Unauthorized);
         (await anonymous.PostJson("/api/workers", new JsonObject())).StatusCode

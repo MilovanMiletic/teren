@@ -62,6 +62,12 @@ public static class AdminAuditActions
     public const string DeviceSuperseded = "device_superseded";
 
     public const string SuperAdminCreated = "super_admin_created";
+
+    /// <summary>A set-password link was minted (invite or reset). Distinguished from
+    /// <see cref="PasswordSet"/> because "who was invited and never completed it" and "who
+    /// actually has a password" are different questions, and only the pair answers either.</summary>
+    public const string PasswordTokenIssued = "password_token_issued";
+
     public const string PasswordSet = "password_set";
 }
 

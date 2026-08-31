@@ -257,6 +257,8 @@ var app = builder.Build();
 //   dotnet run --project src/Teren.Api -- migrate      apply pending EF migrations
 //   dotnet run --project src/Teren.Api -- seed         migrate + seed the demo data (idempotent)
 //   dotnet run --project src/Teren.Api -- reset-demo   DESTRUCTIVE: see DemoResetGuard
+//   dotnet run --project src/Teren.Api -- create-super-admin --email … --name …
+//   dotnet run --project src/Teren.Api -- invite-admin --email …
 //
 // None of these reach app.Run(), so no hosted service starts: `reset-demo` does not bring up a
 // Hangfire worker that would start executing the jobs it is about to delete.
@@ -274,6 +276,13 @@ if (args.Contains(CreateSuperAdminCommand.CommandName))
     // Migrations first, for the same reason `reset-demo` learned to: on a box that has not been
     // migrated this would otherwise die on a bare Npgsql 42P01, and this is the command a founder
     // runs on a brand-new host before anything else exists.
+    //
+    // BOTH histories, and the evidence one first. The identity migration creates app_user, device
+    // and activation_code with foreign keys to `company`, whose DDL TerenDbContext owns — so on a
+    // genuinely fresh database, migrating identity alone fails on a bare 42P01 for `company`.
+    // That is the same class of failure the D1 review found in `reset-demo`, and this command was
+    // carrying it too.
+    await scope.ServiceProvider.GetRequiredService<TerenDbContext>().Database.MigrateAsync();
     await identityDb.Database.MigrateAsync();
 
     Environment.ExitCode = await CreateSuperAdminCommand.RunAsync(
@@ -283,6 +292,33 @@ if (args.Contains(CreateSuperAdminCommand.CommandName))
         Console.Out,
         // Masked, non-echoing input when there is a terminal; one piped line when there is not.
         maskInput: !Console.IsInputRedirected);
+
+    return;
+}
+
+// The other half of the bootstrap: `create-super-admin` sets a password at the console, this one
+// mints a link for somebody who is not standing at it. Nothing else in the product ever creates a
+// password_token, so without it an invited company admin can never sign in — and therefore no
+// activation code can be issued through the product at all. See InviteAdminCommand.
+if (args.Contains(InviteAdminCommand.CommandName))
+{
+    using var scope = app.Services.CreateScope();
+    var identityDb = scope.ServiceProvider.GetRequiredService<TerenIdentityDbContext>();
+
+    await scope.ServiceProvider.GetRequiredService<TerenDbContext>().Database.MigrateAsync();
+    await identityDb.Database.MigrateAsync();
+
+    // The TTL comes from Auth:PasswordTokenLifetime — the same validated option /auth/password
+    // is measured against — rather than a literal here, so there is one answer to "how long is a
+    // link good for" and a test pins it.
+    var authOptions = scope.ServiceProvider.GetRequiredService<IOptions<AuthOptions>>().Value;
+
+    Environment.ExitCode = await InviteAdminCommand.RunAsync(
+        identityDb,
+        args,
+        Console.Out,
+        authOptions.PasswordTokenLifetime,
+        authOptions.AppUrl);
 
     return;
 }
@@ -310,6 +346,13 @@ if (args.Contains("migrate") || args.Contains("seed"))
         Console.WriteLine(inserted == 0
             ? "Demo data already present and usable; nothing written."
             : $"Demo data seeded: {inserted} row(s) written.");
+
+        // Printed on every seed, not only when a row was written: this is the one credential a
+        // fresh phone needs to get past the welcome screen, and there is no admin screen to read
+        // it from until F6.
+        Console.WriteLine(
+            $"Demo activation: username {DemoSeeder.WorkerUsername}, "
+            + $"code {DemoSeeder.DemoActivationCodeDisplay}.");
     }
 
     return;

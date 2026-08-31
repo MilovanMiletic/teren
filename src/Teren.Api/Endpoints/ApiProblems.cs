@@ -73,6 +73,24 @@ internal static class ApiProblemCodes
     public const string ReportUnavailable = "report_unavailable";
 
     /// <summary>
+    /// The media row exists and is yours, but <c>/complete</c> never certified its bytes — the
+    /// upload has not arrived, or arrived at the wrong size. A <em>state</em> answer like
+    /// <see cref="ReportNotReady"/>: the photograph may still be climbing out of a phone on a bad
+    /// connection, which is worth saying and worth re-checking, and is a different thing from
+    /// evidence that is gone.
+    /// </summary>
+    public const string MediaNotReady = "media_not_ready";
+
+    /// <summary>
+    /// The bytes were certified at <c>/complete</c> and cannot be served now: nothing is at the
+    /// key, or what is there is not what the phone hashed. A server-side fault, reported
+    /// separately from <see cref="MediaNotReady"/> because no amount of waiting fixes it — and
+    /// never dressed up as a missing photograph, because on an evidence product the difference
+    /// between "not uploaded" and "was uploaded and is now wrong" is the whole story.
+    /// </summary>
+    public const string MediaUnavailable = "media_unavailable";
+
+    /// <summary>
     /// The worker exists and is yours, but there is no code he could type right now — never
     /// issued, already used, superseded, or expired. A <em>state</em> answer, not a missing
     /// resource: the admin's next move is to issue one, and the client can offer that button
@@ -82,9 +100,18 @@ internal static class ApiProblemCodes
 
     /// <summary>
     /// The username the admin typed belongs to somebody. Usernames are globally unique by design
-    /// (§4), so this is the one answer in the API that reaches across tenants — deliberately, and
-    /// unavoidably in a global namespace. Leaving <c>username</c> out of the request avoids it
+    /// (§4), so this is one of two answers in the API that reach across tenants — deliberately,
+    /// and unavoidably in a global namespace. Leaving <c>username</c> out of the request avoids it
     /// entirely: the server then proposes a free one.
     /// </summary>
     public const string UsernameTaken = "username_taken";
+
+    /// <summary>
+    /// The email address is already on a Teren account. The <em>second</em> cross-tenant answer,
+    /// and the reason is the same one that forced the first: <c>ux_app_user_email</c> is global,
+    /// because email is the login key and a login form has no company field (§4). Uniqueness that
+    /// spans tenants cannot be reported without saying something that spans tenants; the choice is
+    /// between this and a 500. The detail deliberately does not repeat the address back.
+    /// </summary>
+    public const string EmailTaken = "email_taken";
 }

@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { TranslocoTestingModule } from '@jsverse/transloco';
 
 import en from '../../../../public/i18n/en.json';
@@ -15,8 +15,12 @@ import {
 import { GeolocationService } from '../../core/media/geolocation.service';
 import { DEMO_PROJECTS } from '../../core/projects/project-source';
 import { ProjectService } from '../../core/projects/project.service';
+import { entryUrlFor } from '../../testing/route-table';
 import { flushLiveQueries, waitUntil } from '../../testing/flush';
+import { routes } from '../../app.routes';
+import { SESSION_STORAGE_KEY } from '../../core/session/session';
 import { CaptureRecordingPage } from './capture-recording-page';
+import { CaptureSavedPage } from './capture-saved-page';
 import { inject, signal } from '@angular/core';
 
 /**
@@ -91,9 +95,32 @@ describe('CaptureRecordingPage', () => {
   let db: TerenDb;
   let store: EntryStore;
   let recorder: FakeRecorder;
+  let router: Router;
   let fixture: ComponentFixture<CaptureRecordingPage>;
 
   async function configure(options: { outcome?: 'ok' | 'denied'; projects?: boolean } = {}) {
+    /*
+     * An activated phone, because that is the only kind that can be on this screen.
+     *
+     * The real table is gated since F4: without a stored session `canMatch` sends every one of
+     * these navigations to `/welcome`, and the assertions below would fail for a reason that has
+     * nothing to do with capture. Written before the router is built, since `SessionService`
+     * reads the credential during construction.
+     */
+    localStorage.setItem(
+      SESSION_STORAGE_KEY,
+      JSON.stringify({
+        token: 'trn_d_a-real-device-token',
+        deviceId: '11111111-1111-1111-1111-111111111111',
+        userId: '22222222-2222-2222-2222-222222222222',
+        username: 'zoran.jovanovic',
+        displayName: 'Zoran Jovanović',
+        companyId: '33333333-3333-3333-3333-333333333333',
+        companyName: 'Gradnja d.o.o.',
+        activatedAt: '2026-08-30T08:00:00.000Z',
+      }),
+    );
+
     db = new TerenDb(`teren-test-${crypto.randomUUID()}`);
     TestBed.configureTestingModule({
       imports: [
@@ -109,7 +136,18 @@ describe('CaptureRecordingPage', () => {
         }),
       ],
       providers: [
-        provideRouter([]),
+        /*
+         * The **real** route table, not `provideRouter([])`.
+         *
+         * Every exit from this screen is a `router.navigate` to a literal path, and an empty
+         * table matches all of them equally badly — so an empty table is a spec that cannot see
+         * the one failure this screen has. It happened: after the F4 back-out the component
+         * navigated to `/entry/<id>` while `app.routes.ts` still registered `unos/:entryId`, the
+         * wildcard bounced the foreman to Home with nothing on screen to say so, and all 538
+         * specs stayed green. With the real routes in, a navigate target that stops matching
+         * lands on `/` and the assertions below go red.
+         */
+        provideRouter(routes),
         { provide: TEREN_DB, useValue: db },
         { provide: GeolocationService, useValue: { currentFix: async () => null } },
         {
@@ -121,6 +159,7 @@ describe('CaptureRecordingPage', () => {
 
     store = TestBed.inject(EntryStore);
     recorder = TestBed.inject(AudioRecorderService) as unknown as FakeRecorder;
+    router = TestBed.inject(Router);
 
     if (options.projects !== false) {
       await TestBed.inject(ProjectService).load();
@@ -148,6 +187,7 @@ describe('CaptureRecordingPage', () => {
   }
 
   afterEach(async () => {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
     db.close();
     await db.delete();
   });
@@ -346,5 +386,68 @@ describe('CaptureRecordingPage', () => {
     expect(element.textContent).toContain('Ništa nije izgubljeno');
     expect(await db.captures.count()).toBe(0);
     expect(await db.entries.count()).toBe(0);
+  });
+
+  /**
+   * Where a recording actually ends up.
+   *
+   * All three exits from this screen navigate to the saved screen, and the expected URL is built
+   * from the route table by the component it renders — never from a path string retyped here. If
+   * `app.routes.ts` renames that route and this component is not updated with it, the real router
+   * falls through to `'**' → redirectTo: ''`, `router.url` becomes `/`, and these fail. That is
+   * the whole point: on main the foreman was silently bounced to Home after every take, could not
+   * add a single photo, and nothing — no build error, no failing spec, no message on screen —
+   * said so.
+   */
+  describe('lands the take on the saved screen', () => {
+    async function expectSavedScreen(entryId: string): Promise<void> {
+      const expected = await entryUrlFor(CaptureSavedPage, entryId);
+      await waitUntil(() => router.url === expected, {
+        onTick: () => fixture.detectChanges(),
+        describe: `navigation to ${expected} (was ${router.url})`,
+      });
+      expect(router.url).toBe(expected);
+    }
+
+    it('after the foreman stops the recording himself', async () => {
+      const element = await configure();
+      const entryId = (await db.captures.toArray())[0].entryId;
+
+      element.querySelector<HTMLButtonElement>('.stop')?.click();
+
+      await expectSavedScreen(entryId);
+    });
+
+    it('after a failed save is retried', async () => {
+      const element = await configure();
+      const entryId = (await db.captures.toArray())[0].entryId;
+
+      vi.spyOn(store, 'finishCapture').mockRejectedValueOnce(new Error('quota exceeded'));
+      element.querySelector<HTMLButtonElement>('.stop')?.click();
+      await waitUntil(() => text(element).includes('Sačuvaj ponovo'), {
+        onTick: () => fixture.detectChanges(),
+        describe: 'the retry offer',
+      });
+
+      element.querySelector<HTMLButtonElement>('.btn--solid')?.click();
+
+      await expectSavedScreen(entryId);
+    });
+
+    it('after a take the OS interrupted is salvaged and opened', async () => {
+      const element = await configure();
+      const entryId = (await db.captures.toArray())[0].entryId;
+
+      recorder.interrupt();
+      fixture.detectChanges();
+      await waitUntil(() => text(element).includes('Otvori sačuvani snimak'), {
+        onTick: () => fixture.detectChanges(),
+        describe: 'the salvaged take to be offered',
+      });
+
+      element.querySelector<HTMLButtonElement>('.problem__actions .btn--primary')?.click();
+
+      await expectSavedScreen(entryId);
+    });
   });
 });

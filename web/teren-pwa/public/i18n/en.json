@@ -22,6 +22,7 @@
   },
   "common": {
     "language": "Language",
+    "profile": "My account",
     "languageName": {
       "sr": "Srpski",
       "en": "English"
@@ -498,18 +499,13 @@
           "body": "It goes to the email address on file for you. If you have no address saved, ask your foreman or the owner for a code."
         }
       },
-      "success": {
-        "title": "This phone is ready",
-        "body": "Recording for {{company}}, as {{name}}.",
-        "released": "Entries that were waiting for access are being sent now.",
-        "action": "Start recording"
-      },
       "error": {
         "offline": "There is no internet, so the code could not be checked. The code is not used up — try again when the signal is back.",
         "server": "The server is not answering just now. The code is not used up — try again in a moment.",
         "rejected": "That username and code do not go together. Check both and try again — a code lasts seven days and works once, so ask for a new one if this one is old.",
         "notAvailable": "This server does not offer joining by code yet. The code is not used up — tell the owner of the company.",
         "tooManyAttempts": "Too many attempts from this device. Wait a few minutes and try again.",
+        "unreadable": "The server said yes, but this version of the app could not read the answer. This code may already be used up — ask for a new one and update the app.",
         "unknown": "Joining did not work, for a reason the app cannot name. The code is not used up — try again."
       },
       "aside": {
@@ -543,7 +539,7 @@
       },
       "success": {
         "title": "Signed in",
-        "body": "Welcome, {{name}}. The office screens are still being built, so there is nothing to open here yet."
+        "body": "Welcome, {{name}}. Opening your office…"
       },
       "error": {
         "offline": "There is no internet, so the sign-in could not be checked. Try again when the signal is back.",
@@ -551,13 +547,177 @@
         "rejected": "Wrong email address or password.",
         "notAvailable": "This server does not offer signing in with an email address yet.",
         "tooManyAttempts": "Too many sign-in attempts from this device. Wait a few minutes and try again.",
+        "unreadable": "The server said yes, but this version of the app could not read the answer. Update the app and try again.",
         "unknown": "Signing in did not work, for a reason the app cannot name. Try again."
       },
       "aside": {
         "title": "Who signs in here",
         "body": "The owner of the company follows every site, every worker and their join codes.",
         "worker": "A foreman on site does not sign in with a password. He joins once with a code."
+      },
+      "awaiting": {
+        "body": "Welcome, {{name}}. The Teren staff screens are still being built, so there is nothing to open here yet."
       }
+    }
+  },
+  "profile": {
+    "title": "My account",
+    "loading": "Loading the account…",
+    "name": {
+      "label": "NAME",
+      "unknown": "Name unknown"
+    },
+    "role": {
+      "worker": "On site",
+      "company_admin": "Company owner",
+      "super_admin": "Teren staff",
+      "unknown": "A role this version of the app does not recognise"
+    },
+    "username": {
+      "label": "USERNAME",
+      "hint": "This is your name in Teren. It stays yours when the phone changes — on a new phone you type this and a code."
+    },
+    "details": {
+      "label": "DETAILS",
+      "none": "There is nothing else on file for this account."
+    },
+    "company": {
+      "label": "Company"
+    },
+    "device": {
+      "label": "Phone"
+    },
+    "activated": {
+      "label": "Activated"
+    },
+    "language": {
+      "label": "LANGUAGE",
+      "hint": "The language of the app on this phone. The client's report goes out in the language of the site."
+    },
+    "stale": {
+      "title": "Not checked with the server",
+      "body": "What is shown is what this phone has remembered since it was activated."
+    },
+    "unavailable": {
+      "title": "The account could not be loaded",
+      "body": "This phone remembers nothing about the account, so there is nothing to show here. Your recordings are still on the phone."
+    },
+    "reason": {
+      "offline": "There is no internet, so nothing could be checked with the server.",
+      "unauthorized": "The server did not accept this phone, so nothing could be checked. Your recordings stay on the phone and nothing is deleted.",
+      "notConfigured": "This version of the app has no server set up, so nothing could be checked.",
+      "unavailable": "The server is not responding, so nothing could be checked."
+    },
+    "newPhone": {
+      "title": "A new phone, or a different account",
+      "body": "Enter your username and a code to make this phone yours. Nothing recorded is deleted — entries waiting to be sent stay on the phone.",
+      "action": "Enter a new code"
+    }
+  },
+  "company": {
+    "title": "Company",
+    "reload": "Refresh",
+    "loading": "Loading your people…",
+    "signedInAs": "Signed in as {{name}}",
+    "signOut": "Sign out",
+    "workers": {
+      "label": "FOREMEN"
+    },
+    "stale": {
+      "title": "Not checked with the server",
+      "body": "What is shown may not be everything your company has."
+    },
+    "reason": {
+      "offline": "There is no internet, so nothing could be checked with the server.",
+      "signedOut": "The server no longer accepts this sign-in. Sign in again.",
+      "forbidden": "This account may not do that. Only the owner of the company can manage foremen.",
+      "notSignedIn": "You are not signed in, so nothing could be read.",
+      "refused": "The server refused the request. Refresh and try again.",
+      "unavailable": "The server is not responding just now."
+    },
+    "empty": {
+      "title": "No foremen yet",
+      "body": "Add the first one and hand him his code. It takes a minute."
+    },
+    "summary": {
+      "label": "COMPANY",
+      "workers": "Foremen",
+      "phones": "Active phones"
+    },
+    "worker": {
+      "disabled": "Removed",
+      "hasPhone": "Phone active",
+      "noPhone": "No phone",
+      "hasCode": "Code waiting",
+      "email": "Email: {{email}}",
+      "noEmail": "No email address on file, so he cannot ask for a new code himself — he has to ask you."
+    },
+    "code": {
+      "label": "JOIN CODE",
+      "loading": "Reading the code…",
+      "failed": "The code could not be read",
+      "expires": "Good until {{date}}",
+      "notEmailed": "Nothing was emailed. Read the code to him, or send him the message below.",
+      "copy": "Copy code",
+      "copyMessage": "Copy message",
+      "copied": "Code copied.",
+      "copiedMessage": "Message copied. Send it to him alone.",
+      "copyFailed": "The app could not use the clipboard. Select the text and copy it by hand.",
+      "messageLabel": "THE MESSAGE FOR HIM",
+      "oneAtATime": "One man, one message. A code sent into a group chat lets somebody else record the day under his name.",
+      "issue": "Make a code",
+      "issueNew": "Make a new code",
+      "issuing": "Making the code…",
+      "disabledHint": "He has been removed from the company. Bring him back before making him a code.",
+      "none": {
+        "body": "He has no code he could type right now. Make one and send it to him."
+      },
+      "reissue": {
+        "title": "Make a new code?",
+        "body": "The code above stops working the moment a new one is made. If he already has it and is typing it in, wait.",
+        "confirm": "Yes, make a new one"
+      }
+    },
+    "phones": {
+      "label": "PHONES",
+      "none": "No phone has been joined to him yet.",
+      "unnamed": "Phone",
+      "lastSeen": "Last contact {{date}}",
+      "revokedOn": "Withdrawn {{date}}",
+      "never": "Has not called home yet",
+      "revoked": "Withdrawn",
+      "revoke": "Withdraw",
+      "revoking": "Withdrawing…",
+      "unconfirmed": "The server did not answer, so it is not known whether the phone was withdrawn. Refresh before trying again.",
+      "confirm": {
+        "title": "Withdraw {{phone}} — {{name}}?",
+        "body": "From its next contact the server refuses that phone. He keeps recording and nothing on the phone is deleted, but what he has recorded stops being sent until he joins again with a new code.",
+        "action": "Withdraw the phone"
+      }
+    },
+    "add": {
+      "open": "Add a foreman",
+      "body": "A name is enough. He gets his code straight away.",
+      "title": "New foreman",
+      "name": {
+        "label": "NAME AND SURNAME",
+        "placeholder": "Zoran Jovanović"
+      },
+      "email": {
+        "label": "EMAIL ADDRESS (OPTIONAL)",
+        "placeholder": "zoran@firma.rs",
+        "hint": "With an address he can ask for a new code himself when a phone breaks. Without one, he asks you."
+      },
+      "submit": "Add and make a code",
+      "submitting": "Adding…",
+      "conflict": {
+        "username": "That name was taken while he was being added. Nothing was saved — try again.",
+        "email": "That email address is already on a Teren account. Leave it out, or use another one."
+      }
+    },
+    "aside": {
+      "title": "How codes work",
+      "body": "A code works once and lasts seven days. It is his name plus the code that joins a phone, so send both to that one man — never into a group chat."
     }
   }
 }

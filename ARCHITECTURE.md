@@ -356,6 +356,15 @@ company_admin (Miloš Petrović, **no password** — no seeded credential exists
 the demo worker (Zoran Jovanović), and `…0000000000dd` the demo **device**, which was previously a
 dangling uuid on `entry.device_id` with no table behind it.
 
+Since F4 the seed also mints **one fixed activation code for the demo worker — `DEM0-TEST`** — and
+that string is part of this contract. F4's `canMatch` gate sends a phone with no stored session to
+`/welcome`, and until F6 there is no screen that can issue a code, so without a seeded one a fresh
+install cannot reach the record button at all. `seed` re-mints it whenever it has been spent or has
+expired, exactly as it clears the three withdrawal stamps. Two consequences worth stating plainly:
+redeeming it **revokes the demo device** (one worker, one live phone), which `seed` then heals; and
+it is a working credential to the demo company that is published in this repo, which is fine on a
+laptop and is an open decision for B3a's public URL.
+
 Three sites rather than one because the Home project picker is a dead control with a single item
 and the buyer runs 3–20 active sites (PROJECT.md §2). Only site 1 carries entries — three
 realistic Serbian ones (reported / confirmed / awaiting_confirmation) dated relative to the first
@@ -601,6 +610,8 @@ Rules that fall out of it:
 | `GET` | `/api/entries/{id}` | status, `raw_transcript`, extracted structure, `failure_reason` (client polls this) |
 | `POST` | `/api/entries/{id}/confirm` | human-approved structure → enqueue report |
 | `GET` | `/api/entries` | archive list, filtered by project and date range |
+| `GET` | `/api/entries/{id}/media/{mediaId}` | stream one photo or voice note — authenticated bytes, never a presigned GET (§8) |
+| `GET` | `/api/entries/{id}/report` | stream the PDF that was sent (B6) |
 | `GET` | `/health` | liveness for the deploy |
 | — | `/hangfire` | job dashboard, behind auth |
 
@@ -642,15 +653,64 @@ an invariant guard so raising a per-kind cap can never silently unbound verifica
 unreachable storage returns **503 + Retry-After** and never writes a verdict on any media row.
 These knobs live beside `Storage:UploadUrlTtl` (15 min) in configuration.
 
-**There is no read path for media, and that is now a known gap (found at C3, 2026-08-29).** §8
-describes uploads only: the phone gets a presigned **PUT** and the API never serves bytes. So a
-device that did not capture an entry cannot display its photos at all — the archive can report the
-count and say the files are on the server, but an owner opening the diary on a tablet sees no
-evidence. That is precisely the buyer's reason to pay (PROJECT.md §2). Closing it needs a presigned
-**GET** (short TTL, exact key, same tenancy check) or a media proxy endpoint; the presigned GET is
-the cheaper option and keeps bytes out of the API, consistent with the topology rule in §2. Needed
-by **M1-C3** for the owner view and by **M2** for the client-facing web view; the report generator
-(B6) reads bytes server-side and is unaffected.
+### The read path (built 2026-08-31, closes the C3 gap)
+
+`GET /api/entries/{id}/media/{mediaId}` streams one photograph or voice note. Until it existed the
+API only ever handed out **PUT** permissions, so a device that did not capture an entry could not
+display its photos at all — the archive could report the count and say the files were on the
+server, and an owner opening the diary on a tablet saw no evidence. That is precisely the buyer's
+reason to pay (PROJECT.md §2).
+
+**Authenticated bytes, not a presigned GET.** The presigned GET is cheaper and keeps bytes out of
+the API, which is what the topology rule in §2 asks for on the *upload* side. The asymmetry is
+deliberate:
+
+- A presigned URL is **a bearer credential that outlives the request**. For its whole TTL it works
+  for whoever ends up holding it — forwarded, pasted into a chat, in a browser history or a proxy
+  log — and it sits outside the role gate, outside the tenant filter and outside device revocation
+  for that window. Revoke a stolen phone and its outstanding photo URLs keep working. That is an
+  acceptable trade for a one-key *write* permission the phone is about to use anyway; it is not one
+  for *read* access to a client's site diary, which is the thing this product asks to be trusted
+  with.
+- Every access here passes `RoleGates.Evidence` and the tenant query filter, so "Teren staff cannot
+  look at a customer's photographs" stays true of the photographs and not merely of the rows
+  describing them.
+- The bytes are **proven against the SHA-256 the phone declared before any of them is served**
+  (`VerifiedObjectReader`, shared with the report download). Storage handing a client the wrong file
+  directly is not something a presigned URL leaves anybody able to notice.
+
+The cost is API bandwidth, and it is bounded: photos are compressed on the phone to ~300 KB, an
+entry carries at most 20, and this is a read an owner performs a handful of times a day. If it ever
+shows up on a bill the answer is a CDN in front of the route, not a URL nobody can take back.
+
+**Shape.**
+
+| | |
+|---|---|
+| Route | `GET /api/entries/{id}/media/{mediaId}`, inside the `/entries` group — so it inherits the evidence role gate by construction rather than by memory |
+| 200 | the stored bytes, `Content-Type` from the sealed row (never from the caller, never from what storage claims), `Content-Disposition: inline`, `X-Content-Type-Options: nosniff`, `Accept-Ranges: bytes` |
+| Caching | `Cache-Control: private, max-age=31536000, immutable`, `Vary: Authorization`, `ETag` = the media checksum. Sealed media never changes, so `immutable` is honest; `private` keeps a company's photographs out of any shared cache; `Vary` stops a re-activated phone's new token reading the old token's entry. A conditional request is answered **304 from the row, without touching object storage** |
+| 404 | no such media *on that entry, for this company*. A foreign photo, an unknown id, and a real id paired with the wrong entry are one answer — any difference between them is an existence oracle |
+| 409 `media_not_ready` | yours, but `/complete` never certified the bytes (`pending`/`failed`). Worth re-checking, not an error about lost evidence |
+| 409 `media_unavailable` | certified once; the object is gone, or no longer matches its checksum |
+| 503 | storage did not answer inside `Storage:MediaReadBudget` (20 s). Says nothing about the evidence |
+
+The read borrows the **bulk** storage client — a 10 MB photo would not survive the 5 s phone-facing
+`Storage:RequestTimeout` — and that client waits `Storage:DownloadTimeout` (2 min) because it was
+built for a Hangfire job nobody is watching. `Storage:MediaReadBudget` is what stops an owner's
+tablet inheriting that, exactly as `Storage:VerificationBudget` does for `/complete`. The copy is
+also bounded by the size the record declares, so a substituted object cannot decide how much gets
+spooled to the temp volume.
+
+**The client cannot point `<img src>` at this**: an image element sends no `Authorization` header.
+The PWA fetches with its bearer token and renders the blob, as it already does for the report
+download. **The entry response deliberately carries no URL for media** — with authenticated bytes
+there is no per-URL secret to convey, so the URL is a pure function of two ids the client already
+has (`entry_id`, `media_id`); `media[].upload_status` is what tells it whether a fetch will 409.
+A `url` field would be a second spelling of the same fact.
+
+M2's client-facing web view is a different problem — a client has no device credential — and is
+still open: it needs either a scoped share token or a signed short-lived link, decided then.
 
 **There is one write path, added at B6, and it is not media.** `IObjectStorage.PutAsync` stores
 the generated report PDF. A report is the one artefact the server *produces* rather than receives,

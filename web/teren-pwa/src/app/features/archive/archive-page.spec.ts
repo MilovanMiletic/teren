@@ -4,6 +4,7 @@ import { Router, provideRouter } from '@angular/router';
 import { TranslocoTestingModule } from '@jsverse/transloco';
 
 import { EntryListItemResponse } from '../../core/api/api-types';
+import { ARCHIVE_ENTRY_PARAM } from '../../core/archive/archive-route';
 import { ArchiveService } from '../../core/archive/archive.service';
 import { ConnectivityService } from '../../core/connectivity.service';
 import { EntryStore } from '../../core/db/entry-store';
@@ -158,12 +159,12 @@ describe('ArchivePage', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(router.url).toBe(`/diary?entry=${entry.id}`);
+    expect(router.url).toBe(`/diary?${ARCHIVE_ENTRY_PARAM}=${entry.id}`);
   });
 
   it('replaces the list with the record on a phone', async () => {
     const entry = await captureEntry(store, { project: PROJECT });
-    await router.navigate(['/diary'], { queryParams: { entry: entry.id } });
+    await router.navigate(['/diary'], { queryParams: { [ARCHIVE_ENTRY_PARAM]: entry.id } });
 
     const element = await render();
     await waitUntil(() => element.querySelector('app-entry-detail') !== null, {
@@ -180,7 +181,7 @@ describe('ArchivePage', () => {
     // detail together, because the person going through an archive is comparing days.
     viewport.expanded = () => true;
     const entry = await captureEntry(store, { project: PROJECT });
-    await router.navigate(['/diary'], { queryParams: { entry: entry.id } });
+    await router.navigate(['/diary'], { queryParams: { [ARCHIVE_ENTRY_PARAM]: entry.id } });
 
     const element = await render();
     await waitUntil(() => element.querySelector('app-entry-detail') !== null, {

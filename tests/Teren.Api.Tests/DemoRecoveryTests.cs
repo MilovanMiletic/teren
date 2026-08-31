@@ -172,6 +172,11 @@ public sealed class DemoRecoveryTests(TerenTestApp app)
     {
         // The same hole on the other writable table: a code carrying company A but naming
         // company B's worker would activate a phone that records under his name into A.
+        //
+        // The row is CONSUMED because the seed now mints the demo worker's fixed live code, and
+        // ux_activation_code_live allows exactly one of those. A live row here would be refused
+        // by the unique index before the composite foreign key was ever consulted — and this test
+        // would then be asserting the wrong constraint.
         await using var db = await app.CreateScratchDatabaseAsync();
         await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
         var otherCompany = await GivenAnotherCompanyAsync(db);
@@ -181,11 +186,11 @@ public sealed class DemoRecoveryTests(TerenTestApp app)
             await db.Database.ExecuteSqlInterpolatedAsync(
                 $"""
                  INSERT INTO activation_code
-                     (id, company_id, user_id, created_by_user_id, code_hash, code_display,
-                      created_at, expires_at)
+                     (id, company_id, user_id, created_by_user_id, code_hash, created_at,
+                      expires_at, consumed_at)
                  VALUES ({Guid.NewGuid()}, {otherCompany}, {DemoSeeder.WorkerId},
-                         {DemoSeeder.CompanyAdminId}, {new string('f', 64)}, {"XKD4-7HMP"},
-                         {now}, {now.AddDays(7)})
+                         {DemoSeeder.CompanyAdminId}, {new string('f', 64)},
+                         {now}, {now.AddDays(7)}, {now})
                  """,
                 Ct));
 
@@ -239,9 +244,9 @@ public sealed class DemoRecoveryTests(TerenTestApp app)
                 $"""
                  INSERT INTO activation_code
                      (id, company_id, user_id, created_by_user_id, code_hash, created_at,
-                      expires_at)
+                      expires_at, consumed_at)
                  VALUES ({Guid.NewGuid()}, {DemoSeeder.CompanyId}, {DemoSeeder.WorkerId},
-                         {staffId}, {new string('1', 64)}, {now}, {now.AddDays(7)})
+                         {staffId}, {new string('1', 64)}, {now}, {now.AddDays(7)}, {now})
                  """,
                 Ct));
 

@@ -89,11 +89,13 @@ sequence can be stopped at any point.
 | F1 | Outbox fix — a rejected credential no longer strands a day of evidence | ☑ reviewed, fixes in |
 | D1 | Identity schema, credentials, `DbCredentialAuthenticator`, closed identity model | ☑ reviewed, fixes in |
 | F2 | Session plumbing, `API_CONFIG` getter, the `pass()` gate | ☑ reviewed, fixes in |
-| F3 | `/welcome`, `/activate`, `/login` — verified in a browser at six widths | ☑ **awaiting review** |
-| D2 | Principal, role gates, 403/404 doctrine, rate limiter, login, `create-super-admin` | ☑ **built, UNREVIEWED** — 610 → 786 tests, build clean |
-| D3 | `/auth/activate`, self-service code, company-admin surface (workers, codes, devices) | ☑ **built, UNREVIEWED** — same run as D2 |
-| F4 | The `canMatch` gate + `?next=` deep links · **F4b** English route rename | ☐ **started and backed out** — see note below |
-| — | **Prove activation end to end against the real API** | ☐ **gates the flip below** |
+| F3 | `/welcome`, `/activate`, `/login` — verified in a browser at six widths | ◐ **reviewed: REJECT** (2026-08-31). Its two gating route defects are fixed by F4b; the third is a founder action — no 1280 artboard exists for any of the three screens |
+| D2 | Principal, role gates, 403/404 doctrine, rate limiter, login, `create-super-admin` | ☑ **reviewed: accept** (2026-08-31), no gating findings |
+| D3 | `/auth/activate`, self-service code, company-admin surface (workers, codes, devices) | ☑ **reviewed: accept-with-fixes**, fixes in — timing oracle on both unauthenticated activation routes closed; 786 → 788 tests. **No delta review, and the implementer was stopped before reporting its mutation proofs** |
+| F4b | English route rename — all six paths, plus the guards that make a rename-without-consumer break visible | ☑ **reviewed: accept-with-fixes**, gating fix (`ARCHIVE_ENTRY_PARAM`) in |
+| F4 | The `canMatch` gate + `?next=` deep links | ☑ **reviewed: accept-with-fixes**. Code fixes in. **Two gating items remain, both founder-decided and unbuilt:** seed a demo activation code (else a fresh install strands at `/welcome` — invariant 6), and amend plan §8 to the flat `ActivateResponse` shape + pin the serialized field names, then delete the client's dual-shape read |
+| — | **Mint the first company_admin password** — nothing in `src/` ever creates a `PasswordToken`, so no admin can sign in and no activation code can be issued through the product | ☐ **blocks the row below** |
+| — | **Prove activation end to end against the real API** | ☑ **proven 2026-08-31** — Petar → code → `/auth/activate` → working device token; replay 401, `consumed`. **But done by hand**: the first admin password needed a `password_token` row inserted from psql, so the row above is still open |
 | D7/F9 | **Empty `environment.deviceToken`** — the increment that actually shuts the door | ☐ |
 | F5 | `/profile` — the worker's own account | ☐ |
 | F6 | `/company` — workers, codes, share text, devices, revoke | ☐ |
@@ -109,17 +111,28 @@ still baked into the bundle — anyone who opens devtools can read it and call t
 row marked *gates the flip* is the one that turns this from screens into a closed door, and it must
 not be done before a code can actually be redeemed, or the founder is locked out of his own app.
 
-**Where the session of 2026-08-30 stopped.** D2 and D3 are on disk, green and unreviewed — the
-implementer was adding one shared test helper when the session ended, so treat the increment as
-complete but unaudited. **F4/F4b was started and deliberately backed out**: the agent had rewritten
-`app.routes.ts` with guards and English paths but had not yet written `device.guard.ts` or updated
-`rescue.service.ts`'s pathname parsing, which left the PWA unable to build. `app.routes.ts` was
-restored to its F3 state (Serbian paths, three auth routes, no guard) and re-verified at 538/538.
-**F4/F4b starts from scratch**; nothing of it survives except the knowledge that renaming routes and
-adding guards in one pass is the right grouping.
+**What the 2026-08-31 session found, and why the back-out note above was wrong.** The F4 back-out
+of 2026-08-30 was recorded as "nothing of F4 survives". The opposite was true: **every consumer had
+already been flipped to English paths** — `home-page.ts`, `archive-page.ts`, `confirm-page.ts`,
+`pending-page.ts`, `entry-detail.ts` and all three capture exits — while `app.routes.ts` alone was
+hand-restored to Serbian. Only `/` and the three auth routes matched anything, so record, pending,
+the archive and the confirmation gate all fell through the wildcard to Home. **`ee37f04` shipped an
+app that could not be navigated**, in breach of invariant 6, while `ng build` was clean and 538
+specs were green.
 
-Next session, in order: **review D2/D3 and F3**, then F4/F4b, then prove activation end to end
-against the real API, then the token flip.
+Nothing caught it because the two specs guarding those couplings were structurally blind:
+`capture-recording-page.spec.ts` used `provideRouter([])`, an empty table, and
+`rescue.service.spec.ts` asserted `openEntryIds()` against hardcoded strings — both validating the
+*future* behaviour. `rescue.service.ts` claimed in a comment that a spec derived the paths from the
+route table; no such spec existed. F4b builds it, plus a source-scanning guard over every
+`router.navigate` literal in the app.
+
+**The lesson worth carrying:** a route rename is producer-side only, so a half-finished one type-checks,
+builds, and passes a green suite. The guards are the compiler this coupling does not have.
+
+Next session, in order: **F4b's verdict**, then **F4** (the `canMatch` gate and `?next=`), then a way
+to mint the first company_admin password — without one, no activation code can be issued through the
+product and activation can never be proven end to end — then the token flip.
 
 ---
 

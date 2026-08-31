@@ -1,0 +1,445 @@
+<div class="screen" *transloco="let t">
+  <!--
+    Medium and up: the application header, with the company standing where a project stands on the
+    foreman's screens. No back control and no profile control — an admin has no device session, so
+    every screen behind those is one the gate would turn him away from. `/company` is where he
+    starts and where he stays.
+  -->
+  <app-header [project]="companyName()" [showProfile]="false" />
+
+  <!--
+    Compact only: the wordmark and the language switcher, because below 768 the header does not
+    exist and an admin on a phone would otherwise have no chrome at all.
+  -->
+  <div class="column bar bar--compact">
+    <span class="bar__brand">{{ t('app.name') }}</span>
+    <app-language-switcher />
+  </div>
+
+  <header class="column head band-top">
+    <div class="head__text">
+      <h1 class="t-h1 head__title">{{ t('company.title') }}</h1>
+      @if (companyName(); as name) {
+        <p class="t-meta head__company">{{ name }}</p>
+      }
+    </div>
+    <button type="button" class="btn-icon head__reload" [attr.aria-label]="t('company.reload')" (click)="load()">
+      <app-icon name="refresh" [size]="20" />
+    </button>
+  </header>
+
+  <div class="column content">
+    @if (loading()) {
+      <p class="card state t-meta" role="status">{{ t('company.loading') }}</p>
+    } @else {
+      @if (unconfirmed() && reasonKey(); as reason) {
+        <!--
+          The server was not reached, and the screen says so before it says anything else. A list
+          of men that is short because a request failed and a list that is short because the
+          company is small look identical unless one of them says which it is.
+        -->
+        <div class="card notice notice--warn wide" role="status">
+          <app-icon name="wifi-off" [size]="20" class="notice__icon" />
+          <div class="notice__text">
+            <span class="notice__title">{{ t('company.stale.title') }}</span>
+            <span class="t-meta">{{ t(reason) }}</span>
+          </div>
+        </div>
+      }
+
+      <!-- Left at expanded: his men. The substance of the screen. -->
+      <div class="pane pane--workers">
+        @if (workers().length === 0) {
+          <div class="card state state--empty" role="status">
+            <span class="state__mark" aria-hidden="true">
+              <app-icon name="user" [size]="32" />
+            </span>
+            <h2 class="t-h2">{{ t('company.empty.title') }}</h2>
+            <p class="t-body state__body">
+              {{ unconfirmed() && reasonKey() ? t(reasonKey()!) : t('company.empty.body') }}
+            </p>
+          </div>
+        } @else {
+          <h2 class="t-label section__label">
+            {{ t('company.workers.label') }}
+            <span class="t-num section__count">{{ workers().length }}</span>
+          </h2>
+
+          @for (worker of workers(); track worker.id) {
+            <article class="card worker" [class.worker--open]="isOpen(worker.id)">
+              <!--
+                The whole summary is the control that opens the card. A row of small icon buttons
+                is what a table would do, and at 390 px it is a row of targets a gloved thumb
+                cannot separate; the actions live inside the opened card as full-width buttons.
+              -->
+              <button
+                type="button"
+                class="row-button worker__summary"
+                [attr.aria-expanded]="isOpen(worker.id)"
+                (click)="open(worker)"
+              >
+                <span class="worker__avatar" aria-hidden="true">
+                  <app-icon name="user" [size]="20" />
+                </span>
+                <span class="worker__who">
+                  <span class="worker__name">{{ worker.displayName }}</span>
+                  @if (worker.username; as username) {
+                    <!-- His durable identity: the thing he types on a replacement phone. -->
+                    <span class="t-meta worker__username">{{ username }}</span>
+                  }
+                  <span class="worker__chips">
+                    @if (worker.disabled) {
+                      <span class="chip chip--err">{{ t('company.worker.disabled') }}</span>
+                    }
+                    @if (worker.activeDeviceCount > 0) {
+                      <span class="chip chip--ok">{{ t('company.worker.hasPhone') }}</span>
+                    } @else {
+                      <span class="chip chip--neutral">{{ t('company.worker.noPhone') }}</span>
+                    }
+                    @if (worker.hasLiveCode) {
+                      <!--
+                        The cue that decides the admin's next move: read the code he has, rather
+                        than issue one over it.
+                      -->
+                      <span class="chip chip--warn">{{ t('company.worker.hasCode') }}</span>
+                    }
+                  </span>
+                </span>
+                <app-icon
+                  [name]="isOpen(worker.id) ? 'chevron-down' : 'chevron-right'"
+                  [size]="18"
+                  class="worker__chevron"
+                />
+              </button>
+
+              @if (isOpen(worker.id)) {
+                <div class="worker__panel">
+                  <!-- ---- His code, and only his ------------------------------------------- -->
+                  @if (codeState(); as code) {
+                    @if (code.loading) {
+                      <p class="t-meta panel__state" role="status">{{ t('company.code.loading') }}</p>
+                    } @else if (code.status !== 'ok') {
+                      <div class="notice notice--err panel__notice" role="status">
+                        <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
+                        <div class="notice__text">
+                          <span class="notice__title">{{ t('company.code.failed') }}</span>
+                          <span class="t-meta">{{ t(reasonFor(code.status) ?? 'company.reason.unavailable') }}</span>
+                        </div>
+                      </div>
+                    } @else if (code.noLiveCode) {
+                      <!--
+                        Not an error: the server said plainly that there is nothing this man could
+                        type right now. Nothing is destroyed by issuing here, so this is the one
+                        path where the button acts on the first tap.
+                      -->
+                      <div class="panel__block">
+                        <p class="t-body panel__lead">{{ t('company.code.none.body') }}</p>
+                        <button
+                          type="button"
+                          class="btn btn--primary"
+                          [disabled]="codeBusy() || worker.disabled"
+                          (click)="issue(worker)"
+                        >
+                          {{ codeBusy() ? t('company.code.issuing') : t('company.code.issue') }}
+                        </button>
+                        @if (worker.disabled) {
+                          <p class="t-meta panel__hint">{{ t('company.code.disabledHint') }}</p>
+                        }
+                      </div>
+                    } @else if (code.code; as live) {
+                      <div class="panel__block">
+                        <span class="t-label">{{ t('company.code.label') }}</span>
+                        <!--
+                          Selectable text, always. The clipboard is unavailable in an insecure
+                          context and can refuse when the document is not focused, and an admin
+                          reading a code aloud down the phone needs it on screen either way.
+                        -->
+                        <p class="code" data-code>{{ live.code }}</p>
+                        @if (live.expiresAt; as expires) {
+                          <p class="t-meta panel__hint">
+                            {{ t('company.code.expires', { date: (expires | date: 'd. M. y.') ?? '' }) }}
+                          </p>
+                        }
+                        @if (live.emailDelivery === 'not_configured' || live.emailDelivery === 'no_address') {
+                          <!--
+                            Said out loud rather than assumed: no relay exists in any environment
+                            today, and a worker with no address on file cannot be sent anything.
+                            Either way the admin is the delivery channel, and he has to know that.
+                          -->
+                          <p class="t-meta panel__hint">{{ t('company.code.notEmailed') }}</p>
+                        }
+
+                        <div class="panel__actions">
+                          <button type="button" class="btn btn--row btn--solid" (click)="onCopyCode()">
+                            <app-icon name="copy" [size]="18" />
+                            {{ t('company.code.copy') }}
+                          </button>
+                          @if (code.shareText) {
+                            <!--
+                              Decision 13 made easy rather than merely required: one worker's
+                              ready-made message, in his language, for one chat.
+                            -->
+                            <button type="button" class="btn btn--row btn--primary" (click)="onCopyMessage()">
+                              <app-icon name="share" [size]="18" />
+                              {{ t('company.code.copyMessage') }}
+                            </button>
+                          }
+                        </div>
+
+                        @if (copied() === 'code') {
+                          <p class="t-meta panel__ok" role="status">{{ t('company.code.copied') }}</p>
+                        }
+                        @if (copied() === 'message') {
+                          <p class="t-meta panel__ok" role="status">{{ t('company.code.copiedMessage') }}</p>
+                        }
+                        @if (copyFailed()) {
+                          <p class="t-meta panel__hint" role="status">{{ t('company.code.copyFailed') }}</p>
+                        }
+
+                        @if (code.shareText; as message) {
+                          <details class="message">
+                            <summary class="t-meta message__summary">{{ t('company.code.messageLabel') }}</summary>
+                            <p class="message__text">{{ message }}</p>
+                          </details>
+                        }
+
+                        <p class="t-meta panel__hint">{{ t('company.code.oneAtATime') }}</p>
+
+                        <!--
+                          Issuing over a live code kills the one the man may be typing at this
+                          moment. That is why it asks, and why the sentence names the consequence
+                          rather than saying "are you sure".
+                        -->
+                        @if (reissuing()) {
+                          <div class="notice notice--warn panel__notice">
+                            <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
+                            <div class="notice__text">
+                              <span class="notice__title">{{ t('company.code.reissue.title') }}</span>
+                              <span class="t-meta">{{ t('company.code.reissue.body') }}</span>
+                              <span class="panel__actions">
+                                <button type="button" class="btn btn--row btn--tertiary" (click)="cancelReissue()">
+                                  {{ t('common.cancel') }}
+                                </button>
+                                <button
+                                  type="button"
+                                  class="btn btn--row btn--solid"
+                                  [disabled]="codeBusy()"
+                                  (click)="issue(worker)"
+                                >
+                                  {{ codeBusy() ? t('company.code.issuing') : t('company.code.reissue.confirm') }}
+                                </button>
+                              </span>
+                            </div>
+                          </div>
+                        } @else {
+                          <button type="button" class="btn btn--row btn--tertiary" (click)="askReissue()">
+                            {{ t('company.code.issueNew') }}
+                          </button>
+                        }
+                      </div>
+                    }
+                  }
+
+                  <!-- ---- His phones ------------------------------------------------------- -->
+                  <div class="panel__block">
+                    <span class="t-label">{{ t('company.phones.label') }}</span>
+                    @if (phonesOf(worker.id).length === 0) {
+                      <p class="t-meta panel__hint">{{ t('company.phones.none') }}</p>
+                    } @else {
+                      <ul class="phones">
+                        @for (phone of phonesOf(worker.id); track phone.id) {
+                          <li class="phone" [class.phone--revoked]="phone.revokedAt !== null">
+                            <span class="phone__text">
+                              <span class="phone__name">{{ phone.name || t('company.phones.unnamed') }}</span>
+                              <span class="t-meta t-num">
+                                @if (phone.revokedAt; as revoked) {
+                                  {{ t('company.phones.revokedOn', { date: (revoked | date: 'd. M. y.') ?? '' }) }}
+                                } @else if (phone.lastSeenAt; as seen) {
+                                  {{ t('company.phones.lastSeen', { date: (seen | date: 'd. M. y. HH:mm') ?? '' }) }}
+                                } @else {
+                                  {{ t('company.phones.never') }}
+                                }
+                              </span>
+                            </span>
+                            @if (phone.revokedAt === null) {
+                              <button
+                                type="button"
+                                class="btn btn--row btn--tertiary phone__revoke"
+                                (click)="askRevoke(phone)"
+                              >
+                                {{ t('company.phones.revoke') }}
+                              </button>
+                            } @else {
+                              <span class="chip chip--neutral">{{ t('company.phones.revoked') }}</span>
+                            }
+                          </li>
+
+                          @if (revoking() === phone.id) {
+                            <!--
+                              The confirmation names *which phone and whose*, and says what
+                              revoking actually does. Decision 8: it does not stop him recording —
+                              he keeps the record button and the day stays on the phone — it stops
+                              the phone sending, until he enters a new code. Promising anything
+                              stronger would be a lie an owner would act on.
+                            -->
+                            <li class="notice notice--warn confirm">
+                              <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
+                              <div class="notice__text">
+                                <span class="notice__title">
+                                  {{
+                                    t('company.phones.confirm.title', {
+                                      phone: phone.name || t('company.phones.unnamed'),
+                                      name: worker.displayName
+                                    })
+                                  }}
+                                </span>
+                                <span class="t-meta">{{ t('company.phones.confirm.body') }}</span>
+                                @if (revokeFailure(); as failure) {
+                                  <span class="t-meta confirm__failure">
+                                    {{
+                                      unconfirmedAction(failure)
+                                        ? t('company.phones.unconfirmed')
+                                        : t(reasonFor(failure) ?? 'company.reason.unavailable')
+                                    }}
+                                  </span>
+                                }
+                                <span class="panel__actions">
+                                  <button type="button" class="btn btn--row btn--tertiary" (click)="cancelRevoke()">
+                                    {{ t('common.cancel') }}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    class="btn btn--row btn--solid"
+                                    [disabled]="revokeBusy()"
+                                    (click)="revoke(phone)"
+                                  >
+                                    {{ revokeBusy() ? t('company.phones.revoking') : t('company.phones.confirm.action') }}
+                                  </button>
+                                </span>
+                              </div>
+                            </li>
+                          }
+                        }
+                      </ul>
+                    }
+                  </div>
+
+                  @if (worker.email) {
+                    <p class="t-meta panel__hint">{{ t('company.worker.email', { email: worker.email }) }}</p>
+                  } @else {
+                    <!-- Decision 14 in reverse: with no address he cannot ask for his own code. -->
+                    <p class="t-meta panel__hint">{{ t('company.worker.noEmail') }}</p>
+                  }
+                </div>
+              }
+            </article>
+          }
+        }
+      </div>
+
+      <!-- Right at expanded: adding a man, the company, and the one rule worth repeating. -->
+      <div class="pane pane--aside">
+        <section class="card add">
+          @if (!addOpen()) {
+            <button type="button" class="row-button add__open" (click)="openAdd()">
+              <span class="add__mark" aria-hidden="true"><app-icon name="plus" [size]="20" /></span>
+              <span class="add__text">
+                <span class="add__title">{{ t('company.add.open') }}</span>
+                <span class="t-meta">{{ t('company.add.body') }}</span>
+              </span>
+            </button>
+          } @else {
+            <form class="add__form" (submit)="onAdd($event)">
+              <h2 class="t-h2">{{ t('company.add.title') }}</h2>
+
+              <label class="field">
+                <span class="t-label">{{ t('company.add.name.label') }}</span>
+                <input
+                  class="field__input"
+                  type="text"
+                  autocomplete="name"
+                  [placeholder]="t('company.add.name.placeholder')"
+                  [value]="newName()"
+                  (input)="onName($any($event.target).value)"
+                />
+              </label>
+
+              <label class="field">
+                <span class="t-label">{{ t('company.add.email.label') }}</span>
+                <input
+                  class="field__input"
+                  type="email"
+                  inputmode="email"
+                  autocomplete="email"
+                  [placeholder]="t('company.add.email.placeholder')"
+                  [value]="newEmail()"
+                  (input)="onEmail($any($event.target).value)"
+                />
+                <!-- Optional, and the hint says what it buys him rather than what it is. -->
+                <span class="t-meta field__hint">{{ t('company.add.email.hint') }}</span>
+              </label>
+
+              @if (addFailure(); as failure) {
+                <p class="t-meta add__error" role="status">
+                  @if (addConflict() === 'email') {
+                    {{ t('company.add.conflict.email') }}
+                  } @else if (addConflict() === 'username') {
+                    {{ t('company.add.conflict.username') }}
+                  } @else {
+                    {{ t(reasonFor(failure) ?? 'company.reason.unavailable') }}
+                  }
+                </p>
+              }
+
+              <div class="panel__actions">
+                <button type="button" class="btn btn--row btn--tertiary" (click)="cancelAdd()">
+                  {{ t('common.cancel') }}
+                </button>
+                <button
+                  type="submit"
+                  class="btn btn--row btn--primary"
+                  [disabled]="addBusy() || newName().trim().length === 0"
+                >
+                  {{ addBusy() ? t('company.add.submitting') : t('company.add.submit') }}
+                </button>
+              </div>
+            </form>
+          }
+        </section>
+
+        <section class="card summary">
+          <h2 class="t-label">{{ t('company.summary.label') }}</h2>
+          <dl class="summary__rows">
+            <div class="summary__row">
+              <dt class="t-meta">{{ t('company.summary.workers') }}</dt>
+              <dd class="t-num summary__value">{{ workers().length }}</dd>
+            </div>
+            <div class="summary__row">
+              <dt class="t-meta">{{ t('company.summary.phones') }}</dt>
+              <dd class="t-num summary__value">{{ activePhoneCount() }}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="card note">
+          <h2 class="t-h2">{{ t('company.aside.title') }}</h2>
+          <p class="t-meta">{{ t('company.aside.body') }}</p>
+        </section>
+
+        @if (session(); as signedIn) {
+          <section class="card account">
+            <span class="t-meta">{{ t('company.signedInAs', { name: signedIn.displayName }) }}</span>
+            <!--
+              The one sign-out in this product. It removes a password-backed credential and not a
+              single row of evidence — see `AdminSessionService.signOut`.
+            -->
+            <button type="button" class="btn btn--row btn--tertiary" (click)="signOut()">
+              <app-icon name="lock" [size]="18" />
+              {{ t('company.signOut') }}
+            </button>
+          </section>
+        }
+      </div>
+    }
+  </div>
+</div>

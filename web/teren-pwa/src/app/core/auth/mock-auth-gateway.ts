@@ -58,16 +58,21 @@ export class MockAuthGateway implements AuthGateway {
       throw unauthorized();
     }
 
+    // **The shape the endpoint that shipped actually returns** — flat, not the nested `worker`
+    // object plan §8 specifies (`auth-types.ts` records the divergence). It was the other way
+    // round until 2026-08-31, and that is precisely how a real activation could fail on the
+    // founder's phone while every spec here stayed green: the mock and the client agreed with
+    // each other and neither agreed with the server. A mock that models the plan instead of the
+    // deployed contract is a mock that certifies a broken app.
     return {
       device_token: 'trn_d_mock-device-token',
       device_id: '44444444-4444-4444-4444-444444444444',
-      worker: {
-        user_id: '22222222-2222-2222-2222-222222222222',
-        username: MockAuthGateway.USERNAME,
-        display_name: 'Zoran Jovanović',
-      },
+      device_name: request.device_name,
+      user_id: '22222222-2222-2222-2222-222222222222',
+      username: MockAuthGateway.USERNAME,
+      display_name: 'Zoran Jovanović',
+      language: 'sr',
       company: { id: '33333333-3333-3333-3333-333333333333', name: 'Gradnja d.o.o.' },
-      email_delivery: 'not_configured',
     };
   }
 

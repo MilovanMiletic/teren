@@ -2,8 +2,10 @@ import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
 import { TranslocoDirective } from '@jsverse/transloco';
 
+import { CompanyLink } from './company-link';
 import { Icon } from './icon';
 import { LanguageSwitcher } from './language-switcher';
+import { ProfileLink } from './profile-link';
 
 /**
  * The application header, from the medium breakpoint up.
@@ -14,11 +16,14 @@ import { LanguageSwitcher } from './language-switcher';
  * phone column is not.
  *
  * Hidden below 768: the compact layout the founder approved is untouched by this component.
+ * That is why the profile control it carries is rendered a second time at the foot of Home's
+ * scroll — see `profile-link.ts`. A control that lives only here is a control a foreman on a phone
+ * does not have.
  */
 @Component({
   selector: 'app-header',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, Icon, LanguageSwitcher, TranslocoDirective],
+  imports: [CompanyLink, DatePipe, Icon, LanguageSwitcher, ProfileLink, TranslocoDirective],
   host: { '(document:visibilitychange)': 'refresh()' },
   template: `
     <header class="header" *transloco="let t">
@@ -58,6 +63,14 @@ import { LanguageSwitcher } from './language-switcher';
         <span class="header__spacer"></span>
         <span class="t-meta t-num header__date">{{ now() | date: 'EEEE, d. M. y.' }}</span>
         <app-language-switcher class="on-header" />
+        <!--
+          The office, for the one person who has one. It renders itself away for everybody else
+          (company-link.ts), so this is not a control a foreman ever meets.
+        -->
+        <app-company-link class="on-header" />
+        @if (showProfile()) {
+          <app-profile-link class="on-header" />
+        }
       </div>
     </header>
   `,
@@ -167,6 +180,13 @@ export class AppHeader {
   /** Whether the site is the project picker (Home) or just context (everywhere else). */
   readonly pickable = input(false);
   readonly showBack = input(false);
+  /**
+   * Whether to offer the way to his own account.
+   *
+   * True everywhere but on the profile screen itself: a control that navigates to the screen you
+   * are already standing on is noise, and on a 44 px target it is noise a thumb can hit.
+   */
+  readonly showProfile = input(true);
 
   readonly back = output<void>();
   readonly choose = output<void>();

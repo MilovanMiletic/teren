@@ -8,209 +8,154 @@
       <app-language-switcher class="auth__langs" />
     </div>
 
-    @if (outcome() === 'activated') {
-      <!--
-        Bound. The screen says who this phone is now, because a device credential is invisible and
-        the one moment to make it visible is the moment it is granted.
-      -->
-      <div class="auth__body activate__done">
-        <section class="auth__brand activate__intro">
-          <app-auth-mark />
-          <!--
-            Expanded only. A desktop column holding nothing but a decorative motif reads as a
-            layout that lost its content; on a phone the same two lines would push the install
-            invitation below the fold on the one screen where it has to be seen.
-          -->
-          <span class="auth__word activate__wordmark">{{ t('app.name') }}</span>
-          <p class="auth__tagline activate__wordmark">{{ t('app.tagline') }}</p>
-        </section>
+    <div class="auth__body auth__body--form">
+      <section class="auth__brand activate__intro">
+        <app-auth-mark [scale]="0.75" class="activate__mark" />
+        <p class="auth__lead">{{ t('auth.code.lead') }}</p>
 
-        <section class="auth__panel">
-          <div class="card notice notice--ok" role="status">
-            <app-icon name="check" [size]="20" class="notice__icon" />
-            <div class="notice__text">
-              <h2 class="notice__title">{{ t('auth.code.success.title') }}</h2>
-              <p class="t-meta activate__note">
-                {{
-                  t('auth.code.success.body', {
-                    name: session()?.displayName,
-                    company: session()?.companyName,
-                  })
-                }}
-              </p>
-              @if (released() > 0) {
-                <!--
-                  The sentence a man handed a new code after a revocation actually wants: his
-                  morning's work is moving again, and he pressed nothing to make it happen.
-                -->
-                <p class="t-meta activate__note">{{ t('auth.code.success.released') }}</p>
-              }
-            </div>
-          </div>
+        <div class="auth__aside">
+          <h2 class="t-label">{{ t('auth.code.aside.title') }}</h2>
+          <ul class="auth__points">
+            <li class="auth__point">
+              <span class="auth__point-body">{{ t('auth.code.aside.source') }}</span>
+            </li>
+            <li class="auth__point">
+              <span class="auth__point-body">{{ t('auth.code.aside.singleUse') }}</span>
+            </li>
+            <li class="auth__point">
+              <span class="auth__point-body">{{ t('auth.code.aside.thenWhat') }}</span>
+            </li>
+          </ul>
+        </div>
+      </section>
 
-          <button type="button" class="btn btn--primary" (click)="home()">
-            <app-icon name="mic" [size]="18" />
-            {{ t('auth.code.success.action') }}
-          </button>
-
-          <!--
-            The best moment in this product's life to ask: he has just committed to the app, and
-            on iOS an uninstalled PWA loses its storage after seven days. Renders nothing at all
-            inside an installed app, on a browser with no offer, or for anyone who said no.
-          -->
-          <app-install-invitation />
-        </section>
-      </div>
-    } @else {
-      <div class="auth__body auth__body--form">
-        <section class="auth__brand activate__intro">
-          <app-auth-mark [scale]="0.75" class="activate__mark" />
-          <p class="auth__lead">{{ t('auth.code.lead') }}</p>
-
-          <div class="auth__aside">
-            <h2 class="t-label">{{ t('auth.code.aside.title') }}</h2>
-            <ul class="auth__points">
-              <li class="auth__point">
-                <span class="auth__point-body">{{ t('auth.code.aside.source') }}</span>
-              </li>
-              <li class="auth__point">
-                <span class="auth__point-body">{{ t('auth.code.aside.singleUse') }}</span>
-              </li>
-              <li class="auth__point">
-                <span class="auth__point-body">{{ t('auth.code.aside.thenWhat') }}</span>
-              </li>
-            </ul>
-          </div>
-        </section>
-
-        <section class="auth__panel">
-          <form class="card card--hero form" (submit)="onSubmit($event)">
-            @if (!connectivity.online()) {
-              <!--
-                Said before he types, not after eight characters. A code is checked on the server
-                and nowhere else, so this is the one screen in the product that genuinely needs a
-                connection — and the honest thing is to say so while his hands are still free.
-              -->
-              <div class="notice notice--warn activate__offline" role="status">
-                <app-icon name="wifi-off" [size]="20" class="notice__icon" />
-                <div class="notice__text">
-                  <span class="notice__title">{{ t('auth.code.offline.title') }}</span>
-                  <span class="t-meta">{{ t('auth.code.offline.body') }}</span>
-                </div>
-              </div>
-            }
-
-            <div class="field">
-              <label class="t-label field__label" for="activate-username">
-                {{ t('auth.code.username.label') }}
-              </label>
-              <div class="field__box" [class.field__box--invalid]="touched() && !usernameGiven()">
-                <input
-                  #usernameInput
-                  id="activate-username"
-                  class="field__input"
-                  type="text"
-                  name="username"
-                  autocomplete="username"
-                  autocapitalize="none"
-                  autocorrect="off"
-                  spellcheck="false"
-                  enterkeyhint="next"
-                  [value]="username()"
-                  [attr.placeholder]="t('auth.code.username.placeholder')"
-                  (input)="onUsername($any($event.target).value)"
-                />
-              </div>
-            </div>
-
-            <div class="field">
-              <label class="t-label field__label" for="activate-code">
-                {{ t('auth.code.code.label') }}
-              </label>
-              <div
-                class="field__box"
-                [class.field__box--invalid]="
-                  (touched() && !codeComplete()) || failure() === 'rejected'
-                "
-              >
-                <!--
-                  One input, never eight boxes: segmented fields break paste and screen readers on
-                  Android, and paste is how most of these codes arrive. `one-time-code` is what
-                  lets the keyboard offer a code that came by SMS. No `maxlength`: a pasted
-                  `XKD4-7HMP` is nine characters, and the browser would truncate it before this
-                  component ever saw the last one.
-                -->
-                <input
-                  #codeInput
-                  id="activate-code"
-                  class="field__input field__input--code"
-                  type="text"
-                  name="one-time-code"
-                  inputmode="text"
-                  autocomplete="one-time-code"
-                  autocapitalize="characters"
-                  autocorrect="off"
-                  spellcheck="false"
-                  enterkeyhint="go"
-                  [attr.placeholder]="t('auth.code.code.placeholder')"
-                  (input)="onCodeInput(codeInput)"
-                  (paste)="onCodePaste($event, codeInput)"
-                />
-              </div>
-              <p class="t-meta field__hint">{{ t('auth.code.code.hint') }}</p>
-            </div>
-
-            @if (errorKey(); as error) {
-              <p class="form__message form__message--err" role="alert">
-                <app-icon
-                  name="alert-triangle"
-                  [size]="15"
-                  [strokeWidth]="2.5"
-                  class="form__message-icon"
-                />
-                <span class="form__message-text">{{ t(error) }}</span>
-              </p>
-            }
-
-            <button type="submit" class="btn btn--primary" [disabled]="busy()">
-              {{ busy() ? t('auth.code.submitting') : t('auth.code.submit') }}
-            </button>
-          </form>
-
-          <!-- Decision 14: a broken phone is a two-minute problem, not a phone call to a boss. -->
-          <div class="form__divider">
-            <span class="form__divider-line"></span>
-            <span class="form__divider-word">{{ t('auth.or') }}</span>
-            <span class="form__divider-line"></span>
-          </div>
-
-          <button
-            type="button"
-            class="btn btn--tertiary"
-            [disabled]="sendingCode()"
-            (click)="requestCode()"
-          >
-            <app-icon name="mail" [size]="18" />
-            {{ sendingCode() ? t('auth.code.resend.sending') : t('auth.code.resend.action') }}
-          </button>
-
-          @if (codeSent()) {
+      <section class="auth__panel">
+        <form class="card card--hero form" (submit)="onSubmit($event)">
+          @if (!connectivity.online()) {
             <!--
-              Conditional by construction: the server answers the same whether or not the username
-              exists, because a login surface that confirms an account is an enumeration oracle.
-              The sentence must not promise more than the answer contains.
+              Said before he types, not after eight characters. A code is checked on the server
+              and nowhere else, so this is the one screen in the product that genuinely needs a
+              connection — and the honest thing is to say so while his hands are still free.
             -->
-            <div class="card notice notice--ok" role="status">
-              <app-icon name="check" [size]="20" class="notice__icon" />
+            <div class="notice notice--warn activate__offline" role="status">
+              <app-icon name="wifi-off" [size]="20" class="notice__icon" />
               <div class="notice__text">
-                <span class="notice__title">{{ t('auth.code.resend.sent.title') }}</span>
-                <span class="t-meta">{{ t('auth.code.resend.sent.body') }}</span>
+                <span class="notice__title">{{ t('auth.code.offline.title') }}</span>
+                <span class="t-meta">{{ t('auth.code.offline.body') }}</span>
               </div>
             </div>
           }
-        </section>
-      </div>
-    }
+
+          <div class="field">
+            <label class="t-label field__label" for="activate-username">
+              {{ t('auth.code.username.label') }}
+            </label>
+            <div class="field__box" [class.field__box--invalid]="touched() && !usernameGiven()">
+              <input
+                #usernameInput
+                id="activate-username"
+                class="field__input"
+                type="text"
+                name="username"
+                autocomplete="username"
+                autocapitalize="none"
+                autocorrect="off"
+                spellcheck="false"
+                enterkeyhint="next"
+                [value]="username()"
+                [attr.placeholder]="t('auth.code.username.placeholder')"
+                (input)="onUsername($any($event.target).value)"
+              />
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="t-label field__label" for="activate-code">
+              {{ t('auth.code.code.label') }}
+            </label>
+            <div
+              class="field__box"
+              [class.field__box--invalid]="
+                (touched() && !codeComplete()) || failure() === 'rejected'
+              "
+            >
+              <!--
+                One input, never eight boxes: segmented fields break paste and screen readers on
+                Android, and paste is how most of these codes arrive. `one-time-code` is what
+                lets the keyboard offer a code that came by SMS. No `maxlength`: a pasted
+                `XKD4-7HMP` is nine characters, and the browser would truncate it before this
+                component ever saw the last one.
+              -->
+              <input
+                #codeInput
+                id="activate-code"
+                class="field__input field__input--code"
+                type="text"
+                name="one-time-code"
+                inputmode="text"
+                autocomplete="one-time-code"
+                autocapitalize="characters"
+                autocorrect="off"
+                spellcheck="false"
+                enterkeyhint="go"
+                [attr.placeholder]="t('auth.code.code.placeholder')"
+                (input)="onCodeInput(codeInput)"
+                (paste)="onCodePaste($event, codeInput)"
+              />
+            </div>
+            <p class="t-meta field__hint">{{ t('auth.code.code.hint') }}</p>
+          </div>
+
+          @if (errorKey(); as error) {
+            <p class="form__message form__message--err" role="alert">
+              <app-icon
+                name="alert-triangle"
+                [size]="15"
+                [strokeWidth]="2.5"
+                class="form__message-icon"
+              />
+              <span class="form__message-text">{{ t(error) }}</span>
+            </p>
+          }
+
+          <button type="submit" class="btn btn--primary" [disabled]="busy()">
+            {{ busy() ? t('auth.code.submitting') : t('auth.code.submit') }}
+          </button>
+        </form>
+
+        <!-- Decision 14: a broken phone is a two-minute problem, not a phone call to a boss. -->
+        <div class="form__divider">
+          <span class="form__divider-line"></span>
+          <span class="form__divider-word">{{ t('auth.or') }}</span>
+          <span class="form__divider-line"></span>
+        </div>
+
+        <button
+          type="button"
+          class="btn btn--tertiary"
+          [disabled]="sendingCode()"
+          (click)="requestCode()"
+        >
+          <app-icon name="mail" [size]="18" />
+          {{ sendingCode() ? t('auth.code.resend.sending') : t('auth.code.resend.action') }}
+        </button>
+
+        @if (codeSent()) {
+          <!--
+            Conditional by construction: the server answers the same whether or not the username
+            exists, because a login surface that confirms an account is an enumeration oracle.
+            The sentence must not promise more than the answer contains.
+          -->
+          <div class="card notice notice--ok" role="status">
+            <app-icon name="check" [size]="20" class="notice__icon" />
+            <div class="notice__text">
+              <span class="notice__title">{{ t('auth.code.resend.sent.title') }}</span>
+              <span class="t-meta">{{ t('auth.code.resend.sent.body') }}</span>
+            </div>
+          </div>
+        }
+      </section>
+    </div>
 
     <div class="auth__foot-langs">
       <app-language-switcher />

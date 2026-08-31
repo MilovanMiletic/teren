@@ -65,6 +65,17 @@ public static class AuthEndpoints
 
     // ---------------------------------------------------------------- POST /auth/activate
 
+    /// <summary>
+    /// Binds a phone to a worker with his username and a one-time code.
+    /// <para>
+    /// <b>Read the shape of this handler before changing it: it has no early returns, and that is
+    /// deliberate.</b> A malformed code, an unknown username, a suspended company and a wrong code
+    /// all run <em>the same four statements</em> and are refused only at the end. Returning as
+    /// soon as each is known would be the obvious code and would also be an account-enumeration
+    /// oracle by stopwatch — the very thing <see cref="PasswordHash.DummyVerify"/> exists to close
+    /// on the login route. See the note on <see cref="InvalidActivation"/>.
+    /// </para>
+    /// </summary>
     private static async Task<IResult> ActivateAsync(
         ActivateRequest request,
         TerenIdentityDbContext db,
@@ -74,13 +85,9 @@ public static class AuthEndpoints
     {
         // Folded before it is hashed, so a code typed with dashes, in lower case, or with the
         // Cyrillic О a man's keyboard produced still resolves to the same 8 characters.
-        if (!ActivationCodeFormat.TryParse(request.ActivationCode, out var code))
-        {
-            return InvalidActivation();
-        }
+        var parsed = ActivationCodeFormat.TryParse(request.ActivationCode, out var code);
 
         var username = UsernameFormat.Normalise(request.Username);
-        var codeHash = CredentialTokens.Hash(code);
         var now = DateTime.UtcNow;
 
         var worker = await db.Users
@@ -91,28 +98,64 @@ public static class AuthEndpoints
                     && u.DisabledAt == null,
                 ct);
 
-        if (worker?.CompanyId is not Guid companyId)
-        {
-            return InvalidActivation();
-        }
+        // Guid.Empty rather than a return: the company lookup has to run for an unknown username
+        // too, or "does this man work here" is answered by one missing round trip. No company row
+        // can carry it — every id in the product is generated — so the query costs the same and
+        // finds nothing.
+        var companyId = worker?.CompanyId ?? Guid.Empty;
 
         var company = await db.Companies
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == companyId && c.SuspendedAt == null, ct);
 
-        if (company is null)
+        var admissible = parsed && worker is not null && company is not null;
+
+        // Every failure above is carried forward as "the claim cannot match" instead of as a
+        // return. NoSuchCodeHash is 64 zeros — a SHA-256 output nobody can produce a preimage
+        // for — so a request that got this far on a bad username cannot consume anybody's code
+        // even if the sentinel user id ever collided with a real row.
+        var claimUserId = admissible ? worker!.Id : Guid.Empty;
+        var claimHash = admissible ? CredentialTokens.Hash(code!) : NoSuchCodeHash;
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+
+        // THE CLAIM, and it is the whole reason a code is single-use in practice and not merely
+        // in intent. Conditional, so two phones racing one code are settled by the database: the
+        // second UPDATE blocks on the row lock, re-evaluates the predicate after the first
+        // commits, and matches nothing. Exactly one phone, every time — proven by
+        // ActivationRaceTests, not hoped for.
+        //
+        // It is also the FIRST statement in the transaction, which it did not use to be. The
+        // device row is written only after the claim succeeds, because inserting the phone first
+        // meant a wrong code cost an INSERT, a failed UPDATE and a ROLLBACK that an unknown
+        // username did not — a measurable answer to "does this username exist and is it active".
+        var claimed = await db.ActivationCodes
+            .Where(c => c.UserId == claimUserId
+                && c.CodeHash == claimHash
+                && c.ConsumedAt == null
+                && c.SupersededAt == null
+                && c.ExpiresAt > now)
+            .ExecuteUpdateAsync(
+                u => u
+                    .SetProperty(c => c.ConsumedAt, now)
+                    // A dead code cannot still be holding plaintext
+                    // (ck_activation_code_display_cleared).
+                    .SetProperty(c => c.CodeDisplay, (string?)null),
+                ct);
+
+        if (claimed == 0)
         {
+            // Malformed code, unknown username, disabled worker, suspended company, wrong code,
+            // expired code, superseded code, or someone else took it a millisecond ago. All of
+            // them are one answer, reached down one path, after the same work: which of them it
+            // was is exactly what an attacker would like to know.
+            await transaction.RollbackAsync(ct);
             return InvalidActivation();
         }
 
         var deviceId = Guid.NewGuid();
         var deviceToken = CredentialTokens.New(CredentialTokens.DevicePrefix);
-        var deviceName = DeviceNameOf(request.DeviceName, worker.DisplayName);
-
-        // One transaction, and the order inside it is not free choice: activation_code's
-        // consumed_device_id is a foreign key, so the phone has to exist before the code can point
-        // at it.
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var deviceName = DeviceNameOf(request.DeviceName, worker!.DisplayName);
 
         db.Devices.Add(new Device
         {
@@ -127,34 +170,18 @@ public static class AuthEndpoints
 
         await db.SaveChangesAsync(ct);
 
-        // THE CLAIM, and it is the whole reason a code is single-use in practice and not merely
-        // in intent. Conditional, so two phones racing one code are settled by the database: the
-        // second UPDATE blocks on the row lock, re-evaluates the predicate after the first
-        // commits, matches nothing, and rolls its own device row back. Exactly one phone, every
-        // time — proven by ActivationRaceTests, not hoped for.
-        var claimed = await db.ActivationCodes
+        // consumed_device_id is a foreign key, so the phone has to exist before the code can point
+        // at it — which is why this is a second statement rather than part of the claim. The row
+        // it names is unambiguous: ux_activation_code_live means the claim above matched at most
+        // one row, this transaction still holds its lock, and no other transaction can have
+        // stamped consumed_at with the identical instant.
+        await db.ActivationCodes
             .Where(c => c.UserId == worker.Id
-                && c.CodeHash == codeHash
-                && c.ConsumedAt == null
-                && c.SupersededAt == null
-                && c.ExpiresAt > now)
+                && c.CodeHash == claimHash
+                && c.ConsumedAt == now
+                && c.ConsumedDeviceId == null)
             .ExecuteUpdateAsync(
-                u => u
-                    .SetProperty(c => c.ConsumedAt, now)
-                    .SetProperty(c => c.ConsumedDeviceId, (Guid?)deviceId)
-                    // A dead code cannot still be holding plaintext
-                    // (ck_activation_code_display_cleared).
-                    .SetProperty(c => c.CodeDisplay, (string?)null),
-                ct);
-
-        if (claimed == 0)
-        {
-            // Wrong code, expired code, superseded code, or someone else took it a millisecond
-            // ago. All four are one answer: which of them it was is exactly what an attacker
-            // would like to know.
-            await transaction.RollbackAsync(ct);
-            return InvalidActivation();
-        }
+                u => u.SetProperty(c => c.ConsumedDeviceId, (Guid?)deviceId), ct);
 
         // A worker moves to a replacement phone by activating it (§2 decision 14), so not
         // revoking the old one would leave a lost or stolen phone recording under his name
@@ -194,7 +221,7 @@ public static class AuthEndpoints
             worker.Username!,
             worker.DisplayName,
             worker.Language,
-            new CompanyRefResponse(company.Id, company.Name)));
+            new CompanyRefResponse(company!.Id, company.Name)));
     }
 
     // -------------------------------------------------------- POST /auth/activation-code
@@ -227,26 +254,28 @@ public static class AuthEndpoints
     {
         var username = UsernameFormat.Normalise(request.Username);
 
-        var worker = username.Length == 0
-            ? null
-            : await db.Users.FirstOrDefaultAsync(
-                u => u.Username == username
-                    && u.Role == AppUserRole.Worker
-                    && u.DisabledAt == null,
-                ct);
+        // Deliberately not short-circuited on an empty or unknown username, and the company
+        // lookup below is deliberately not short-circuited either: a request that skips a round
+        // trip is answered measurably sooner, and this route's whole promise is that the answer
+        // is the same either way. Byte-identical was never enough on its own.
+        var worker = await db.Users.FirstOrDefaultAsync(
+            u => u.Username == username
+                && u.Role == AppUserRole.Worker
+                && u.DisabledAt == null,
+            ct);
 
-        var eligible = worker?.Email is not null
-            && worker.CompanyId is Guid companyId
-            && await db.Companies.AnyAsync(
-                c => c.Id == companyId && c.SuspendedAt == null, ct);
+        var companyId = worker?.CompanyId ?? Guid.Empty;
 
-        if (eligible)
+        var companyLive = await db.Companies.AnyAsync(
+            c => c.Id == companyId && c.SuspendedAt == null, ct);
+
+        if (worker?.Email is not null && companyLive)
         {
             // The actor is the worker himself, which is exactly what the audit column should say.
             await ActivationCodes.IssueAsync(
                 db,
-                worker!,
-                worker!.Id,
+                worker,
+                worker.Id,
                 AdminAuditActions.ActivationCodeSelfRequested,
                 options.Value.ActivationCodeLifetime,
                 ct);
@@ -258,6 +287,14 @@ public static class AuthEndpoints
             logger.LogInformation(
                 "Activation code re-issued on request for user {UserId}; no mail transport yet, "
                 + "so it is readable only on the admin surface.", worker.Id);
+        }
+        else
+        {
+            // Otherwise nothing is written — and the writes are paid for anyway. Without this the
+            // route still leaks by stopwatch: a username with an address on file costs a supersede
+            // and an insert that an unknown username does not, and §10.3 requires precisely that
+            // distinction to stay invisible at runtime.
+            await ActivationCodes.BurnIssueCostAsync(db, ct);
         }
 
         // Byte-identical whether or not anything happened above.
@@ -436,6 +473,14 @@ public static class AuthEndpoints
     // ---------------------------------------------------------------- shared
 
     /// <summary>
+    /// A <c>code_hash</c> no activation code can ever carry, used to make the claim statement run
+    /// — and match nothing — on a request that is already doomed. 64 zeros is a well-formed
+    /// SHA-256 output with no known preimage, so it is safe in the strong sense rather than merely
+    /// unlikely.
+    /// </summary>
+    private static readonly string NoSuchCodeHash = new('0', CredentialTokens.HashLength);
+
+    /// <summary>
     /// A name for the phone, so the admin's device list is legible. Falls back to the worker's own
     /// name rather than refusing to activate a phone over a missing label — the man is standing on
     /// a site trying to start work.
@@ -475,6 +520,23 @@ public static class AuthEndpoints
     /// One answer for every way an activation can fail — wrong code, expired code, unknown
     /// username, disabled worker, suspended company, lost race. Which one it was is precisely what
     /// an attacker wants to learn, and the man on site cannot act on the distinction anyway.
+    /// <para>
+    /// <b>"Identical" means identical in time as well as in bytes, and the second half is the one
+    /// that is easy to lose.</b> Usernames here are guessable — <c>UsernameFormat.Propose</c>
+    /// derives one deterministically from a display name, and company and worker names are public
+    /// — so a route that answered a known active username a few round trips slower than an unknown
+    /// one would hand out the staff list to anyone with a stopwatch. That is why
+    /// <see cref="ActivateAsync"/> has no early returns and why the device row is written after
+    /// the claim rather than before it. <c>ActivationTimingTests</c> is what keeps it that way;
+    /// it measures branch medians against each other, not against a wall-clock number, so it does
+    /// not care how slow the machine running it is.
+    /// </para>
+    /// <para>
+    /// Note the asymmetry with <see cref="InvalidLogin"/>, which is not an oversight: login runs
+    /// <see cref="PasswordHash.DummyVerify"/>, and ~200–400 ms of uniform PBKDF2 swamps a
+    /// one-query difference. Activation has no such cost to hide behind, so the work itself has to
+    /// be levelled.
+    /// </para>
     /// </summary>
     private static IResult InvalidActivation() => TypedResults.Problem(
         title: "Unauthorized",

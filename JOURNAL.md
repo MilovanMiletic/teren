@@ -12,6 +12,290 @@ Entry format:
 
 ---
 
+## 2026-08-31 — The three gates ran, and main had been undemoable since the last commit
+
+**Talked about**
+- Picking up the unaudited surface: F3, D2 and D3 all owed their reviewer.
+- The founder's ask mid-session: fix the routes so he can test, then finish M1.
+
+**The headline: `ee37f04` shipped an app that could not be navigated.**
+
+F3's reviewer returned **reject**, and the defect had nothing to do with auth. The F4 back-out of
+2026-08-30 was incomplete in the opposite direction from the one the journal recorded. The journal
+said "nothing of F4 survives"; in fact **every consumer had already been flipped to English paths**
+— `home-page.ts`, `archive-page.ts`, `confirm-page.ts`, `pending-page.ts`, `entry-detail.ts` and
+all three capture exits — while `app.routes.ts` was hand-restored to Serbian. Only `/` and the three
+auth routes matched anything. Tapping record, pending, the archive or the confirmation gate fell
+through `'**' → redirectTo: ''` to Home.
+
+So the money path was broken on main, invariant 6 was violated, and **`ng build` was clean with 538
+green specs the whole time.** Two specs were structurally blind to it: `capture-recording-page.spec.ts`
+used `provideRouter([])` — an empty route table — and `rescue.service.spec.ts` asserted
+`openEntryIds()` against hardcoded `/entry/...` strings. Both validated the *future* behaviour.
+`rescue.service.ts:56-62` even claimed a spec derived the paths from the route table. **No such spec
+existed.** Fourth instance of this project's signature failure, and the first one to ship a broken
+money path.
+
+Second consequence of the same root cause: `openEntryIds()` always returned empty, so the
+abandoned-draft sweep's exemption was dead — a foreman on the saved screen picking photos could have
+his draft force-queued out from under him. The comment above that function calls it "the worst bug
+this product can have."
+
+**Built — F4b, the root fix**
+- All six paths renamed in one pass per plan §10.3: `record`, `entry/:entryId`, `confirm/:entryId`,
+  `diary`, `pending`, `?entry=`. The rename was **purely producer-side** — no consumer needed
+  changing, which is precisely why nothing caught it.
+- `src/app/testing/route-table.ts` (new): resolves a route's path out of the real `routes` array
+  keyed on the **component class by reference**. Name-keyed lookup was tried and rejected — the
+  build renames classes to `_CaptureSavedPage`, so `Function.name` matching is a string coupling
+  wearing a disguise.
+- `rescue.service.spec.ts` now derives the URL from the table — the spec the source comment claimed
+  already existed.
+- `capture-recording-page.spec.ts`: `provideRouter([])` → `provideRouter(routes)`, real router, no
+  navigate stub, all three exits covered.
+- `app.routes.spec.ts` (new, beyond the brief): reads every `router.navigate([...])` literal out of
+  shipped source and resolves each against the shipped table. A `targets.length >= 15` floor stops
+  the extractor degrading into a spec that asserts nothing.
+- **F4b's reviewer never returned a verdict** — the agent died on an API session rate limit partway
+  through. The increment is therefore **built and green but ungated**; do not record it as reviewed.
+- What was verified instead, by running the mutations directly at load 0.8 (not by trusting the
+  implementer's report): renaming `entry/:entryId` → `saved/:entryId` in the route table alone turns
+  **7 specs red**, exactly as claimed. Flipping the *consumers* instead — `['/entry',…]` → `['/unos',…]`
+  in all three capture exits plus the rescue regex, table untouched — turns **6 red**, where the
+  implementer reported 5. The extra one is `app.routes.spec.ts`'s source scan catching the navigate
+  literals, i.e. the guard is *stronger* than reported, not weaker. Reverting returns 542/542.
+
+**D2 — accept.** No gating findings. The reviewer confirmed the super-admin privacy claim (H2) is
+structural at four independent layers, and that one of its tests is written to fail *even with the
+route gate intact*. The 403/404 doctrine is enforced by a source-scanning test with an anti-vacuity
+check on its own allow-list. A composite FK makes a device/user pair with mismatched companies
+unrepresentable in the database. It also noted a hardening that predates the increment: a
+client-supplied `device_id` on `POST /api/entries` is now accepted-and-ignored rather than trusted.
+
+**D3 — accept-with-fixes: a timing oracle on both unauthenticated activation routes.**
+Bodies and statuses were byte-identical — proven by two existing tests — but the *work* was not.
+An unknown username cost 1 indexed SELECT; a suspended company 2 queries; a **known active username
+with a wrong code** generated a device token, opened a transaction, INSERTed a full `device` row,
+saved, attempted the claim, and rolled back. Deterministically slower, every time, so a stopwatch
+answered "does this man work here" — and usernames are guessable, because `UsernameFormat.Propose`
+transliterates a public display name deterministically.
+
+The asymmetry worth remembering: **this does not bite `/auth/login`**, where ~200–400 ms of uniform
+PBKDF2 swamps a one-query variance. That is exactly what `PasswordHash.DummyVerify` exists for.
+Activation had no such cost to hide behind.
+
+Fixed by removing **every early return** from the handler: a malformed code, an unknown username, a
+suspended company and a wrong code now run the same four statements and are refused only at the end.
+The device insert moved *behind* the claim, and inadmissible requests carry a `Guid.Empty` user id
+and a `NoSuchCodeHash` of 64 zeros — a SHA-256 output with no preimage — so they cannot consume
+anybody's code. `ActivationTimingTests` asserts branch medians against each other with interleaved
+samples and a rotating branch order, never a wall-clock number.
+
+**Found while proving the environment, worth remembering**
+- **The dev database had never had the identity migrations applied**, and was four evidence
+  migrations behind besides. The exact failure mode CLAUDE.md warns about; it would have died on a
+  bare Npgsql `42703`/`42P01`. Fourth time this class has bitten.
+- **Nothing in `src/` ever creates a `PasswordToken`** — only reads and consumes one. So an admin
+  can never set a password, so no company_admin session can exist, so **no activation code can be
+  issued through the product at all**. "Prove activation end to end" is blocked on D4/D6 or a
+  deliberate bootstrap command, and it gates the D7/F9 token flip.
+- Proven against the live API instead: `create-super-admin` → `/auth/login` → `/api/me` works; the
+  compatibility hinge holds (the baked-in PWA token resolves to a real device bound to Zoran
+  Jovanović); super_admin gets 403 on `/api/entries` and `/api/workers`; **revocation is immediate**
+  with no token cache; `seed` heals a revoked demo device exactly as documented; and neither
+  unauthenticated route is an enumeration oracle by body.
+- **The machine ran out of memory** (23/31 GB, swap exhausted): it SIGKILLed a test run and took
+  **Docker Desktop** down with it, which surfaced as API 500s. Restarted. The PWA suite is
+  load-flaky under this pressure — a different random set of 5 s vitest timeouts each run against
+  real IndexedDB. Green and stable at load < 6.
+- `teren-mailpit` cannot start while the founder's `coisi` project holds port 1025. Irrelevant to
+  activation; blocks exercising B6's email path.
+
+**Suites: 788 backend** (786 + 2 timing) **and 542 PWA** (538 + 4), both verified by execution,
+both builds clean.
+
+**Activation proven end to end, by hand — and two findings from doing it**
+
+The blocker was real but shallower than it looked. Nothing in `src/` mints a `PasswordToken`, so no
+admin can sign in — but a **company_admin is allowed a password** (only `ck_app_user_worker_has_no_password`
+forbids one, and only for workers). Inserting one `password_token` row and then calling the **real**
+`POST /auth/password` gave Petar Petrović a password without writing a hash into the database, so
+that endpoint is now proven too, not assumed.
+
+The whole chain then ran through the product: Petar logs in → `/api/workers` lists Zoran → issues a
+code → `POST /auth/activate` with username + code returns a real device token → that token serves
+`GET /api/entries` (200). Replaying the same code returns **401** and the row reads `consumed`;
+single-use holds in practice, not just in `ActivationRaceTests`. `email_delivery` came back
+`not_configured`, exactly as decision 6 intends while there is no relay.
+
+**Finding 1 — every activation silently kills the demo.** Activating a new phone revokes the
+worker's previous devices, which is correct per decision 14 — but the demo device is one of them, so
+the token baked into the PWA bundle starts returning 401 with nothing on screen saying why. It
+happened twice in one session, once to the founder mid-test. `seed` is the cure (it clears
+`revoked_at`), and that is *why* `seed` clears it. **Testing `/activate` on the dev box always costs
+a `seed` afterwards.**
+
+**Finding 2 — a successful activation leaves you on the activation screen.** `submit()` sets
+`outcome.set('activated')` and stops; there is no navigation Home. The founder read that as failure
+and pressed "Pridruži se" again, burning a second single-use code and getting a (correct) 401 that
+*looked* like the first attempt had failed. Double-submit is properly guarded (`if (this.busy())
+return;`), so this is not a race — it is a missing destination. On a phone, with gloves, this is
+where a man wastes his boss's code. **Candidate for F4**, which already introduces `?next=` and
+post-auth redirection.
+
+**F4b + F4 built and reviewed; both accept-with-fixes**
+
+**F4b** renamed all six paths and added three guards that give the route→consumer coupling the
+compiler it never had. **F4** added the `canMatch` gate (`device.guard.ts`), `?next=` with
+`safeReturnUrl`, and `SessionService.activated` — deliberately **not** `usable()`, which the
+baked-in token makes true on every install, so a gate on it would be inert.
+
+The reviews found four gating items. Two were fixed in code: **G2**, the `?entry=` query parameter —
+row six of F4b's own rename table and the one identifier its guards could not see (proven: flipping a
+producer back to `?unos=` left 570 specs green). It is now `ARCHIVE_ENTRY_PARAM`, one exported symbol
+imported by three producers and one consumer, with a spec that fails on any hand-spelled query
+parameter. **G1 (backend)**: `ActivationTimingTests` claimed a proof it did not have — the reviewer
+ran the insert-before-claim mutation four times and it passed every time, the wrong-code branch
+sitting 44–61% above its neighbours under a 1.8 bound. Replaced with a deterministic
+statement-sequence assertion per branch (`ActivationStatementShapeTests`, `CommandTapInterceptor`).
+**G2 (backend)**: the burn no-op seq-scanned while the real branch index-scanned, because its WHERE
+did not imply the partial index's predicate — so the §10.3 oracle would have reopened with inverted
+sign as the table grew, invisible to any test running against a freshly seeded database.
+
+**The two founder decisions taken:** seed a fixed demo code (F4's gate otherwise strands a fresh
+install at `/welcome` with no code obtainable — invariant 6), and **the flat `ActivateResponse` shape
+is correct, plan §8 is what changes** — `LoginResponse` and `MeResponse` already put person fields
+flat with `company` nested. **Both are now built — see below.**
+
+**The lesson of the day, and it is an operational one: two reviewers left their mutations in the
+working tree.** The backend reviewer typo'd both email-constraint names to prove the catches were
+untested, believed it was working on a scratchpad copy, and left `"ux_app_user_emai"` in
+`WorkerEndpoints.cs` — so a second worker on one address returned **500 instead of 409**, on an
+ordinary sequential request with no concurrency. The frontend fix agent removed `pathMatch: 'full'`
+to prove its new red-line assertion and was stopped before restoring it, leaving the infinite-redirect
+trap live: the PWA suite stopped completing at all, hanging past 600 s where it had run in five
+seconds. Both were caught only because the suites were re-run from scratch rather than trusted.
+**Neither agent's report would have mentioned it — both were stopped before reporting.** Re-run both
+suites after every review, and never assume a stopped agent left the tree as it found it.
+
+**Built — the two founder decisions (backend)**
+
+- **`DemoSeeder` now mints the demo worker a fixed live activation code, `DEM0-TEST`** (canonical
+  `DEM0TEST`; a man who reads it as `DEMO-TEST` and types the letter O is let in by Crockford
+  folding). It is re-minted by every `seed` exactly as the three withdrawal stamps are cleared —
+  a consumed, superseded or *expired* code leaves the demo unjoinable while `seed` reports success,
+  which is the same silent one-way door that revoking the demo phone used to be. It respects
+  `ux_activation_code_live` (supersede first, plaintext nulled in the same statement) rather than
+  hand-rolling an insert; the discipline is `ActivationCodes.IssueAsync`'s, duplicated because
+  `Teren.Infrastructure` cannot reference `Teren.Api`. **Expiry is ten years, deliberately not the
+  seven days a real code gets**: a real code is a credential emailed to one named man, this one is
+  seeded data published in the repo, and a code that quietly died a week after the last seed is
+  discovered by the distributor mid-pitch, in front of a customer. `seed` now prints the username
+  and the code on every run.
+  *The honest cost, worth revisiting at B3a:* it is a published credential to the demo company —
+  anyone reading the repo can activate a phone as `zoran.jovanovic` there, which revokes the demo
+  device until the next `seed`. Acceptable while that company holds nothing but sample rows and the
+  only deployment is local.
+- **Plan §8 amended to the flat `ActivateResponse`**, with the `LoginResponse` `user_id` row folded
+  in — and, more to the point, **the field names are now pinned against the serialized JSON**
+  (`ActivationTests.The_activate_response_carries_exactly_the_field_names_the_client_reads`,
+  exhaustive on the property-name set). The mutation it exists for — `user_id` → `worker_id` — was
+  run: red on the pin with a diff naming the field, green after revert. That rename is invisible to
+  all 578 PWA specs (they test a mock) and was invisible to every backend test (they read the C#
+  record), while real activation broke with a false error message and a burned code.
+- Verified against the live stack, not only in tests: `seed` on the dev database, then a real
+  `POST /auth/activate` on the founder's running :5080 with the code typed as `DEMO-TEST` → 200 and
+  the flat body; replay → 401 (single use holds); the demo device 401s as expected because
+  activation revokes it; one `seed` heals both — code live again, demo token back to 200.
+
+**Suites: 796 backend and 578 PWA**, both builds clean, all verified by execution after the repairs
+— then **806 backend** once the two decisions above landed (ten new tests), re-verified by execution.
+
+**Founder actions**
+- [ ] **Look at `/welcome`, `/login` and `/activate` at 1280.** No 1280 artboard exists for any of
+      the three; F3's third gating finding is this, and only the founder can discharge it.
+- [ ] **Decide §14.5**: a phone re-activated by a different worker still holds the previous holder's
+      unsent Dexie entries, and `POST /api/entries` now derives attribution from the bearer — so an
+      entry recorded by worker A can upload signed with worker B's name. Attribution is the thing
+      this model exists to establish.
+- [ ] Still owed: an SMTP relay, and the Serbian copy review on the three auth screens.
+
+**Next**
+1. F4b's verdict (its review was still running when the session closed), then **F4** — the `canMatch`
+   gate and `?next=` deep links.
+2. A way to mint the first company_admin password, or activation can never be proven end to end.
+3. **Only then** empty `environment.deviceToken` (D7/F9).
+
+---
+
+## 2026-08-31 (later) — The photo read path: C3's missing half
+
+**Talked about**
+- The one thing keeping C3 at ◐: photos went up and were sealed, and nothing could ever hand them
+  back. The owner on a tablet — the buyer — saw a diary made of text.
+
+**Decided**
+- **Authenticated streaming, not a presigned GET**, and the reasoning is now in ARCHITECTURE §8
+  rather than in a commit message. A presigned URL is a credential that outlives the request: for
+  its TTL it works for whoever holds it, outside the role gate, outside the tenant filter and
+  outside device revocation. Fine for a one-key *write* permission the phone is about to use; not
+  fine for *read* access to a client's site diary. B6 took the same decision for the report and
+  deliberately shaped `IObjectStorage` and `VerifiedObjectReader` so this could reuse them — it did,
+  which is why the increment is composition rather than invention.
+- **The entry response carries no media URL.** With authenticated bytes there is no per-URL secret
+  to convey, so the URL is a pure function of `entry_id` + `media_id`, which the client already has;
+  `upload_status` is what tells it whether a fetch will 409. A `url` field would be a second
+  spelling of the same fact.
+- **Cacheable, and the qualifiers are the point:** `private, max-age=1y, immutable`, `Vary:
+  Authorization`, `ETag` = the media checksum. Sealed evidence never changes, so `immutable` is
+  honest; `private` keeps a company's photographs out of any shared cache; the checksum-as-ETag lets
+  a revalidation be answered **304 from the row without touching object storage** — which on an
+  archive scroll is twenty downloads that never happen.
+
+**Built**
+- `GET /api/entries/{id}/media/{mediaId}` in `EntryEndpoints.cs`, inside the `/entries` group so it
+  inherits `RoleGates.Evidence` by construction. One query, two conditions
+  (`m.Id == mediaGuid && m.EntryId == entryId`) under the tenant filter: a foreign photo, an unknown
+  id and a real id paired with the wrong entry are one 404. Only `verified` media is served.
+- `Storage:MediaReadBudget` (20 s). The read borrows the **bulk** storage client — a 10 MB photo
+  would not survive the 5 s phone budget — and that client waits two minutes because it was built
+  for a job nobody watches. This is the ceiling that stops a tablet inheriting it, the same shape as
+  `Storage:VerificationBudget` on `/complete`.
+- `VerifiedObjectReader` gained an optional size bound. A hash cannot be checked until the last byte
+  is read, so without it how much gets spooled to the temp volume is decided by whatever sits at the
+  key. The report passes null (unchanged); media passes its declared size.
+- `MediaDownloadTests` — 30 tests, boundary-first, every cross-tenant case proven against a **real**
+  company-B row with **real** bytes in storage.
+
+**Verified**
+- `dotnet build` clean; **855 backend tests green** (825 baseline + 30).
+- **Ten mutations run, each one red, each reverted green**: `IgnoreQueryFilters` on the media lookup;
+  dropping `m.EntryId ==`; adding `SuperAdmin` to `RoleGates.Evidence`; passing `null` for the
+  expected checksum; dropping the size bound; widening the `verified`-only gate; disabling the
+  `If-None-Match` pre-check; `public` instead of `private`; a hardcoded content type; `ct` instead
+  of the budget token. The size-bound mutation **survived the first attempt** — the test was
+  asserting at the reader, not at the call site — so `FakeObjectStorage` now counts bytes actually
+  pulled off the stream, and the assertion is that the endpoint stopped where the record ran out.
+- **Live against the real stack** (own API on :5099, founder's :5080 untouched): entry → declared
+  photo → real presigned PUT to MinIO → `/complete` → `GET .../media/{id}` returned 66 842 bytes
+  hashing to `665ae5ce…`, byte-identical to the file uploaded **and to what `mc cat` reads back out
+  of MinIO**. 304 on `If-None-Match`; 206 with the PNG signature on `Range: bytes=0-7`; 401
+  anonymous; 400 non-UUID; 404 for another company's photograph whose bytes really were in MinIO,
+  with a body identical to a nonexistent id's; 409 `media_not_ready` for a declared-but-never-
+  uploaded photo; 409 `media_unavailable` after substituting the stored bytes with `mc`. Every
+  verification row and object was deleted afterwards; the dev database is back to the seeded three
+  entries and zero media.
+- **The demo device was already revoked at session start** (an earlier activation superseded it, so
+  the baked-in PWA token 401'd). One `seed` healed it: `/api/entries` on :5080 is 200 again and
+  `DEM0-TEST` is live and unconsumed.
+
+**Next**
+1. The client half of C3 — fetch-with-token, blob URLs, the photo grid in entry detail. Frontend.
+2. M2's client-facing web view still has no answer: a client has no device credential, so it needs
+   either a scoped share token or a signed short-lived link. Not decided here.
+
+---
+
 ## 2026-08-30 (evening) — B7 cleared its gates; profiles designed and the first half built
 
 **Talked about**

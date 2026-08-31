@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using Teren.Core.Storage;
 
 namespace Teren.Api.Tests.Infrastructure;
@@ -25,6 +26,8 @@ public sealed class FakeObjectStorage : IObjectStorage
     private readonly ConcurrentQueue<string> _readCalls = new();
     private readonly ConcurrentQueue<string> _putCalls = new();
     private readonly ConcurrentDictionary<string, string> _contentTypes = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, StrongBox<long>> _bytesRead =
+        new(StringComparer.Ordinal);
 
     /// <summary>Keys whose HEAD or read throws as if the store were unreachable.</summary>
     public HashSet<string> UnreachableKeys { get; } = new(StringComparer.Ordinal);
@@ -45,6 +48,23 @@ public sealed class FakeObjectStorage : IObjectStorage
 
     public int ReadCallCount => _readCalls.Count;
 
+    /// <summary>Every object key that was opened for reading, in order — which is how "the key
+    /// came from the database row and not from the request path" is assertable.</summary>
+    public IReadOnlyList<string> ReadCalls => [.. _readCalls];
+
+    /// <summary>
+    /// How many bytes a caller actually pulled off the stream for a key, across all reads.
+    /// <para>
+    /// It exists for one assertion that nothing else can make: a reader that bounds its copy by
+    /// the size the database declared <em>stops early</em> on an object that is bigger than that,
+    /// and a reader that does not, does not. The status code is identical either way — the
+    /// checksum refuses the bytes in both cases — so without counting the bytes, dropping the
+    /// bound is a mutation no test in this suite would see.
+    /// </para>
+    /// </summary>
+    public long BytesReadFor(string objectKey) =>
+        _bytesRead.TryGetValue(objectKey, out var count) ? Interlocked.Read(ref count.Value) : 0;
+
     /// <summary>Pretend the phone finished a PUT: the object exists with this many bytes.</summary>
     public void PutObject(string objectKey, long byteSize) =>
         _objects[objectKey] = new byte[byteSize];
@@ -61,6 +81,7 @@ public sealed class FakeObjectStorage : IObjectStorage
         _readCalls.Clear();
         _putCalls.Clear();
         _contentTypes.Clear();
+        _bytesRead.Clear();
         UnreachableKeys.Clear();
         Unreachable = false;
         HeadDelay = TimeSpan.Zero;
@@ -111,7 +132,9 @@ public sealed class FakeObjectStorage : IObjectStorage
 
         return _objects.TryGetValue(objectKey, out var content)
             ? new StoredObjectContent(
-                new MemoryStream(content, writable: false),
+                new CountingStream(
+                    new MemoryStream(content, writable: false),
+                    _bytesRead.GetOrAdd(objectKey, _ => new StrongBox<long>(0))),
                 content.LongLength,
                 _contentTypes.TryGetValue(objectKey, out var type) ? type : null,
                 "\"etag\"")
@@ -141,6 +164,60 @@ public sealed class FakeObjectStorage : IObjectStorage
 
     public string? ContentTypeOf(string objectKey) =>
         _contentTypes.TryGetValue(objectKey, out var type) ? type : null;
+
+    /// <summary>A read-only pass-through that tallies what was actually pulled off it. Small
+    /// enough to keep here: the only thing it is for is the byte tally above.</summary>
+    private sealed class CountingStream(Stream inner, StrongBox<long> tally) : Stream
+    {
+        public override bool CanRead => inner.CanRead;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => inner.Length;
+
+        public override long Position
+        {
+            get => inner.Position;
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            var read = inner.Read(buffer, offset, count);
+            Interlocked.Add(ref tally.Value, read);
+            return read;
+        }
+
+        public override async ValueTask<int> ReadAsync(
+            Memory<byte> buffer, CancellationToken ct = default)
+        {
+            var read = await inner.ReadAsync(buffer, ct);
+            Interlocked.Add(ref tally.Value, read);
+            return read;
+        }
+
+        public override void Flush() => inner.Flush();
+
+        public override long Seek(long offset, SeekOrigin origin) =>
+            throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) =>
+            throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                inner.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
+    }
 
     private void ThrowIfUnreachable(string objectKey)
     {

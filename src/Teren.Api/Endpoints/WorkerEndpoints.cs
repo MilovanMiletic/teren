@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Npgsql;
 using Microsoft.Extensions.Options;
 using Teren.Api.Auth;
 using Teren.Api.Contracts;
@@ -108,6 +110,18 @@ public static class WorkerEndpoints
 
     // ---------------------------------------------------------------- POST /api/workers
 
+    /// <summary>
+    /// Adds a foreman and issues his first activation code.
+    /// <para>
+    /// <b>Both unique indexes this touches are global, and neither can be checked atomically from
+    /// C#.</b> <c>ux_app_user_username</c> and <c>ux_app_user_email</c> span every company, so a
+    /// look-then-insert always has a window: two admins adding a "Zoran Jovanović" in the same
+    /// second both propose <c>zoran.jovanovic</c>, and one of the inserts is refused. Before this
+    /// handler caught them, that window was a 500. The discipline is the one
+    /// <c>EntryEndpoints</c> already follows for <c>pk_entry</c> — let the database settle it and
+    /// translate the violation into an answer.
+    /// </para>
+    /// </summary>
     private static async Task<IResult> CreateWorkerAsync(
         CreateWorkerRequest request,
         HttpContext http,
@@ -128,98 +142,125 @@ public static class WorkerEndpoints
             return ApiProblems.BadRequest("email does not look like an email address.");
         }
 
-        string username;
+        // Null means "the admin did not name one, so the server proposes" — and that difference
+        // decides what happens when the insert loses a race below.
+        var chosen = string.IsNullOrWhiteSpace(request.Username)
+            ? null
+            : UsernameFormat.Normalise(request.Username);
 
-        if (string.IsNullOrWhiteSpace(request.Username))
+        if (chosen is not null && !UsernameFormat.IsValid(chosen))
         {
-            var seed = UsernameFormat.Propose(displayName);
-
-            if (!UsernameFormat.IsValid(seed))
-            {
-                return ApiProblems.BadRequest(
-                    "username could not be derived from display_name; send one explicitly.");
-            }
-
-            username = await NextFreeUsernameAsync(db, seed, ct);
+            return ApiProblems.BadRequest(
+                "username must be 3–64 characters of lowercase letters, digits, and single "
+                + "'.', '-' or '_' between them.");
         }
-        else
-        {
-            username = UsernameFormat.Normalise(request.Username);
 
-            if (!UsernameFormat.IsValid(username))
-            {
-                return ApiProblems.BadRequest(
-                    "username must be 3–64 characters of lowercase letters, digits, and single "
-                    + "'.', '-' or '_' between them.");
-            }
+        var seed = chosen is null ? UsernameFormat.Propose(displayName) : null;
+
+        if (seed is not null && !UsernameFormat.IsValid(seed))
+        {
+            return ApiProblems.BadRequest(
+                "username could not be derived from display_name; send one explicitly.");
+        }
+
+        for (var attempt = 0; ; attempt++)
+        {
+            var username = chosen ?? await NextFreeUsernameAsync(db, seed!, ct);
 
             // Usernames are globally unique, not per-company (§4): the self-service flow looks a
             // worker up by username alone and must not have to ask "which company?". So this
             // check — and this 409 — reach across tenants, which is a small, deliberate departure
             // from "foreign is indistinguishable from nonexistent". It is unavoidable in a global
-            // namespace: without it the unique index raises instead. It is also why the ordinary
-            // path is to let the server PROPOSE a name, which never produces this answer at all.
-            if (await db.Users.AnyAsync(u => u.Username == username, ct))
+            // namespace. It is also why the ordinary path is to let the server PROPOSE a name,
+            // which never produces this answer at all.
+            if (chosen is not null && await db.Users.AnyAsync(u => u.Username == chosen, ct))
             {
-                return ApiProblems.Conflict(
-                    ApiProblemCodes.UsernameTaken,
-                    $"The username '{username}' is already in use. Leave username out and the "
-                    + "server will propose a free one.");
+                return UsernameTaken(chosen);
+            }
+
+            var now = DateTime.UtcNow;
+            var worker = new AppUser
+            {
+                Id = Guid.NewGuid(),
+                CompanyId = companyId,
+                Role = AppUserRole.Worker,
+                Username = username,
+                DisplayName = displayName,
+                Email = email,
+                // A worker never has a password. The database agrees:
+                // ck_app_user_worker_has_no_password.
+                PasswordHash = null,
+                Language = LanguageOf(request.Language),
+                CreatedAt = now,
+            };
+
+            // One transaction: a worker who exists but has no code is an onboarding the admin
+            // cannot finish, and he would have to notice that for himself.
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+
+            db.Users.Add(worker);
+            db.AdminAudits.Add(new AdminAudit
+            {
+                Id = Guid.NewGuid(),
+                ActorUserId = principal.UserId,
+                Action = AdminAuditActions.WorkerCreated,
+                SubjectType = "app_user",
+                SubjectId = worker.Id,
+                CompanyId = companyId,
+                CreatedAt = now,
+            });
+
+            try
+            {
+                await db.SaveChangesAsync(ct);
+
+                var code = await ActivationCodes.IssueAsync(
+                    db,
+                    worker,
+                    principal.UserId,
+                    AdminAuditActions.ActivationCodeIssued,
+                    options.Value.ActivationCodeLifetime,
+                    ct);
+
+                await transaction.CommitAsync(ct);
+
+                logger.LogInformation(
+                    "Worker {UserId} created for company {CompanyId} with a first activation code.",
+                    worker.Id, companyId);
+
+                return TypedResults.Created(
+                    $"/api/workers/{worker.Id}",
+                    new CreateWorkerResponse(Describe(worker, activeDevices: 0, lastSeenAt: null,
+                        hasLiveCode: true), code));
+            }
+            catch (DbUpdateException ex) when (IsUniqueViolation(ex, "ux_app_user_username"))
+            {
+                await RewindAsync(db, transaction, ct);
+
+                // An explicitly requested name belongs to the admin, so losing the race gives him
+                // exactly the answer the pre-check above would have: try another. A PROPOSED name
+                // belongs to the server, so it proposes the next one instead — the admin never
+                // sees a fight he did not pick. One retry only: a second loss means contention
+                // this handler should not be papering over.
+                if (chosen is not null)
+                {
+                    return UsernameTaken(username);
+                }
+
+                if (attempt > 0)
+                {
+                    // He did not pick a username, so telling him to leave it out is advice he has
+                    // already taken. The server's own second proposal lost too, which is not his
+                    // problem to solve — it is a retry.
+                    return ProposalLost(username);
+                }
+            }
+            catch (DbUpdateException ex) when (IsUniqueViolation(ex, "ux_app_user_email"))
+            {
+                await RewindAsync(db, transaction, ct);
+                return EmailTaken();
             }
         }
-
-        var now = DateTime.UtcNow;
-        var worker = new AppUser
-        {
-            Id = Guid.NewGuid(),
-            CompanyId = companyId,
-            Role = AppUserRole.Worker,
-            Username = username,
-            DisplayName = displayName,
-            Email = email,
-            // A worker never has a password. The database agrees:
-            // ck_app_user_worker_has_no_password.
-            PasswordHash = null,
-            Language = LanguageOf(request.Language),
-            CreatedAt = now,
-        };
-
-        // One transaction: a worker who exists but has no code is an onboarding the admin cannot
-        // finish, and he would have to notice that for himself.
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
-
-        db.Users.Add(worker);
-        db.AdminAudits.Add(new AdminAudit
-        {
-            Id = Guid.NewGuid(),
-            ActorUserId = principal.UserId,
-            Action = AdminAuditActions.WorkerCreated,
-            SubjectType = "app_user",
-            SubjectId = worker.Id,
-            CompanyId = companyId,
-            CreatedAt = now,
-        });
-
-        await db.SaveChangesAsync(ct);
-
-        var code = await ActivationCodes.IssueAsync(
-            db,
-            worker,
-            principal.UserId,
-            AdminAuditActions.ActivationCodeIssued,
-            options.Value.ActivationCodeLifetime,
-            ct);
-
-        await transaction.CommitAsync(ct);
-
-        logger.LogInformation(
-            "Worker {UserId} created for company {CompanyId} with a first activation code.",
-            worker.Id, companyId);
-
-        return TypedResults.Created(
-            $"/api/workers/{worker.Id}",
-            new CreateWorkerResponse(Describe(worker, activeDevices: 0, lastSeenAt: null,
-                hasLiveCode: true), code));
     }
 
     // ---------------------------------------------------------------- PATCH /api/workers/{id}
@@ -307,7 +348,18 @@ public static class WorkerEndpoints
             CreatedAt = now,
         });
 
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex, "ux_app_user_email"))
+        {
+            // ux_app_user_email is global and partial: the address may belong to another
+            // company's admin, so there is nothing this handler could have read to see it coming.
+            // The answer is a 409 the admin can act on rather than a 500 he can only report.
+            db.ChangeTracker.Clear();
+            return EmailTaken();
+        }
 
         return TypedResults.Ok(await DescribeAsync(db, worker, ct));
     }
@@ -398,6 +450,48 @@ public static class WorkerEndpoints
     }
 
     // ---------------------------------------------------------------- shared
+
+    private static IResult UsernameTaken(string username) => ApiProblems.Conflict(
+        ApiProblemCodes.UsernameTaken,
+        $"The username '{username}' is already in use. Leave username out and the server will "
+        + "propose a free one.");
+
+    /// <summary>
+    /// The other arm of the same 409: the admin named nobody, and the server's proposal lost a
+    /// race twice. Same problem <c>code</c> deliberately — a client branches on one value for
+    /// "this name is gone" and both arms mean that — but the detail must not tell a man to do the
+    /// thing he already did.
+    /// </summary>
+    private static IResult ProposalLost(string username) => ApiProblems.Conflict(
+        ApiProblemCodes.UsernameTaken,
+        $"The username '{username}' was taken by another request while this worker was being "
+        + "created. Nothing was saved; send the same request again.");
+
+    /// <summary>
+    /// Deliberately does <b>not</b> repeat the address back. Unlike a username, which the admin
+    /// just typed and has to be told about to pick another, an address is somebody's personal
+    /// data and it may belong to a person in another company entirely — the reply says the field
+    /// is the problem, and nothing about whose it is.
+    /// </summary>
+    private static IResult EmailTaken() => ApiProblems.Conflict(
+        ApiProblemCodes.EmailTaken,
+        "That email address is already registered to a Teren account. Leave email out, or use "
+        + "another address.");
+
+    /// <summary>
+    /// Undoes a lost insert race so the next attempt starts clean: the transaction goes back, and
+    /// the entities it had added stop being tracked — otherwise the retry re-sends them.
+    /// </summary>
+    private static async Task RewindAsync(
+        TerenIdentityDbContext db, IDbContextTransaction transaction, CancellationToken ct)
+    {
+        await transaction.RollbackAsync(ct);
+        db.ChangeTracker.Clear();
+    }
+
+    private static bool IsUniqueViolation(DbUpdateException ex, string constraintName) =>
+        ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } pg
+        && string.Equals(pg.ConstraintName, constraintName, StringComparison.Ordinal);
 
     private static async Task<(AppUser? Worker, IResult? Failure)> ResolveWorkerAsync(
         string id, HttpContext http, TerenIdentityDbContext db, CancellationToken ct)

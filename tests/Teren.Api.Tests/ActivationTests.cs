@@ -326,6 +326,106 @@ public sealed class ActivationTests(TerenTestApp app) : ApiTestBase(app)
         (await Activate(DemoSeeder.WorkerUsername, live)).StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
+    // ------------------------------------------------------------ the wire shape
+
+    /// <summary>
+    /// <b>The field names, asserted on the serialized JSON, because that is the only place the
+    /// coupling exists.</b>
+    /// <para>
+    /// Real activation from a browser failed on exactly this while every test on both sides
+    /// stayed green: the plan (§8) described <c>{device_token, worker: {user_id, …}, company}</c>,
+    /// the API shipped those fields flat, and the client read <c>response.worker?.user_id</c>. It
+    /// got <c>undefined</c>, refused the session, and told the founder his code had not been
+    /// spent — while the device row existed and the code was gone. He pressed again and burned a
+    /// second one.
+    /// </para>
+    /// <para>
+    /// The founder settled it on 2026-08-31 in favour of the flat shape (<c>LoginResponse</c> and
+    /// <c>MeResponse</c> already put person fields flat with <c>company</c> nested, so the
+    /// <c>worker</c> wrapper would have been the only nested-person response in the API) and the
+    /// plan was amended. This test is what keeps that settlement true. It is deliberately
+    /// exhaustive — the uncaught mutation it exists for is renaming <c>UserId</c> to
+    /// <c>WorkerId</c>, which no C#-side assertion and no PWA spec can see, and re-nesting the
+    /// person fields would fail it the same way.
+    /// </para>
+    /// <para>
+    /// <b>Read against the JSON, never against the record's properties.</b> A test that reads the
+    /// type cannot see a serializer naming change, and snake_case here comes from a global naming
+    /// policy that one attribute could override for this response alone.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task The_activate_response_carries_exactly_the_field_names_the_client_reads()
+    {
+        var code = await GivenLiveCodeAsync();
+
+        var response = await Activate(DemoSeeder.WorkerUsername, code);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.TextAsync());
+
+        var body = await response.JsonAsync();
+
+        body.EnumerateObject().Select(p => p.Name).ShouldBe(
+            [
+                "device_token", "device_id", "device_name",
+                "user_id", "username", "display_name", "language",
+                "company",
+            ],
+            ignoreOrder: true);
+
+        body.GetProperty("company").EnumerateObject().Select(p => p.Name)
+            .ShouldBe(["id", "name"], ignoreOrder: true);
+
+        // Present is not enough: a field the client reads must also carry the value it is read
+        // for, or the session it builds is a session under nobody's name.
+        body.GetText("device_token").ShouldStartWith(CredentialTokens.DevicePrefix);
+        body.GetGuid("device_id").ShouldNotBe(Guid.Empty);
+        body.GetText("device_name").ShouldNotBeNullOrWhiteSpace();
+        body.GetGuid("user_id").ShouldBe(TestIds.WorkerA);
+        body.GetText("username").ShouldBe(DemoSeeder.WorkerUsername);
+        body.GetText("display_name").ShouldNotBeNullOrWhiteSpace();
+        body.GetText("language").ShouldBe("sr");
+        body.GetProperty("company").GetGuid("id").ShouldBe(TestIds.CompanyA);
+        body.GetProperty("company").GetText("name").ShouldBe(TestIds.CompanyAName);
+    }
+
+    // ------------------------------------------------------------ the seeded demo code
+
+    [Fact]
+    public async Task The_seeded_demo_code_activates_a_phone()
+    {
+        // The end of the chain the seeder half of this increment exists for: what `seed` writes
+        // is what docs/demo-script.md tells the distributor to type, and it gets him in. Asserted
+        // through the real endpoint, because the folding, the hash and the expiry all have to
+        // agree and only the endpoint judges all three.
+        await using (var db = App.CreateDbContext(companyId: null))
+        {
+            await DemoSeeder.SeedAsync(db, deviceToken: null, ct: Ct);
+        }
+
+        var response = await Activate(
+            DemoSeeder.WorkerUsername, DemoSeeder.DemoActivationCodeDisplay);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.TextAsync());
+        (await response.JsonAsync()).GetGuid("user_id").ShouldBe(DemoSeeder.WorkerId);
+    }
+
+    [Fact]
+    public async Task The_demo_code_is_still_single_use()
+    {
+        // Fixed and published does not mean reusable. The seed re-mints it; the endpoint must
+        // still refuse the second phone, or the demo code is a permanent password.
+        await using (var db = App.CreateDbContext(companyId: null))
+        {
+            await DemoSeeder.SeedAsync(db, deviceToken: null, ct: Ct);
+        }
+
+        (await Activate(DemoSeeder.WorkerUsername, DemoSeeder.DemoActivationCodeDisplay))
+            .StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        (await Activate(DemoSeeder.WorkerUsername, DemoSeeder.DemoActivationCodeDisplay))
+            .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
     // ------------------------------------------------------------ helpers
 
     private Task<HttpResponseMessage> Activate(string username, string code) =>

@@ -42,7 +42,7 @@
             <label class="t-label field__label" for="login-email">
               {{ t('auth.login.email.label') }}
             </label>
-            <div class="field__box" [class.field__box--invalid]="touched() && !emailGiven()">
+            <div class="field__box" [class.field__box--invalid]="validating() && !emailGiven()">
               <input
                 id="login-email"
                 class="field__input"
@@ -68,7 +68,7 @@
             <div
               class="field__box field__box--action"
               [class.field__box--invalid]="
-                (touched() && !passwordGiven()) || failure() === 'rejected'
+                (validating() && !passwordGiven()) || failure() === 'rejected'
               "
             >
               <input
@@ -117,14 +117,22 @@
 
         @if (signedInAs(); as name) {
           <!--
-            The credential is good and nothing is stored: the office screens do not exist yet, and
-            saying so is better than a redirect to a screen that would have to apologise.
+            Two sentences, because there are two outcomes and only one of them is a dead end. A
+            company admin is on his way to `/company` and reads the first for an instant; a super
+            admin stays here and reads the second, which says the screens for his role are still
+            being built rather than sending him somewhere that would answer 403.
           -->
           <div class="card notice notice--ok" role="status">
             <app-icon name="check" [size]="20" class="notice__icon" />
             <div class="notice__text">
               <span class="notice__title">{{ t('auth.login.success.title') }}</span>
-              <span class="t-meta">{{ t('auth.login.success.body', { name }) }}</span>
+              <span class="t-meta">
+                {{
+                  awaitingSurface()
+                    ? t('auth.login.awaiting.body', { name })
+                    : t('auth.login.success.body', { name })
+                }}
+              </span>
             </div>
           </div>
         }

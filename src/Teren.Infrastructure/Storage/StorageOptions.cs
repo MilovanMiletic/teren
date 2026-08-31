@@ -70,6 +70,21 @@ public sealed class StorageOptions
     public TimeSpan VerificationBudget { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
+    /// Ceiling on one phone-facing media read (<c>GET /api/entries/{id}/media/{mediaId}</c>) as a
+    /// whole, the way <see cref="VerificationBudget"/> bounds one <c>/complete</c> pass.
+    /// <para>
+    /// It exists because the media read borrows the <em>bulk</em> client — a photo is up to 10 MB
+    /// and the 5 s <see cref="RequestTimeout"/> would abort it mid-stream — and that client is
+    /// tuned for a Hangfire job nobody is watching: <see cref="DownloadTimeout"/> is two minutes.
+    /// Inheriting it here would let storage that answers slowly rather than not at all hold an
+    /// owner's tablet for two minutes per photograph. This is the ceiling that says otherwise, and
+    /// exhausting it is a 503 with a Retry-After, never a verdict on the evidence.
+    /// </para>
+    /// </summary>
+    [Range(typeof(TimeSpan), "00:00:02", "00:05:00")]
+    public TimeSpan MediaReadBudget { get; set; } = TimeSpan.FromSeconds(20);
+
+    /// <summary>
     /// Per-call ceiling on a media <em>download</em>, which only the B4 pipeline does. Separate
     /// from <see cref="RequestTimeout"/> on purpose: that number exists to keep a phone-facing
     /// request short, and applying it to a 25 MB voice note would abort the read mid-stream on

@@ -7,6 +7,7 @@ import { FAILURE_KINDS } from './core/api/api-failure';
 import { AUTH_FAILURES } from './core/auth/activation.service';
 import { CONFIRM_BANNERS } from './core/confirm/confirm-banner';
 import { CONFIRM_FAILURES } from './core/confirm/confirm.service';
+import { PROFILE_ROLES } from './core/identity/profile.service';
 import { REPORT_FAILURES } from './core/report/report.service';
 import { REASON_KEYS } from './features/pending/pending-page';
 import { AVAILABLE_LANGUAGES, DEFAULT_LANGUAGE } from './i18n';
@@ -230,6 +231,52 @@ describe('translation dictionaries', () => {
           `${screen}.${failure}`,
         );
       }
+    }
+  });
+
+  /**
+   * The one sentence on the code screen that must not reassure him.
+   *
+   * Every other failure there can honestly end "the code is not used up": nothing was sent, or the
+   * server refused it. `unreadable` is the opposite — the server answered 200, so the code **is**
+   * spent and the device row **does** exist, and only this build's reading of the response failed.
+   * On 2026-08-31 the founder met exactly that, was told his code was untouched, and burned a
+   * second single-use code proving it was not.
+   *
+   * Pinned as a property of the copy rather than as an exact string, so the founder's copy pass
+   * can rewrite the sentence freely and only the lie is out of bounds.
+   */
+  it('never tells a man his single-use code is untouched when the server has already taken it', () => {
+    const untouched = [/not used up/i, /nije potrošen/i, /nije potrošena/i];
+
+    for (const dictionary of [en, sr]) {
+      const sentence = dictionary.auth.code.error.unreadable;
+      expect(typeof sentence).toBe('string');
+      for (const claim of untouched) {
+        expect(sentence, `'auth.code.error.unreadable' claims the code survived a 200`).not.toMatch(
+          claim,
+        );
+      }
+    }
+
+    // And the reassurance is still there where it is true — a failure before the server answered.
+    expect(en.auth.code.error.offline).toMatch(/not used up/i);
+    expect(sr.auth.code.error.offline).toMatch(/nije potrošen/i);
+  });
+
+  /**
+   * The same guard for the one word on the profile screen that names a person's standing (F5).
+   *
+   * `profile-page.html` builds `profile.role.<role>` by concatenation, so the literal scan above
+   * cannot see a single one of those keys. `PROFILE_ROLES` is kept complete by a `Record` the
+   * compiler checks — including `unknown`, which exists precisely so that an older phone meeting a
+   * newer server reads a sentence instead of a raw wire string next to a man's name.
+   */
+  it('can name every role the profile screen is able to show', () => {
+    expect(PROFILE_ROLES.length).toBeGreaterThan(0);
+    for (const role of PROFILE_ROLES) {
+      expect(enKeys, `no English word for '${role}'`).toContain(`profile.role.${role}`);
+      expect(srKeys, `no Serbian word for '${role}'`).toContain(`profile.role.${role}`);
     }
   });
 

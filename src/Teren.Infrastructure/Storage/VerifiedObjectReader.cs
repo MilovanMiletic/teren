@@ -10,8 +10,9 @@ namespace Teren.Infrastructure.Storage;
 /// Sibling of <see cref="VerifiedMediaReader"/> and the same promise pointed outwards: that one
 /// verifies bytes on the way *into* a transcript or a PDF, this one verifies them on the way
 /// *out* to a person. Separate because it knows nothing about the <c>media</c> table — it takes a
-/// key and an expected hash — which is exactly what lets the photo read path (ARCHITECTURE §8's
-/// open gap) use it unchanged.
+/// key and an expected hash — which is what let the photo read path (C3) reuse it: two callers
+/// now, <c>GET /api/entries/{id}/report</c> and <c>GET /api/entries/{id}/media/{mediaId}</c>, one
+/// promise that nobody is handed bytes the record does not vouch for.
 /// </para>
 /// </summary>
 public static class VerifiedObjectReader
@@ -39,13 +40,22 @@ public static class VerifiedObjectReader
     /// </summary>
     /// <param name="expectedSha256">The hash the database recorded, or null when the row predates
     /// the column — in which case the bytes are served unverified and the caller says so.</param>
+    /// <param name="maxByteSize">
+    /// The size the record declares, when there is one. A hash cannot be checked until the last
+    /// byte has been read, so without a bound the amount spooled to disk is decided by whatever
+    /// happens to sit at that key — swap a 300 KB photograph for a 10 GB object and the temp
+    /// volume fills before the mismatch is ever noticed. Media declares its size and passes it;
+    /// a report does not have one and passes null, which is the behaviour that shipped at B6.
+    /// Same bound, same reasoning as <see cref="VerifiedMediaReader"/>.
+    /// </param>
     /// <exception cref="EvidenceIntegrityException">The stored bytes are not the recorded
     /// bytes.</exception>
     public static async Task<VerifiedObject?> OpenVerifiedAsync(
         IObjectStorage storage,
         string objectKey,
         string? expectedSha256,
-        CancellationToken ct)
+        CancellationToken ct,
+        long? maxByteSize = null)
     {
         using var stored = await storage.OpenReadAsync(objectKey, ct);
         if (stored is null)
@@ -79,6 +89,18 @@ public static class VerifiedObjectReader
                 }
 
                 total += read;
+
+                if (maxByteSize is { } limit && total > limit)
+                {
+                    // Not the object the record describes, and refused before the rest of it is
+                    // written to disk: the copy is bounded by what the database declared, never by
+                    // what storage is willing to send.
+                    throw new EvidenceIntegrityException(
+                        EvidenceIntegrityKind.ChecksumMismatch,
+                        $"the object at {objectKey} is larger than the {limit} bytes recorded "
+                        + "for it");
+                }
+
                 hash.AppendData(chunk, 0, read);
                 await file.WriteAsync(chunk.AsMemory(0, read), ct);
             }

@@ -16,6 +16,7 @@ import { switchMap } from 'rxjs';
 
 import { EntryResponse } from '../../core/api/api-types';
 import { AppStatus } from '../../core/app-status.service';
+import { ARCHIVE_ENTRY_PARAM } from '../../core/archive/archive-route';
 import { ArchiveService, RemoteStatus } from '../../core/archive/archive.service';
 import { ConfirmBanner, confirmBanner } from '../../core/confirm/confirm-banner';
 import { ConfirmFailure, ConfirmResult, ConfirmService } from '../../core/confirm/confirm.service';
@@ -767,7 +768,7 @@ export class ConfirmPage {
 
   /** The read-only record, for an entry this screen may not edit. */
   protected openRecord(): void {
-    void this.router.navigate(['/diary'], { queryParams: { entry: this.entryId() } });
+    void this.router.navigate(['/diary'], { queryParams: { [ARCHIVE_ENTRY_PARAM]: this.entryId() } });
   }
 }
 

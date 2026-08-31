@@ -11,9 +11,24 @@ they are content, not chrome, and they are what he actually says.
 
 - [ ] Phone has Teren **on the home screen** (not a browser tab). It opens full-screen and it opens
       instantly; a browser tab with an address bar undercuts the whole pitch.
-- [ ] Run the reset so the archive is the three seeded Serbian sites and nothing else.
+- [ ] **Join the phone once — one time per phone, never in front of a customer.** Open the app, and
+      on the welcome screen enter:
+
+      username: zoran.jovanovic
+      code:     DEM0-TEST
+
+      That is a zero in `DEM0`; typing the letter O works too. It is done once and it stays done —
+      after this the app opens straight on the record button, and everything below assumes that.
+      Do it the evening before, on wifi, and check that the record button is what you see when you
+      reopen the app.
+- [ ] Run the reset so the archive is the three seeded Serbian sites and nothing else. The reset
+      re-issues that same code, so joining a *second* phone later still works.
 - [ ] Aeroplane mode **off** for the full demo — the report needs to send.
 - [ ] Know which site you will pick before you start. Fumbling in the picker costs the opening.
+
+> The code is single use. Joining a second phone needs a fresh one, and a `seed` or a `reset-demo`
+> mints it — the same `DEM0-TEST` every time. Joining a new phone also retires the old one: one
+> phone records as Zoran at a time, by design.
 
 ---
 
@@ -35,8 +50,9 @@ Tap the icon. Do not narrate this part; let it open.
 
 > **"Ovo je ono što majstor vidi kad dođe na teren."**
 
-**The point being made:** it opens like an app, not a website. No login, no loading, no menu. The
-record button is the screen.
+**The point being made:** it opens like an app, not a website. No loading, no menu. The record
+button is the screen — the phone was joined once, weeks ago, and it has not asked him for anything
+since.
 
 ### 2 · Record — 30 seconds
 

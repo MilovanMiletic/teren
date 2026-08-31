@@ -58,6 +58,25 @@ export class SessionService {
   readonly usable = computed(() => this.token().length > 0);
 
   /**
+   * Whether this phone holds a credential **of its own**. The route gate's single question.
+   *
+   * Deliberately not {@link usable}, and the difference is the whole of F4. `usable()` asks "is
+   * there a bearer worth sending", and until D7/F9 it is true on every install because of the
+   * build-time fallback above — a gate written on it would be inert, and the welcome screen would
+   * be a page nobody could ever reach. This asks "has a man bound this phone to himself", which is
+   * the question the screens are about.
+   *
+   * The consequence, stated plainly because it is the increment's cost: **a phone that has never
+   * been activated now meets `/welcome` instead of Home**, even though the baked-in token would
+   * still authenticate it against the API. The API door stays open until D7/F9 empties that
+   * token; this is the UI door, and it closes first.
+   *
+   * Read synchronously, from a signal that was populated during construction. No promise, no
+   * request, no frame in which the app does not know the answer.
+   */
+  readonly activated = computed(() => this.state() !== null);
+
+  /**
    * Take on a credential. The only writer, and the event the outbox listens for.
    *
    * Persisted first, then published: a signal update that outlived the write would leave the app
