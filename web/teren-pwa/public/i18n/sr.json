@@ -429,12 +429,14 @@
       "storage": "Slanje je prekinuto pre nego što su svi fajlovi stigli.",
       "incomplete": "Neki fajlovi još nisu stigli na server.",
       "rejected": "Server nije prihvatio ovaj unos.",
+      "unauthenticated": "Ovom telefonu je ukinut pristup serveru ili pristup još nije podešen. Unos je bezbedan i biće poslat čim se pristup vrati.",
       "unauthorized": "Ovaj telefon nema dozvolu da šalje na server.",
       "notConfigured": "Aplikacija nema podešen server.",
       "insecureContext": "Unosi mogu da se šalju samo preko sigurne (https) adrese.",
       "unknown": "Slanje nije uspelo iz nepoznatog razloga."
     },
     "retry": "Pokušaj ponovo",
+    "retryAll": "Pokušaj sve ponovo",
     "meta": "Snimak {{duration}} · {{photos}}",
     "trustNote": "Ništa se ne briše sa telefona dok server ne potvrdi da je unos primljen.",
     "empty": {
@@ -449,5 +451,113 @@
       "total": "Ukupno"
     },
     "evidenceSafe": "Snimak i fotografije su bezbedni na ovom telefonu. Ništa nije izgubljeno."
+  },
+  "auth": {
+    "or": "ili",
+    "welcome": {
+      "body": "Snimite trideset sekundi govora sa gradilišta. Teren od toga pravi uredan dnevnik i izveštaj za investitora.",
+      "signIn": "Prijavi se",
+      "joinWithCode": "Pridruži se gradilištu kodom",
+      "codeHint": "Kod za pridruživanje dobijate od vlasnika firme.",
+      "aside": {
+        "worker": {
+          "title": "Na gradilištu",
+          "body": "Poslovođa se jednom pridruži kodom i više se ne prijavljuje. Aplikacija se otvara pravo na dugme za snimanje, i kada nema signala."
+        },
+        "office": {
+          "title": "U kancelariji",
+          "body": "Vlasnik se prijavljuje imejl adresom i lozinkom i prati sva gradilišta firme."
+        }
+      }
+    },
+    "code": {
+      "title": "Pridruživanje gradilištu",
+      "lead": "Upišite korisničko ime i kod koji ste dobili. Ovo se radi jednom na ovom telefonu.",
+      "username": {
+        "label": "KORISNIČKO IME",
+        "placeholder": "zoran.jovanovic"
+      },
+      "code": {
+        "label": "KOD ZA PRIDRUŽIVANJE",
+        "placeholder": "XKD4-7HMP",
+        "hint": "Osam znakova iz poruke. Pišite kako vam je lakše — slovo O se čita kao nula, a ostalo aplikacija sama sredi."
+      },
+      "submit": "Pridruži se",
+      "submitting": "Povezivanje…",
+      "usernameRequired": "Upišite korisničko ime.",
+      "codeIncomplete": "Kod ima osam znakova.",
+      "offline": {
+        "title": "Nema interneta",
+        "body": "Kod može da se proveri samo na serveru, pa je baš za ovaj ekran potrebna veza. Čekanje ne troši kod."
+      },
+      "resend": {
+        "action": "Novi telefon? Pošalji mi kod",
+        "sending": "Slanje…",
+        "sent": {
+          "title": "Ako to korisničko ime postoji, kod je na putu",
+          "body": "Kod ide na imejl adresu koja je upisana za vas. Ako nemate sačuvanu adresu, tražite kod od poslovođe ili vlasnika."
+        }
+      },
+      "success": {
+        "title": "Ovaj telefon je spreman",
+        "body": "Snimate za firmu {{company}}, kao {{name}}.",
+        "released": "Unosi koji su čekali pristup sada se šalju.",
+        "action": "Počni snimanje"
+      },
+      "error": {
+        "offline": "Nema interneta, pa kod nije mogao da se proveri. Kod nije potrošen — pokušajte ponovo kada se mreža vrati.",
+        "server": "Server trenutno ne odgovara. Kod nije potrošen — pokušajte ponovo za koji trenutak.",
+        "rejected": "Korisničko ime i kod ne idu zajedno. Proverite oba pa pokušajte ponovo — kod važi sedam dana i koristi se jednom, pa tražite novi ako je stariji.",
+        "notAvailable": "Ovaj server još ne prima pridruživanje kodom. Kod nije potrošen — javite vlasniku firme.",
+        "tooManyAttempts": "Previše pokušaja sa ovog uređaja. Sačekajte nekoliko minuta pa pokušajte ponovo.",
+        "unknown": "Pridruživanje nije uspelo, a aplikacija ne ume da kaže zašto. Kod nije potrošen — pokušajte ponovo."
+      },
+      "aside": {
+        "title": "O kodu za pridruživanje",
+        "source": "Kod dobijate od vlasnika firme — osam znakova, najčešće u poruci.",
+        "singleUse": "Važi sedam dana i koristi se jednom, za jedan telefon.",
+        "thenWhat": "Posle toga se aplikacija otvara pravo na dugme za snimanje. Bez prijave, bez lozinke, i tamo gde nema signala."
+      }
+    },
+    "login": {
+      "title": "Prijava",
+      "lead": "Za vlasnika firme i za Teren.",
+      "email": {
+        "label": "IMEJL ADRESA",
+        "placeholder": "vlasnik@gradnja.rs"
+      },
+      "password": {
+        "label": "LOZINKA",
+        "show": "Prikaži lozinku",
+        "hide": "Sakrij lozinku"
+      },
+      "submit": "Prijavi se",
+      "submitting": "Prijavljivanje…",
+      "emailRequired": "Upišite imejl adresu.",
+      "passwordRequired": "Upišite lozinku.",
+      "joinWithCode": "Pridruži se gradilištu kodom",
+      "codeHint": "Kod dobijate od vlasnika firme — na gradilištu ne treba lozinka.",
+      "offline": {
+        "title": "Nema interneta",
+        "body": "Prijava se proverava na serveru, pa je za ovaj ekran potrebna veza."
+      },
+      "success": {
+        "title": "Prijava je uspela",
+        "body": "Dobrodošli, {{name}}. Ekrani za kancelariju se još prave, pa ovde za sada nema šta da se otvori."
+      },
+      "error": {
+        "offline": "Nema interneta, pa prijava nije mogla da se proveri. Pokušajte ponovo kada se mreža vrati.",
+        "server": "Server trenutno ne odgovara. Pokušajte ponovo za koji trenutak.",
+        "rejected": "Pogrešna imejl adresa ili lozinka.",
+        "notAvailable": "Ovaj server još ne prima prijavu imejl adresom i lozinkom.",
+        "tooManyAttempts": "Previše pokušaja prijave sa ovog uređaja. Sačekajte nekoliko minuta pa pokušajte ponovo.",
+        "unknown": "Prijava nije uspela, a aplikacija ne ume da kaže zašto. Pokušajte ponovo."
+      },
+      "aside": {
+        "title": "Ko se ovde prijavljuje",
+        "body": "Vlasnik firme prati sva gradilišta, radnike i njihove kodove za pridruživanje.",
+        "worker": "Poslovođa na gradilištu se ne prijavljuje lozinkom. On se jednom pridruži kodom."
+      }
+    }
   }
 }

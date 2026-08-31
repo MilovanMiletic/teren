@@ -259,6 +259,16 @@ describe('ReportService', () => {
       expect(await pending).toMatchObject({ ok: false, failure: 'unauthorized', retryable: false });
     });
 
+    it('treats a forbidden role the same way as a rejected credential', async () => {
+      // Both mean the server will not hand over this PDF, and neither has a retry that helps.
+      // Pinned because `classify`'s `default:` arm would otherwise absorb a new kind and offer a
+      // pointless retry, which on a report download reads as "try again in a moment" for ever.
+      const pending = reports.download(entryId, 'teren-2026-08-29');
+      http.expectOne(reportUrl).flush(null, { status: 403, statusText: 'Forbidden' });
+
+      expect(await pending).toMatchObject({ ok: false, failure: 'unauthorized', retryable: false });
+    });
+
     it('keeps a malformed request apart from a missing entry', async () => {
       const pending = reports.download(entryId, 'teren-2026-08-29');
       http.expectOne(reportUrl).flush(null, { status: 400, statusText: 'Bad Request' });

@@ -246,12 +246,12 @@ describe('HomePage', () => {
     const rows = [...element.querySelectorAll<HTMLButtonElement>('.recent__row')];
     // Newest first, and `done` was captured second.
     rows[0].click();
-    expect(navigate).toHaveBeenCalledWith(['/dnevnik'], { queryParams: { unos: done } });
+    expect(navigate).toHaveBeenCalledWith(['/diary'], { queryParams: { entry: done } });
 
     rows[1].click();
     // The archive is a read-only record: sending him there over an entry that is waiting for him
     // would show the problem and hide the only control that fixes it.
-    expect(navigate).toHaveBeenCalledWith(['/potvrda', waiting]);
+    expect(navigate).toHaveBeenCalledWith(['/confirm', waiting]);
   });
 
   it('keeps what it knew when the server cannot be reached', async () => {

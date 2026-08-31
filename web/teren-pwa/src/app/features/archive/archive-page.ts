@@ -36,7 +36,7 @@ import { EntryDetail } from './entry-detail';
  * the screen where a record from four months ago is produced, with the words that were spoken and
  * the photographs of what was covered up. Everything else in the product feeds it.
  *
- * **One component, one route.** `/dnevnik` is the list and `/dnevnik?unos=<id>` is a record — and
+ * **One component, one route.** `/diary` is the list and `/diary?entry=<id>` is a record — and
  * on a wide screen both are on screen at once, so they are one component driven by the presence of
  * a query parameter rather than two that would each have to know about the other. See
  * {@link ArchivePage.selectedId} for why a query parameter and not a path segment.
@@ -86,10 +86,10 @@ export class ArchivePage {
   protected readonly plural = inject(PluralService);
 
   /**
-   * Which record is open, as `?unos=<id>` on the archive route.
+   * Which record is open, as `?entry=<id>` on the archive route.
    *
    * A query parameter rather than a path segment, and the reason is the expanded layout. Two
-   * sibling routes (`dnevnik` and `dnevnik/:entryId`) are two different route configs, and
+   * sibling routes (`diary` and `diary/:entryId`) are two different route configs, and
    * Angular's default reuse strategy destroys and rebuilds the component when the config changes
    * — so on a desktop every click in the list rail would tear down the rail, re-read Dexie and
    * re-ask the server, and the list the user is comparing days in would flash on every day. A
@@ -97,7 +97,7 @@ export class ArchivePage {
    * gesture still means "close the record" because it is still a navigation.
    */
   protected readonly selectedId = toSignal(
-    inject(ActivatedRoute).queryParamMap.pipe(map((params) => params.get('unos'))),
+    inject(ActivatedRoute).queryParamMap.pipe(map((params) => params.get('entry'))),
     { initialValue: null },
   );
 
@@ -227,7 +227,7 @@ export class ArchivePage {
   }
 
   protected open(row: ArchiveRow): void {
-    void this.router.navigate(['/dnevnik'], { queryParams: { unos: row.id } });
+    void this.router.navigate(['/diary'], { queryParams: { entry: row.id } });
   }
 
   /**
@@ -249,7 +249,7 @@ export class ArchivePage {
    * record would put a screen he did not ask for between the tap and the form.
    */
   protected revise(row: ArchiveRow): void {
-    void this.router.navigate(['/potvrda', row.id]);
+    void this.router.navigate(['/confirm', row.id]);
   }
 
   /**
@@ -259,7 +259,7 @@ export class ArchivePage {
    */
   protected back(): void {
     if (this.selectedId() !== null && !this.expanded()) {
-      void this.router.navigate(['/dnevnik']);
+      void this.router.navigate(['/diary']);
       return;
     }
     void this.router.navigate(['/']);

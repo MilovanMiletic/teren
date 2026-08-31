@@ -23,7 +23,16 @@ public static class EntryEndpoints
 {
     public static RouteGroupBuilder MapEntryEndpoints(this RouteGroupBuilder api)
     {
-        var group = api.MapGroup("/entries").WithTags("Entries");
+        // Layer 1 of the four that keep Teren staff away from customer evidence
+        // (profile-and-identity §6): a super admin is refused here by RoleFilter before a row is
+        // read. Layer 2 would catch it anyway — his CompanyId is null and every evidence query
+        // filter is deny-by-default — and each of the four holds alone.
+        //
+        // Company admin is admitted throughout, per §2 decision 3 ("a company admin sees
+        // everything his company does"). Whether he may CONFIRM an entry is founder open
+        // question 1 and is deliberately not decided here; the recommendation on the table is
+        // worker-only, and narrowing /confirm later is a one-line change to this group.
+        var group = api.MapGroup("/entries").WithTags("Entries").RequireRole(RoleGates.Evidence);
 
         group.MapPost("/", CreateEntryAsync)
             .AddEndpointFilter<ValidationFilter<CreateEntryRequest>>()
@@ -80,7 +89,7 @@ public static class EntryEndpoints
     {
         var entryId = request.Id!.Value;
         var projectId = request.ProjectId!.Value;
-        var identity = http.GetDeviceIdentity();
+        var principal = http.GetPrincipal();
 
         // Tenant-scoped by the global query filter: a project belonging to another company is
         // indistinguishable from one that does not exist.
@@ -102,7 +111,7 @@ public static class EntryEndpoints
         var entry = new Entry
         {
             Id = entryId,
-            CompanyId = identity.CompanyId,
+            CompanyId = principal.CompanyId(),
             ProjectId = projectId,
             EntryDate = request.EntryDate!.Value,
             Status = EntryStatus.Received,
@@ -112,7 +121,10 @@ public static class EntryEndpoints
             Latitude = request.Latitude,
             Longitude = request.Longitude,
             GpsAccuracyM = request.GpsAccuracyM,
-            DeviceId = request.DeviceId ?? identity.DeviceId,
+            // The authenticated device, always — never anything the body claimed. entry.device_id
+            // is provenance on an evidence row, and the one thing a phone must not be able to say
+            // is which phone recorded the day.
+            DeviceId = principal.DeviceId,
             CreatedAt = request.CreatedAt?.UtcDateTime ?? now,
         };
 

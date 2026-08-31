@@ -26,4 +26,11 @@ internal static class StatusConverters
 
     public static readonly ValueConverter<ReportStatus, string> ReportStatus =
         new(status => ReportStatusNames.ToWire(status), value => ReportStatusNames.Parse(value));
+
+    public static readonly ValueConverter<AppUserRole, string> AppUserRole =
+        new(role => AppUserRoleNames.ToWire(role), value => AppUserRoleNames.Parse(value));
+
+    public static readonly ValueConverter<PasswordTokenPurpose, string> PasswordTokenPurpose =
+        new(purpose => PasswordTokenPurposeNames.ToWire(purpose),
+            value => PasswordTokenPurposeNames.Parse(value));
 }

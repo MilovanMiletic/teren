@@ -4,7 +4,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { TranslocoDirective } from '@jsverse/transloco';
 
-import { STALLED_AFTER_ATTEMPTS } from '../../core/api/api-failure';
+import { FailureKind, STALLED_AFTER_ATTEMPTS } from '../../core/api/api-failure';
 import { ConnectivityService } from '../../core/connectivity.service';
 import { EntryStore, PendingEntry } from '../../core/db/entry-store';
 import { DayLabel, dayLabel, localDay } from '../../core/db/local-day';
@@ -75,7 +75,7 @@ export class PendingPage {
   }
 
   protected record(): void {
-    void this.router.navigate(['/snimanje']);
+    void this.router.navigate(['/record']);
   }
 
   protected dayLabel(item: PendingEntry): DayLabel {
@@ -99,7 +99,11 @@ export class PendingPage {
     if (!kind) {
       return null;
     }
-    return REASON_KEYS[kind] ?? 'pending.reason.unknown';
+    // Widened at this one crossing: the outbox stores `failureKind` as a plain string (the local
+    // data model deliberately does not depend on the API layer's union), while the table above is
+    // typed over `FailureKind` so the compiler can demand completeness. The fallback stays for the
+    // genuinely unknown case — a value written by a *newer* build than this one.
+    return (REASON_KEYS as Readonly<Record<string, string>>)[kind] ?? 'pending.reason.unknown';
   }
 
   /** A terminal item: the loop has stopped and only a person can move it. */
@@ -124,6 +128,34 @@ export class PendingPage {
     return this.isBlocked(item) || this.isStalled(item);
   }
 
+  /** How many rows he would otherwise have to press one at a time. */
+  protected readonly retryableCount = computed(
+    () => this.pending().filter((item) => this.canRetry(item)).length,
+  );
+
+  /**
+   * "Try all again" — the whole queue in one press.
+   *
+   * Deliberately built on exactly the rows {@link canRetry} already marks with their own button,
+   * so the sweeping action and the per-row action can never disagree about what is retryable. A
+   * button that said "try everything" and quietly skipped `rejected` or `insecure_context` rows —
+   * leaving them still reading "Ne može da se pošalje" underneath it — would be this screen
+   * telling a foreman something it does not know, which is the one thing it exists not to do.
+   *
+   * The loop is woken **once**, after every row has been released, rather than per row: a pass
+   * that started against a half-released queue would leave the rest until the next tick.
+   */
+  protected retryAll(): void {
+    const stuck = this.pending().filter((item) => this.canRetry(item));
+    void Promise.all(stuck.map((item) => this.entries.retryNow(item.entry.id)))
+      // Wake regardless. A store that refused one write must not also cost the foreman the pass
+      // over the rows that *were* released — and with N rows instead of one, a rejection here is
+      // no longer a theoretical branch. The queue is read from disk, so a failed release simply
+      // leaves that row where it was and the screen keeps telling the truth about it.
+      .catch(() => undefined)
+      .then(() => this.uploads.wake());
+  }
+
   /**
    * The foreman's "try again". Releases the item — from a terminal block, or from a backoff it
    * would otherwise wait out — and asks the loop to run now rather than at its next wake: he
@@ -140,9 +172,18 @@ export class PendingPage {
  * Kept as a plain lookup rather than a `switch` in the template so that the set of user-facing
  * explanations is readable in one place, and so an unmapped kind is a missing entry here rather
  * than a fall-through to the wrong sentence.
+ *
+ * **`Record<FailureKind, string>`, not `Record<string, string>`**, and the difference is a
+ * sentence a foreman reads. Untyped, a new kind — or a typo in an existing one — compiles happily
+ * and lands on the `pending.reason.unknown` fallback, so the screen says "Slanje nije uspelo iz
+ * nepoznatog razloga" about a failure the classifier had named precisely. Typed, the compiler
+ * refuses until the new kind has a key, and `i18n.spec.ts` refuses until both dictionaries have a
+ * sentence behind it. (The `unauthenticated` entry added in F1 would have been caught by this had
+ * it been typed already; it was not, which is the whole argument.)
  */
-const REASON_KEYS: Readonly<Record<string, string>> = {
+export const REASON_KEYS: Readonly<Record<FailureKind, string>> = {
   offline: 'pending.reason.offline',
+  unauthenticated: 'pending.reason.unauthenticated',
   server: 'pending.reason.server',
   storage: 'pending.reason.storage',
   incomplete: 'pending.reason.incomplete',

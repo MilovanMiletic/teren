@@ -102,6 +102,11 @@ function toRemoteStatus(error: unknown): RemoteStatus {
   switch (classifyApiError(error).kind) {
     case 'offline':
       return 'offline';
+    // 401 and 403 are one answer to this screen: the server would not show us the archive. The
+    // upload path splits them because only it has to decide whether to keep retrying; here the
+    // sentence is the same either way, so `unauthenticated` falls through deliberately rather
+    // than landing in `default` and degrading to "the server is unwell".
+    case 'unauthenticated':
     case 'unauthorized':
       return 'unauthorized';
     case 'not_configured':

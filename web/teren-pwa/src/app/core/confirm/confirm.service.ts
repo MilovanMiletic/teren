@@ -176,6 +176,11 @@ export class ConfirmService {
         return failed('offline', true);
       case 'server':
         return failed('server', true);
+      // Both credential answers are the same news here, and neither is retryable *by this screen*:
+      // a foreman standing on the confirmation gate cannot re-activate his phone from it. The
+      // outbox is where 401 becomes a retry; this is where it becomes a sentence. Falling through
+      // rather than relying on `default`, which would call it "unknown" and offer a useless retry.
+      case 'unauthenticated':
       case 'unauthorized':
         return failed('unauthorized', false);
       case 'not_configured':

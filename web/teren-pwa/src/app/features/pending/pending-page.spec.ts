@@ -288,6 +288,76 @@ describe('PendingPage', () => {
       expect(element.textContent).not.toContain('teleportation');
     });
 
+    it('names the credential failure without blaming the entry, and keeps retrying', async () => {
+      // A revoked device. Since F1 this is a `failed` row, not a `blocked` one — the queue keeps
+      // trying, because an admin un-revoking is exactly the kind of thing that happens — so the
+      // row must say what is wrong without implying the recording is at fault.
+      await failWith('unauthenticated', 'failed');
+      const element = await renderRow();
+
+      expect(element.textContent).toContain('Ovom telefonu je ukinut pristup serveru');
+      // Not the 403 sentence: this phone is not "without permission", its access was withdrawn.
+      expect(element.textContent).not.toContain('nema dozvolu da šalje');
+    });
+
+    it('keeps the 403 sentence for a row that really is forbidden', async () => {
+      await failWith('unauthorized', 'blocked');
+      const element = await renderRow();
+
+      expect(element.textContent).toContain('Ovaj telefon nema dozvolu da šalje na server.');
+    });
+
+    describe('try all again', () => {
+      it('is not offered when nothing is stuck', async () => {
+        await queueOne(1);
+        const element = await render(1);
+
+        expect(element.querySelector('.retryAll__button')).toBeNull();
+      });
+
+      it('releases every stuck row in one press, and wakes the loop once', async () => {
+        // The chore this retires: three rows, three taps, on a screen a foreman opens with muddy
+        // hands because something has already gone wrong.
+        const blocked = await failWith('rejected', 'blocked');
+        const stalled = await failWith('server', 'failed', 8);
+        const revoked = await failWith('unauthenticated', 'failed', 8);
+        const element = await render(3);
+
+        element.querySelector<HTMLButtonElement>('.retryAll__button')!.click();
+        await fixture.whenStable();
+        await flushLiveQueries();
+
+        for (const entryId of [blocked, stalled, revoked]) {
+          expect(await store.getOutboxItem(entryId)).toMatchObject({
+            state: 'queued',
+            attempts: 0,
+            failureKind: null,
+          });
+        }
+        // Once, after everything is released — a pass started against a half-released queue would
+        // leave the rest until the next tick.
+        expect(uploads.wake).toHaveBeenCalledTimes(1);
+      });
+
+      it('leaves rows the loop is still working on exactly where they are', async () => {
+        // "Try all again" acts on precisely the rows that carry their own retry button. A row that
+        // is merely backing off is not stuck, and resetting its attempt count would throw away the
+        // queue's honest record of how long it has been trying.
+        const stillTrying = await failWith('offline', 'failed', 1);
+        await failWith('rejected', 'blocked');
+        const element = await render(2);
+
+        element.querySelector<HTMLButtonElement>('.retryAll__button')!.click();
+        await fixture.whenStable();
+        await flushLiveQueries();
+
+        expect(await store.getOutboxItem(stillTrying)).toMatchObject({
+          state: 'failed',
+          attempts: 1,
+        });
+      });
+    });
+
     it('counts blocked entries separately in the expanded summary', async () => {
       await failWith('rejected', 'blocked');
       const element = await renderRow();

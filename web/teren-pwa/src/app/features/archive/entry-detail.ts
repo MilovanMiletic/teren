@@ -566,7 +566,7 @@ export class EntryDetail {
 
   /** To the gate. The record does not edit; it hands over to the screen that does. */
   protected openConfirm(): void {
-    void this.router.navigate(['/potvrda', this.entryId()]);
+    void this.router.navigate(['/confirm', this.entryId()]);
   }
 
   protected openViewer(index: number): void {

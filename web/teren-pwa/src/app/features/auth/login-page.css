@@ -1,0 +1,30 @@
+/*
+ * Sign-in — what is specific to this screen. The shell is in `auth-layout.css` and the field card
+ * in `auth-form.css`, which is itself taken from `design/Login.dc.html`.
+ */
+
+/* Same reasoning as the activation screen: on a phone the keyboard owns this space. */
+.login__mark {
+  display: none;
+}
+
+.login__intro {
+  gap: var(--space-4);
+  padding-bottom: var(--space-5);
+}
+
+@media (min-width: 1024px) {
+  .login__mark {
+    display: block;
+  }
+
+  .login__intro {
+    padding-bottom: 0;
+  }
+}
+
+/* Flush with the head of the card, so it reads as a property of the form. */
+.login__offline {
+  margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) var(--space-1);
+  width: auto;
+}

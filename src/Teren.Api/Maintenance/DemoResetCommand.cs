@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Options;
+using Teren.Infrastructure.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Teren.Infrastructure.Persistence;
 using Teren.Infrastructure.Seeding;
@@ -34,6 +36,7 @@ public static class DemoResetCommand
 
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TerenDbContext>();
+        var identityDb = scope.ServiceProvider.GetRequiredService<TerenIdentityDbContext>();
 
         // Resolving either purge can throw — a mistyped Storage__SecretKey on a staging box fails
         // S3DemoObjectPurge's constructor, and a Hangfire storage that will not open fails the
@@ -43,9 +46,14 @@ public static class DemoResetCommand
         var objects = Resolve<IDemoObjectPurge>(scope, fault => new FaultedObjectPurge(fault));
         var jobs = Resolve<IDemoJobPurge>(scope, fault => new FaultedJobPurge(fault));
 
-        // Same first step as `seed`: a box that has never been migrated is a box that cannot be
-        // reset, and the failure would otherwise be a bare Npgsql "column does not exist".
+        // Same first step as `seed`, and BOTH histories, in the same order Program.cs uses:
+        // device.company_id and app_user.company_id reference the company table the evidence model
+        // owns. Migrating only one of them is how this command came to die on a bare Npgsql
+        // 42P01 "relation app_user does not exist" against a pre-D1 database — on the no-flag dry
+        // run, which is the safe default and the thing reached for when a demo is broken and a
+        // customer is in the room.
         await db.Database.MigrateAsync();
+        await identityDb.Database.MigrateAsync();
 
         Console.WriteLine($"  database    {Describe(db)}");
         Console.WriteLine($"  company     {DemoReset.CompanyId:D} (the seeded demo company)");
@@ -62,13 +70,16 @@ public static class DemoResetCommand
             Console.WriteLine(
                 $"  jobs        {Or(plan.PendingJobs, plan.JobsUnavailable, "pending")}");
             Console.WriteLine();
-            Console.WriteLine("Would then re-seed the demo company, its three sites and three entries.");
+            Console.WriteLine(
+                "Would then re-seed the demo company: three sites, three entries, the owner and "
+                + "the foreman, and the demo phone (its credential restored from "
+                + "Auth:DeviceToken).");
             Console.WriteLine();
 
             return decision.ExitCode;
         }
 
-        var result = await DemoReset.ResetAsync(db, objects, jobs);
+        var result = await DemoReset.ResetAsync(db, objects, jobs, DeviceTokenOf(app));
 
         Console.WriteLine("Removed:");
         WriteRows(result.Removed, result.ReportedEntriesRemoved);
@@ -79,13 +90,17 @@ public static class DemoResetCommand
                 result.JobsUnavailable,
                 "pending (the recurring sweep and the job history were left alone)"));
         Console.WriteLine();
-        Console.WriteLine($"Re-seeded: {result.Reseeded} row(s).");
+        // "written", not "inserted": the count includes the withdrawal stamps the re-seed cleared
+        // on rows that already existed (see DemoSeeder.SeedIdentityAsync).
+        Console.WriteLine($"Re-seeded: {result.Reseeded} row(s) written.");
         Console.WriteLine("Final state:");
         Console.WriteLine($"  companies   {result.FinalState.Companies}");
         Console.WriteLine($"  sites       {result.FinalState.Projects}");
         Console.WriteLine($"  entries     {result.FinalState.Entries}");
         Console.WriteLine($"  media       {result.FinalState.Media}");
         Console.WriteLine($"  reports     {result.FinalState.Reports}");
+        Console.WriteLine($"  users       {result.FinalState.AppUsers}");
+        Console.WriteLine($"  devices     {result.FinalState.Devices}");
         Console.WriteLine("  site ids    " + string.Join(", ", new[]
         {
             DemoSeeder.Project1Id, DemoSeeder.Project2Id, DemoSeeder.Project3Id,
@@ -109,6 +124,35 @@ public static class DemoResetCommand
         return result.GuardArmed ? decision.ExitCode : 1;
     }
 
+
+    /// <summary>
+    /// The demo device's token, so the re-seed provisions a phone that can actually authenticate.
+    /// Read from configuration rather than passed in, because a reset that restored the demo data
+    /// but not its credential would look like a success and behave like a dead demo.
+    /// <para>
+    /// An empty value is legitimate — it is the D7 end state — but it is never silent here.
+    /// Program.cs warns loudly about exactly this state at start-up, and a one-shot command that
+    /// prints a full report of what it did should not be the place the founder discovers his
+    /// freshly reset demo has no phone.
+    /// </para>
+    /// </summary>
+    private static string DeviceTokenOf(WebApplication app)
+    {
+        var token = app.Services
+            .GetRequiredService<IOptions<DeviceAuthOptions>>().Value.DeviceToken;
+
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            Console.WriteLine(
+                "  NOTE        Auth:DeviceToken is empty, so this reset provisions NO demo device "
+                + "and every device bearer token will be rejected. Set Auth__DeviceToken and run "
+                + "`seed` if this host is meant to run the demo.");
+            Console.WriteLine();
+        }
+
+        return token;
+    }
+
     private static void WriteRows(DemoRowCounts counts, int reportedEntries)
     {
         Console.WriteLine($"  reports     {counts.Reports}");
@@ -119,6 +163,11 @@ public static class DemoResetCommand
                 ? $"  ({reportedEntries} of them reported, i.e. immutable in normal operation)"
                 : string.Empty));
         Console.WriteLine($"  sites       {counts.Projects}");
+        Console.WriteLine($"  devices     {counts.Devices}");
+        Console.WriteLine($"  users       {counts.AppUsers}");
+        Console.WriteLine($"  codes       {counts.ActivationCodes}");
+        Console.WriteLine($"  sessions    {counts.AdminSessions + counts.PasswordTokens}");
+        Console.WriteLine($"  audit rows  {counts.AdminAudits}");
         Console.WriteLine($"  companies   {counts.Companies}");
     }
 

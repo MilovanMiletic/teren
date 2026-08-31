@@ -37,6 +37,10 @@ namespace Teren.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("name");
 
+                    b.Property<DateTime?>("SuspendedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("suspended_at");
+
                     b.HasKey("Id")
                         .HasName("pk_company");
 

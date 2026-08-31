@@ -351,6 +351,11 @@ migrations only). Seeds the demo company *Vodoinstal Petrović d.o.o.* and **thr
 
 (full ids share the prefix `d3a0c1f0-5b8e-4f1a-9c62-`; the company is `…000000000001`)
 
+Since D1 the seed also provisions identity rows on the same prefix: `…0000000000a1` the demo
+company_admin (Miloš Petrović, **no password** — no seeded credential exists anywhere), `…0000000000a2`
+the demo worker (Zoran Jovanović), and `…0000000000dd` the demo **device**, which was previously a
+dangling uuid on `entry.device_id` with no table behind it.
+
 Three sites rather than one because the Home project picker is a dead control with a single item
 and the buyer runs 3–20 active sites (PROJECT.md §2). Only site 1 carries entries — three
 realistic Serbian ones (reported / confirmed / awaiting_confirmation) dated relative to the first
@@ -362,7 +367,10 @@ a real multi-recipient case rather than discovering the array shape late.
 mirrors them as its offline fallback list; if the two ever drift, every `POST /api/entries` 404s
 and locally captured entries become unsendable. Seeding is **idempotent per row, not per run**: a
 database seeded at an earlier state gains exactly the rows it lacks and existing rows are never
-updated.
+updated — **with one deliberate exception, the demo device row.** Its `token_hash` is derived from
+`Auth:DeviceToken` rather than being demo content the founder might have edited, so it is upserted:
+a stale hash after a token rotation would make `seed` report success while every phone got a 401
+with nothing anywhere saying why. A no-change re-seed still reports zero rows.
 
 **Demo reset (B7):** `dotnet run --project src/Teren.Api -- reset-demo --yes-delete-demo-data`.
 Because the seed is idempotent *per row*, it can add what is missing but can never undo a demo:
@@ -836,45 +844,65 @@ only when the OS reports connectivity.
 - **Presigned URLs:** 15-minute TTL, single object key, PUT only. No listing, no wildcards.
 - **Immutability:** application check plus a Postgres trigger blocking UPDATE on entries with
   `reported_at IS NOT NULL`. Evidence value depends on this being mechanical, not conventional.
-- **Auth, honestly staged:**
-  - *M0 (demo):* a static device token baked into the build. This is a **deliberate temporary
-    compromise for the distributor demo, and no real customer data goes into that environment.**
-  - *M1:* join codes bind a device to a project and issue a per-device token (roadmap C5) — still
-    no login screen, because a foreman with muddy hands will not type a password.
-  - *M2:* real accounts and roles, when there are customers who are not friends.
+- **Auth:** a bearer token on every `/api` request, resolved by `DbCredentialAuthenticator` against
+  a hashed credential row. There is no static token in code any more — the M0 compromise ended with
+  increment D1 (2026-08-30). `Auth:DeviceToken` survives only as *the demo device's* token, which
+  `DemoSeeder` provisions into the `device` table as `SHA-256(...)`, so the value baked into the PWA
+  bundle authenticates as a genuine device row like any other.
 
-### Identity model (planned; each table lands with the increment that uses it)
+### Identity model (shipped, increment D1 — 2026-08-30)
 
-There is deliberately no user/profile table in the B1 schema — B2–B4 have no one to authenticate.
-Two tables arrive later, both tenant-scoped under `company` like everything else:
+Three roles: **super_admin** (Teren staff), **company_admin** (the customer), **worker** (the
+foreman who records). Full rationale in `plans/profile-and-identity.md`; the shipped shape:
 
 ```sql
--- C5 (M1): who is this phone? Identity of the DEVICE, not a person.
-device (id uuid PK, company_id → company,
-        project_id → project,          -- what the join code bound it to
-        name text,                     -- "Zoranov telefon"
-        token_hash text,               -- per-device bearer token, hashed
-        created_at, last_seen_at, revoked_at timestamptz null)
-
--- M2: who is this person? Owners log in; foremen mostly keep using bound devices.
-app_user (id uuid PK, company_id → company,
-          email text UNIQUE, password_hash text,
-          display_name text, role text,          -- owner | office | foreman
+app_user (id uuid PK,
+          company_id uuid NULL → company,   -- NULL if and only if super_admin
+          role text,                        -- super_admin | company_admin | worker
+          username text NULL,               -- workers: required, globally unique. The durable identity.
+          display_name text, email text NULL, password_hash text NULL,
           language text NOT NULL DEFAULT 'sr',
           created_at, last_login_at, disabled_at timestamptz null)
+
+device (id uuid PK, company_id → company, user_id → app_user,
+        name text, token_hash char(64),     -- ux_device_token_hash IS the auth path
+        created_at, last_seen_at, revoked_at, revoked_by_user_id)
+
+activation_code, password_token, admin_session, admin_audit   -- see the plan for columns
 ```
 
-How they relate: `entry.device_id` (already in the B1 schema) records provenance — which phone
-captured the evidence — and keeps meaning even after accounts exist. A `device` may later gain an
-optional `app_user_id` when a company wants entries attributed to named people; that link is
-nullable on purpose, because the foreman's phone is bound to a *project* first and a *person*
-second. The two identities serve different questions: `device` answers "is this phone allowed to
-write into this project", `app_user` answers "who may see, confirm, and administer".
+Four constraints carry the role rules mechanically rather than conventionally, in the taste
+`ck_entry_status` sets: `ck_app_user_company_scope` (`(role = 'super_admin') = (company_id IS NULL)`)
+makes a super_admin *inside a tenant* unrepresentable; `ck_app_user_worker_has_no_password` makes a
+second door into the diary unrepresentable. `email` is a **partial** unique index over non-null
+values, because a worker need not have one.
 
-Why not create these tables now: the columns depend on decisions not yet made (password vs. magic
-link, whether foremen ever log in at all). Speculative schema is churn; the shape is recorded here
-so the design (welcome/login screens) and the schema stay aligned, and the migration is written
-when C5 respectively M2 starts.
+**The two-context split is the mechanism behind the product's central privacy claim.**
+`TerenIdentityDbContext` maps a closed set of identity types by name and has **no `DbSet<Entry>`,
+`Media` or `Report`** — `db.Set<Entry>()` throws, because the type is not in the model. A super_admin
+carries `CompanyId = null`, so the evidence query filters (deny-by-default) match nothing for him
+anyway. "Teren staff cannot read a customer's diary" is therefore a property of the model the
+platform code path is compiled against, not a policy anyone has to remember. Both contexts are now
+explicit closed sets — `ApplyConfigurationsFromAssembly` was removed from `TerenDbContext` so an
+identity configuration cannot be swallowed into the evidence model — and each has a
+model-composition test asserting the other's types are absent.
+
+It has its own migration history table, `__EFMigrationsHistory_identity`; `migrate` applies both.
+
+Note the caveat, so nobody over-claims it: this is a **model** barrier, not a connection barrier.
+Both contexts share a connection string, so raw SQL on the identity context can still reach
+`entry`. The barrier holds against every typed route; a source scan for raw `FROM entry|media|report`
+under the platform namespace is owed when D4 ships the log viewer.
+
+`entry.device_id` keeps its original meaning — provenance, which phone captured the evidence —
+distinct from the `created_by_user_id` / `confirmed_by_user_id` attribution columns arriving in D8.
+**It has no foreign key**, deliberately: adding one would validate every existing row on a live
+database. So "revoking a device stamps `revoked_at`, never deletes the row" is a code-level
+discipline backed by a test, not a database guarantee.
+
+- Personal data stays out of URLs, object keys, and logs. This becomes load-bearing at D5, when the
+  super admin's log viewer turns that discipline into a security boundary — enforced there by a
+  property allow-list at the sink, exception scrubbing, and a test that scans every log call site.
 - Personal data stays out of URLs, object keys, and logs.
 
 ---

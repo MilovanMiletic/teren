@@ -83,7 +83,7 @@ describe('ArchivePage', () => {
         }),
       ],
       providers: [
-        provideRouter([{ path: 'dnevnik', component: ArchivePage }]),
+        provideRouter([{ path: 'diary', component: ArchivePage }]),
         { provide: TEREN_DB, useValue: db },
         { provide: ArchiveService, useValue: archive as unknown as ArchiveService },
         { provide: ConnectivityService, useValue: { online } },
@@ -158,12 +158,12 @@ describe('ArchivePage', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(router.url).toBe(`/dnevnik?unos=${entry.id}`);
+    expect(router.url).toBe(`/diary?entry=${entry.id}`);
   });
 
   it('replaces the list with the record on a phone', async () => {
     const entry = await captureEntry(store, { project: PROJECT });
-    await router.navigate(['/dnevnik'], { queryParams: { unos: entry.id } });
+    await router.navigate(['/diary'], { queryParams: { entry: entry.id } });
 
     const element = await render();
     await waitUntil(() => element.querySelector('app-entry-detail') !== null, {
@@ -180,7 +180,7 @@ describe('ArchivePage', () => {
     // detail together, because the person going through an archive is comparing days.
     viewport.expanded = () => true;
     const entry = await captureEntry(store, { project: PROJECT });
-    await router.navigate(['/dnevnik'], { queryParams: { unos: entry.id } });
+    await router.navigate(['/diary'], { queryParams: { entry: entry.id } });
 
     const element = await render();
     await waitUntil(() => element.querySelector('app-entry-detail') !== null, {
@@ -252,7 +252,7 @@ describe('ArchivePage', () => {
 
     const element = await render();
     await waitForRows(element, 1);
-    // Spied rather than routed: `/potvrda/:entryId` is a lazy route of its own, and what this
+    // Spied rather than routed: `/confirm/:entryId` is a lazy route of its own, and what this
     // screen owes is the correct destination.
     const navigate = vi.spyOn(router, 'navigate');
 
@@ -265,7 +265,7 @@ describe('ArchivePage', () => {
     action.click();
 
     // Straight to the gate, not to the read-only record first.
-    expect(navigate).toHaveBeenCalledWith(['/potvrda', 'srv-open']);
+    expect(navigate).toHaveBeenCalledWith(['/confirm', 'srv-open']);
   });
 
   it('offers nothing at all on a reported entry, which the server has sealed', async () => {

@@ -4,7 +4,15 @@ import { TerenApiClient } from '../api/teren-api.client';
 import { Project } from '../db/models';
 import { DEMO_PROJECTS, ProjectSource } from './project-source';
 
-const CACHE_KEY = 'teren.projects';
+/**
+ * Where the cached site list lives.
+ *
+ * Exported because `ActivationService` has to clear it when this phone changes company: a list
+ * cached under another company is a set of project ids the new credential cannot use, and an
+ * entry captured against one 404s for ever (`plans/profile-and-identity.md` §10.4). One
+ * definition, so the clearing and the writing can never drift apart.
+ */
+export const PROJECT_CACHE_KEY = 'teren.projects';
 
 /**
  * The site list, from the server when there is one and from disk when there is not.
@@ -60,7 +68,7 @@ function toProject(response: { id: string; name: string; address: string | null 
 
 function writeCache(projects: readonly Project[]): void {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(projects));
+    localStorage.setItem(PROJECT_CACHE_KEY, JSON.stringify(projects));
   } catch {
     // Private mode or an exhausted quota. The list simply will not survive going offline.
   }
@@ -76,7 +84,7 @@ function writeCache(projects: readonly Project[]): void {
 function readCache(): Project[] | null {
   let raw: string | null;
   try {
-    raw = localStorage.getItem(CACHE_KEY);
+    raw = localStorage.getItem(PROJECT_CACHE_KEY);
   } catch {
     return null;
   }

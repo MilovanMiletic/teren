@@ -2,12 +2,30 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Teren.Infrastructure.Seeding;
 
-/// <summary>Row counts, one per table the demo company owns.</summary>
-public sealed record DemoRowCounts(int Companies, int Projects, int Entries, int Media, int Reports)
+/// <summary>
+/// Row counts, one per table the demo company owns. Every table the reset deletes from has a
+/// field here, and that is not tidiness: this record is both what the command reports and the
+/// fingerprint that proves no other company was touched. A table missing from it is a blind spot
+/// in the only code in the product allowed to stand the immutability guard down.
+/// </summary>
+public sealed record DemoRowCounts(
+    int Companies,
+    int Projects,
+    int Entries,
+    int Media,
+    int Reports,
+    int AppUsers,
+    int Devices,
+    int ActivationCodes,
+    int PasswordTokens,
+    int AdminSessions,
+    int AdminAudits)
 {
-    public static readonly DemoRowCounts Empty = new(0, 0, 0, 0, 0);
+    public static readonly DemoRowCounts Empty = new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
-    public int Total => Companies + Projects + Entries + Media + Reports;
+    public int Total =>
+        Companies + Projects + Entries + Media + Reports
+        + AppUsers + Devices + ActivationCodes + PasswordTokens + AdminSessions + AdminAudits;
 }
 
 /// <summary>What a reset would destroy, without destroying it.</summary>
@@ -134,10 +152,13 @@ public static class DemoReset
     /// <param name="objects">Purges the bucket. Null means "not wired", which is reported rather
     /// than treated as zero objects.</param>
     /// <param name="jobs">Purges pending background jobs. Null means "not wired".</param>
+    /// <param name="deviceToken">The demo device's bearer token, re-provisioned with the seed.
+    /// Empty means the reset leaves the demo with no phone — legitimate, and what D7 will do.</param>
     public static async Task<DemoResetResult> ResetAsync(
         DbContext db,
         IDemoObjectPurge? objects = null,
         IDemoJobPurge? jobs = null,
+        string? deviceToken = null,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(db);
@@ -174,6 +195,37 @@ public static class DemoReset
             var entries = await DeleteEntriesLeafFirstAsync(db, ct);
             var projects = await ExecuteScopedAsync(
                 db, "DELETE FROM project WHERE company_id = {0}", ct);
+
+            // Identity, peeled in dependency order like everything else, because every one of
+            // these foreign keys is RESTRICT too. activation_code points at device (the phone the
+            // code produced) as well as at app_user, so it goes before both.
+            var adminAudits = await ExecuteScopedAsync(
+                db, "DELETE FROM admin_audit WHERE company_id = {0}", ct);
+
+            // admin_session and password_token carry no company_id — a super admin has no
+            // company, so the owning tenant is whoever the row points at. Scoping through
+            // app_user is therefore not a shortcut; it is the only correct scope available.
+            var adminSessions = await ExecuteScopedAsync(
+                db,
+                """
+                DELETE FROM admin_session
+                WHERE user_id IN (SELECT id FROM app_user WHERE company_id = {0})
+                """,
+                ct);
+            var passwordTokens = await ExecuteScopedAsync(
+                db,
+                """
+                DELETE FROM password_token
+                WHERE user_id IN (SELECT id FROM app_user WHERE company_id = {0})
+                """,
+                ct);
+            var activationCodes = await ExecuteScopedAsync(
+                db, "DELETE FROM activation_code WHERE company_id = {0}", ct);
+            var devices = await ExecuteScopedAsync(
+                db, "DELETE FROM device WHERE company_id = {0}", ct);
+            var appUsers = await ExecuteScopedAsync(
+                db, "DELETE FROM app_user WHERE company_id = {0}", ct);
+
             var companies = await ExecuteScopedAsync(
                 db, "DELETE FROM company WHERE id = {0}", ct);
 
@@ -204,11 +256,15 @@ public static class DemoReset
             // Inside the same transaction: a failure here restores the demo that was there
             // before, rather than leaving the founder with no demo at all.
             db.ChangeTracker.Clear();
-            var inserted = await DemoSeeder.SeedAsync(db, ct);
+            var inserted = await DemoSeeder.SeedAsync(db, deviceToken, ct);
 
             await transaction.CommitAsync(ct);
 
-            return (new DemoRowCounts(companies, projects, entries, media, reports), inserted);
+            return (
+                new DemoRowCounts(
+                    companies, projects, entries, media, reports,
+                    appUsers, devices, activationCodes, passwordTokens, adminSessions, adminAudits),
+                inserted);
         });
 
         // Only now that the rows are gone for good. See the type comment: committing first is
@@ -305,22 +361,105 @@ public static class DemoReset
             Media: await ScalarAsync(
                 db, "SELECT count(*)::int AS \"Value\" FROM media WHERE company_id = {0}", ct),
             Reports: await ScalarAsync(
-                db, "SELECT count(*)::int AS \"Value\" FROM report WHERE company_id = {0}", ct));
+                db, "SELECT count(*)::int AS \"Value\" FROM report WHERE company_id = {0}", ct),
+            AppUsers: await ScalarAsync(
+                db, "SELECT count(*)::int AS \"Value\" FROM app_user WHERE company_id = {0}", ct),
+            Devices: await ScalarAsync(
+                db, "SELECT count(*)::int AS \"Value\" FROM device WHERE company_id = {0}", ct),
+            ActivationCodes: await ScalarAsync(
+                db,
+                "SELECT count(*)::int AS \"Value\" FROM activation_code WHERE company_id = {0}",
+                ct),
+            PasswordTokens: await ScalarAsync(
+                db,
+                """
+                SELECT count(*)::int AS "Value" FROM password_token
+                WHERE user_id IN (SELECT id FROM app_user WHERE company_id = {0})
+                """,
+                ct),
+            AdminSessions: await ScalarAsync(
+                db,
+                """
+                SELECT count(*)::int AS "Value" FROM admin_session
+                WHERE user_id IN (SELECT id FROM app_user WHERE company_id = {0})
+                """,
+                ct),
+            AdminAudits: await ScalarAsync(
+                db, "SELECT count(*)::int AS \"Value\" FROM admin_audit WHERE company_id = {0}", ct));
 
-    /// <summary>Everything the reset must not touch, as one comparable fingerprint.</summary>
+    /// <summary>
+    /// Everything the reset must not touch, as one comparable fingerprint. Counted before and
+    /// after the deletes inside the same transaction; one row of difference rolls the whole thing
+    /// back.
+    /// <para>
+    /// <b><c>IS DISTINCT FROM</c>, never <c>&lt;&gt;</c>.</b> <c>app_user.company_id</c> and
+    /// <c>admin_audit.company_id</c> are nullable — NULL is exactly how a super_admin row is
+    /// spelled — and <c>NULL &lt;&gt; '...'</c> is NULL, not true. Under the ordinary comparison
+    /// such a row would be counted as neither the demo's nor anybody else's and would drop out of
+    /// the fingerprint entirely, which is a blind spot in the one piece of code in Teren that
+    /// disables the evidence guard. The five NOT NULL columns below are safe either way; they use
+    /// the same operator so that the next nullable column added here cannot reopen the hole.
+    /// </para>
+    /// </summary>
     private static async Task<DemoRowCounts> CountForeignRowsAsync(
         DbContext db, CancellationToken ct) =>
         new(
             Companies: await ScalarAsync(
-                db, "SELECT count(*)::int AS \"Value\" FROM company WHERE id <> {0}", ct),
+                db,
+                "SELECT count(*)::int AS \"Value\" FROM company WHERE id IS DISTINCT FROM {0}",
+                ct),
             Projects: await ScalarAsync(
-                db, "SELECT count(*)::int AS \"Value\" FROM project WHERE company_id <> {0}", ct),
+                db,
+                "SELECT count(*)::int AS \"Value\" FROM project WHERE company_id IS DISTINCT FROM {0}",
+                ct),
             Entries: await ScalarAsync(
-                db, "SELECT count(*)::int AS \"Value\" FROM entry WHERE company_id <> {0}", ct),
+                db,
+                "SELECT count(*)::int AS \"Value\" FROM entry WHERE company_id IS DISTINCT FROM {0}",
+                ct),
             Media: await ScalarAsync(
-                db, "SELECT count(*)::int AS \"Value\" FROM media WHERE company_id <> {0}", ct),
+                db,
+                "SELECT count(*)::int AS \"Value\" FROM media WHERE company_id IS DISTINCT FROM {0}",
+                ct),
             Reports: await ScalarAsync(
-                db, "SELECT count(*)::int AS \"Value\" FROM report WHERE company_id <> {0}", ct));
+                db,
+                "SELECT count(*)::int AS \"Value\" FROM report WHERE company_id IS DISTINCT FROM {0}",
+                ct),
+            AppUsers: await ScalarAsync(
+                db,
+                "SELECT count(*)::int AS \"Value\" FROM app_user WHERE company_id IS DISTINCT FROM {0}",
+                ct),
+            Devices: await ScalarAsync(
+                db,
+                "SELECT count(*)::int AS \"Value\" FROM device WHERE company_id IS DISTINCT FROM {0}",
+                ct),
+            ActivationCodes: await ScalarAsync(
+                db,
+                """
+                SELECT count(*)::int AS "Value" FROM activation_code
+                WHERE company_id IS DISTINCT FROM {0}
+                """,
+                ct),
+            PasswordTokens: await ScalarAsync(
+                db,
+                """
+                SELECT count(*)::int AS "Value" FROM password_token
+                WHERE user_id NOT IN (SELECT id FROM app_user WHERE company_id = {0})
+                """,
+                ct),
+            AdminSessions: await ScalarAsync(
+                db,
+                """
+                SELECT count(*)::int AS "Value" FROM admin_session
+                WHERE user_id NOT IN (SELECT id FROM app_user WHERE company_id = {0})
+                """,
+                ct),
+            AdminAudits: await ScalarAsync(
+                db,
+                """
+                SELECT count(*)::int AS "Value" FROM admin_audit
+                WHERE company_id IS DISTINCT FROM {0}
+                """,
+                ct));
 
     /// <summary>
     /// Asks Postgres, not the command's own memory, whether the delete guard is armed.

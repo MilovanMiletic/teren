@@ -50,8 +50,21 @@ export class RescueService {
   }
 }
 
-/** The entry the user is looking at right now, read from the URL (`/unos/:entryId`). */
+/**
+ * The entry the user is looking at right now, read from the URL.
+ *
+ * **This is a hard coupling to `app.routes.ts` and it has no compiler to protect it.** The saved
+ * screen is `entry/:entryId` (it was `unos/:entryId` until F4b), and the only thing that keeps
+ * this pattern honest is a spec that derives the parameterised routes from the route table and
+ * checks this function against them. Rename the route without touching this line and nothing
+ * fails to build — a foreman standing on the saved screen picking photos simply stops being
+ * exempt, and his draft gets swept out from under him. That surfaces a week later as "the app
+ * lost my recording", which is the worst bug this product can have.
+ *
+ * Read from `location.pathname` rather than from the router on purpose: this runs at bootstrap,
+ * before the first navigation has resolved, and it must answer synchronously.
+ */
 export function openEntryIds(pathname = typeof location === 'undefined' ? '' : location.pathname) {
-  const match = /^\/unos\/([^/?#]+)/.exec(pathname);
+  const match = /^\/entry\/([^/?#]+)/.exec(pathname);
   return match ? [decodeURIComponent(match[1])] : [];
 }

@@ -767,7 +767,7 @@ export class ConfirmPage {
 
   /** The read-only record, for an entry this screen may not edit. */
   protected openRecord(): void {
-    void this.router.navigate(['/dnevnik'], { queryParams: { unos: this.entryId() } });
+    void this.router.navigate(['/diary'], { queryParams: { entry: this.entryId() } });
   }
 }
 

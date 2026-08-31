@@ -142,6 +142,20 @@
             </li>
           }
         </ul>
+
+        @if (retryableCount() > 0) {
+          <!--
+            One press for the whole queue. Shown only when there is something it would actually
+            move, and it acts on exactly the rows that carry their own retry button — never a
+            sweeping promise over rows it would silently skip.
+          -->
+          <div class="retryAll">
+            <button type="button" class="btn btn--tertiary retryAll__button" (click)="retryAll()">
+              <app-icon name="upload-cloud" [size]="18" />
+              {{ t('pending.retryAll') }}
+            </button>
+          </div>
+        }
       }
 
       <div class="grow"></div>

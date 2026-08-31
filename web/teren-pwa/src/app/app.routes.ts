@@ -44,5 +44,36 @@ export const routes: Routes = [
     path: 'cekaju',
     loadComponent: () => import('./features/pending/pending-page').then((m) => m.PendingPage),
   },
+  /*
+   * Identity (F3). **English paths, by founder decision (2026-08-30)**: routes are code, and
+   * CLAUDE.md already makes code, comments and docs English. Every word the foreman *reads* still
+   * goes through Transloco and still defaults to Serbian; this changes URLs, nothing else. The
+   * six Serbian paths above are renamed in F4b — deliberately its own increment, because
+   * `rescue.service.ts` parses `location.pathname` to work out which entry is open and a rescue
+   * that silently stops recognising the confirm screen surfaces a week later as "the app lost my
+   * recording".
+   *
+   * **No guard on any of them in this increment.** They are reachable by typing the URL and by
+   * nothing else, so the distributor's demo is byte-identical; F4 adds the `canMatch` gate.
+   *
+   * Registered **before** the wildcard: `'**' → redirectTo: ''` re-runs matching, so a route
+   * declared after it is never reached.
+   */
+  {
+    path: 'welcome',
+    loadComponent: () => import('./features/auth/welcome-page').then((m) => m.WelcomePage),
+  },
+  {
+    /*
+     * The re-activation door. It must keep working while a session exists — a revoked device is
+     * exactly the phone that needs it — so when the gate lands at F4 this route stays unguarded.
+     */
+    path: 'activate',
+    loadComponent: () => import('./features/auth/activate-page').then((m) => m.ActivatePage),
+  },
+  {
+    path: 'login',
+    loadComponent: () => import('./features/auth/login-page').then((m) => m.LoginPage),
+  },
   { path: '**', redirectTo: '' },
 ];

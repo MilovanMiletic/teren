@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Teren.Core.Entities;
 using Teren.Core.Tenancy;
+using Teren.Infrastructure.Persistence.Configurations;
 
 namespace Teren.Infrastructure.Persistence;
 
@@ -17,7 +18,17 @@ public sealed class TerenDbContext(DbContextOptions<TerenDbContext> options, Ten
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.ApplyConfigurationsFromAssembly(typeof(TerenDbContext).Assembly);
+        // Named one by one, never ApplyConfigurationsFromAssembly. The identity model
+        // (TerenIdentityDbContext) lives in the same assembly, and a by-assembly scan would pull
+        // app_user, device and the rest into the evidence model — and into its migrations — the
+        // moment a configuration was added next door. Both contexts are closed sets, and a test
+        // asserts the composition of each; this is layer 3 of profile-and-identity §6 read in the
+        // other direction.
+        modelBuilder.ApplyConfiguration(new CompanyConfiguration());
+        modelBuilder.ApplyConfiguration(new ProjectConfiguration());
+        modelBuilder.ApplyConfiguration(new EntryConfiguration());
+        modelBuilder.ApplyConfiguration(new MediaConfiguration());
+        modelBuilder.ApplyConfiguration(new ReportConfiguration());
 
         // Tenant scoping is automatic and deny-by-default: correctness never depends on a
         // handler remembering a Where clause. _tenant.CompanyId is read per query, so setting

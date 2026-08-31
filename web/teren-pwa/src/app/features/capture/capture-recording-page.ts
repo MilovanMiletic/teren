@@ -243,7 +243,7 @@ export class CaptureRecordingPage implements OnDestroy {
       }
 
       this.leaving = true;
-      await this.router.navigate(['/unos', entry.id], { replaceUrl: true });
+      await this.router.navigate(['/entry', entry.id], { replaceUrl: true });
     } catch {
       // The chunks are still on disk under this entry id, so the retry below — or the next app
       // start — can still assemble them. Nothing is stranded.
@@ -265,7 +265,7 @@ export class CaptureRecordingPage implements OnDestroy {
       const entry = await this.entries.finishCapture(entryId);
       if (entry) {
         this.leaving = true;
-        await this.router.navigate(['/unos', entry.id], { replaceUrl: true });
+        await this.router.navigate(['/entry', entry.id], { replaceUrl: true });
       } else {
         this.tooShort.set(true);
       }
@@ -298,7 +298,7 @@ export class CaptureRecordingPage implements OnDestroy {
     const entryId = this.salvagedEntryId();
     if (entryId) {
       this.leaving = true;
-      await this.router.navigate(['/unos', entryId], { replaceUrl: true });
+      await this.router.navigate(['/entry', entryId], { replaceUrl: true });
     }
   }
 

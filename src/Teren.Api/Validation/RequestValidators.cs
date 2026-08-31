@@ -1,6 +1,7 @@
 using FluentValidation;
 using Teren.Api.Contracts;
 using Teren.Core.Entities;
+using Teren.Core.Identity;
 
 namespace Teren.Api.Validation;
 
@@ -172,5 +173,132 @@ public sealed class ConfirmEntryRequestValidator : AbstractValidator<ConfirmEntr
             .WithMessage(
                 $"corrected must carry {Teren.Core.Ai.EntryStructureSchema.VersionKey}, so a "
                 + "future trade template can evolve the shape without a migration.");
+    }
+}
+
+// ------------------------------------------------------------------ identity (D2/D3)
+
+/// <summary>
+/// Shape only, and deliberately generous: an activation screen is the one thing standing between a
+/// foreman and the record button, so the server refuses a payload that is structurally missing —
+/// never one that merely looks wrong. Whether the code is right is answered by the handler, once,
+/// with a single indistinguishable 401.
+/// <para>
+/// In particular the code is <b>not</b> length-checked here. It is folded before it is judged
+/// (separators, case and Cyrillic homoglyphs all collapse), so a 400 on "8 characters" would
+/// reject <c>xkd4-7hmp</c>, which is exactly what a man pastes out of a chat message.
+/// </para>
+/// </summary>
+public sealed class ActivateRequestValidator : AbstractValidator<ActivateRequest>
+{
+    public ActivateRequestValidator()
+    {
+        RuleLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(r => r.Username)
+            .NotEmpty()
+            .WithMessage("username is the name your foreman was given; it cannot be empty.");
+
+        RuleFor(r => r.ActivationCode)
+            .NotEmpty()
+            .WithMessage("activation_code cannot be empty.");
+    }
+}
+
+public sealed class ActivationCodeRequestBodyValidator
+    : AbstractValidator<ActivationCodeRequestBody>
+{
+    public ActivationCodeRequestBodyValidator()
+    {
+        RuleLevelCascadeMode = CascadeMode.Stop;
+
+        // Only that something was sent. Whether the username exists is never answered here or
+        // anywhere else on this route: it always returns 202.
+        RuleFor(r => r.Username).NotEmpty().WithMessage("username cannot be empty.");
+    }
+}
+
+/// <summary>
+/// <b>The password is not validated here, on purpose.</b> A 400 that says "too short" on the login
+/// route would tell an attacker that his guess was structurally acceptable — and worse, a
+/// validation failure would answer before the handler could equalise the timing. Login has exactly
+/// one answer for everything: 401.
+/// </summary>
+public sealed class LoginRequestValidator : AbstractValidator<LoginRequest>
+{
+    public LoginRequestValidator()
+    {
+        RuleLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(r => r.Email).NotEmpty().WithMessage("email cannot be empty.");
+        RuleFor(r => r.Password).NotEmpty().WithMessage("password cannot be empty.");
+    }
+}
+
+/// <summary>
+/// Here the password <em>is</em> validated, and the asymmetry with login is the point: the caller
+/// holds a single-use token issued for his own account, so telling him his new password is too
+/// short costs nothing and saves him a second round trip.
+/// </summary>
+public sealed class SetPasswordRequestValidator : AbstractValidator<SetPasswordRequest>
+{
+    public SetPasswordRequestValidator()
+    {
+        RuleLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(r => r.Token).NotEmpty().WithMessage("token cannot be empty.");
+
+        RuleFor(r => r.Password)
+            .NotEmpty()
+            .Must(PasswordPolicy.IsAcceptable)
+            .WithMessage(PasswordPolicy.Requirement);
+    }
+}
+
+public sealed class CreateWorkerRequestValidator : AbstractValidator<CreateWorkerRequest>
+{
+    /// <summary>Long enough for "Aleksandar Stanković", short enough that a paste accident is
+    /// refused rather than stored.</summary>
+    private const int MaxDisplayNameLength = 120;
+
+    public CreateWorkerRequestValidator()
+    {
+        RuleLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(r => r.DisplayName)
+            .NotEmpty()
+            .WithMessage("display_name is what the foreman is called; it cannot be empty.")
+            .Must(name => name!.Trim().Length > 0)
+            .WithMessage("display_name cannot be blank.")
+            .MaximumLength(MaxDisplayNameLength);
+
+        // Format and availability are the handler's: one of them needs the database, and both
+        // want to answer with the same vocabulary rather than half in a validation problem and
+        // half in a conflict.
+        RuleFor(r => r.Username)
+            .MaximumLength(UsernameFormat.MaximumLength)
+            .When(r => r.Username is not null);
+
+        RuleFor(r => r.Email)
+            .MaximumLength(EmailAddress.MaximumLength)
+            .When(r => r.Email is not null);
+    }
+}
+
+public sealed class UpdateWorkerRequestValidator : AbstractValidator<UpdateWorkerRequest>
+{
+    private const int MaxDisplayNameLength = 120;
+
+    public UpdateWorkerRequestValidator()
+    {
+        RuleLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(r => r.DisplayName)
+            .MaximumLength(MaxDisplayNameLength)
+            .When(r => r.DisplayName is not null);
+
+        RuleFor(r => r.Email)
+            .MaximumLength(EmailAddress.MaximumLength)
+            .When(r => r.Email is not null);
     }
 }

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Teren.Api.Auth;
 using Teren.Api.Contracts;
 using Teren.Infrastructure.Persistence;
 
@@ -8,7 +9,9 @@ public static class ProjectEndpoints
 {
     public static RouteGroupBuilder MapProjectEndpoints(this RouteGroupBuilder api)
     {
-        var group = api.MapGroup("/projects").WithTags("Projects");
+        // Evidence-adjacent: a project carries its address, its coordinates and its distribution
+        // list, none of which Teren staff may read. Gated to the two roles that own the work.
+        var group = api.MapGroup("/projects").WithTags("Projects").RequireRole(RoleGates.Evidence);
 
         group.MapGet("/", GetProjectsAsync)
             .WithName("GetProjects")

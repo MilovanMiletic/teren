@@ -247,6 +247,19 @@ describe('ConfirmService', () => {
     expect(result.retryable).toBe(false);
   });
 
+  it('answers a 403 exactly as it answers a 401', async () => {
+    // `classify` has a `default:` arm, so an unnamed kind silently becomes "unknown, retryable" —
+    // which on this screen means offering a foreman a retry button over a confirmation that can
+    // never succeed. Naming both credential kinds is what keeps that from happening quietly.
+    const id = await givenEntryWithDraft();
+    api.failConfirm = httpError(403);
+
+    const result = await confirmations.confirm(id, draft('gotovo'));
+
+    expect(result.failure).toBe('unauthorized');
+    expect(result.retryable).toBe(false);
+  });
+
   it('says so plainly when this build has no server at all', async () => {
     const id = await givenEntryWithDraft();
     api.configured = false;

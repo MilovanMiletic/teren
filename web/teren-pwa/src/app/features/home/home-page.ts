@@ -187,11 +187,11 @@ export class HomePage {
   }
 
   protected record(): void {
-    void this.router.navigate(['/snimanje']);
+    void this.router.navigate(['/record']);
   }
 
   protected openPending(): void {
-    void this.router.navigate(['/cekaju']);
+    void this.router.navigate(['/pending']);
   }
 
   /**
@@ -207,7 +207,7 @@ export class HomePage {
       this.openConfirm(entry.id);
       return;
     }
-    void this.router.navigate(['/dnevnik'], { queryParams: { unos: entry.id } });
+    void this.router.navigate(['/diary'], { queryParams: { entry: entry.id } });
   }
 
   /**
@@ -224,11 +224,11 @@ export class HomePage {
   }
 
   private openConfirm(entryId: string): void {
-    void this.router.navigate(['/potvrda', entryId]);
+    void this.router.navigate(['/confirm', entryId]);
   }
 
   protected openArchive(): void {
-    void this.router.navigate(['/dnevnik']);
+    void this.router.navigate(['/diary']);
   }
 
   /**

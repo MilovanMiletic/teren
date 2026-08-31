@@ -12,6 +12,95 @@ Entry format:
 
 ---
 
+## 2026-08-30 (evening) — B7 cleared its gates; profiles designed and the first half built
+
+**Talked about**
+- B7's two reviewers (branding + install; `reset-demo`) — both **accept**, no gating findings.
+- Then the session's real subject: the profile/identity model, designed from scratch with the
+  founder rather than for him. Seven rounds of decisions, several reversing earlier ones.
+- Whether the dev-env login should be a throwaway or the real thing. Founder: *"we are switching.
+  We will build a profile logic like it should."*
+
+**Decided** (full record in `plans/profile-and-identity.md` §2; the load-bearing ones)
+- **Three roles**: super_admin (Teren staff), company_admin (the customer), worker (the foreman).
+- **A super admin can never read entries, transcripts, photos or reports.** He may see company and
+  project *names* and the application log stream. That claim is narrower than the first draft's,
+  deliberately, and §6/§12 of the plan make it mechanically true rather than promised.
+- **A worker's username is his durable identity**; the device credential proves it. This reversed
+  the original "the device credential *is* his identity" after the founder asked the question that
+  broke it: *what if the worker changes his device?*
+- **Activation is username + code, and the code stays single-use.** A reusable code is a permanent
+  password shared over WhatsApp. Device replacement is solved instead by **self-service**: he types
+  his username and a fresh code is emailed to him.
+- **No sign-in step for an activated phone, ever** — it opens on the record button, resolved
+  on-device with no network call.
+- **Everything visible on every device.** This overturned "admin screens ≥768px only" and with it
+  the case for a separate admin app.
+- **Codes are shared one worker at a time.** No bulk export: a group chat carrying six codes lets
+  any worker activate under another man's name, and the report would then carry that name.
+- **Routes and query parameters are English.** Founder: *"common is to use english words in
+  programming."* UI text stays Serbian; this changes URLs, nothing a user reads.
+
+**Built**
+- `plans/profile-and-identity.md` — the specification, 840 lines, founder-approved.
+- **D1** (backend, reviewed **accept-with-fixes**, fixes in): six identity tables,
+  `TerenIdentityDbContext` as a closed model with its own migration history, PBKDF2 password
+  hashing and Crockford activation codes in `Teren.Core/Identity/`, `DbCredentialAuthenticator`.
+  `StaticTokenDeviceAuthenticator` **deleted** — the token baked into the PWA now authenticates as
+  a real seeded device row, which is what kept the demo working through the change. 476 → 610 tests.
+- **F1 + F2** (frontend, reviewed **accept-with-fixes**, fixes in): the outbox fix and session
+  plumbing. 436 → 473 specs.
+- **F3**: `/welcome`, `/activate`, `/login`, verified in a real browser at six widths. 473 → 538.
+- Docs: `ARCHITECTURE.md` §12 rewritten (it was false in every particular), §6 seed contract,
+  `CLAUDE.md` state and suite counts.
+
+**Found, worth remembering**
+- **Both suite counts in `CLAUDE.md` were stale** — 403/447 recorded against an actual 436/476.
+  Re-measured off the tree, not carried forward.
+- **`reset-demo` was broken on any un-migrated database, dry run included**, once a second
+  migration history existed — dying with the same bare `42P01` this project has been bitten by
+  twice before. Caught by the reviewer on a probe database, not by reasoning.
+- **A revoked demo phone could not be healed by `seed`.** `seed` reported success and every phone
+  got 401 with nothing saying why. Now `seed` clears three withdrawal stamps — `device.revoked_at`,
+  `app_user.disabled_at`, `company.suspended_at` — while never restoring *content* the founder
+  edited. A test pins that line.
+- **A test double that could not express the failure it existed to prove.** `FakeApi.configured`
+  was hardcoded `true`, so deleting the `pass()` gate looked like a *successful upload*. The
+  mutation would have passed and proven nothing.
+- **A spec that claimed exhaustiveness and had none.** The reviewer added a fifth `OutboxState` and
+  all 472 specs stayed green. Now it fails to *compile*.
+- **`ActivationCodeFormat.Fold` drops non-ASCII**, so a Serbian foreman on a Cyrillic keyboard
+  typing `О` (U+041E) loses the character silently. Both halves are converging on one folding
+  table; `В→B`, `Н→H`, `Ј→J` are equally strong homoglyphs still missing from it.
+
+**Founder actions**
+- [ ] Read the new Serbian copy on the three auth screens — all of it is new and unreviewed.
+- [ ] Decide Welcome's button hierarchy: the artboard makes "Prijavi se" primary, but the people
+      who meet that screen most are foremen holding a code.
+- [ ] Still owed: an SMTP relay (now on this feature's critical path — a locked-out admin has no
+      way back in without one), and `design/Code.dc.html` at 390 + 1280.
+
+**How the session ended**
+- **D2 + D3 landed green but unreviewed**: `BearerAuthFilter`, `RoleFilter`, the 403/404 doctrine,
+  rate limiting, `/auth/login`, `/auth/activate`, `/api/me`, `create-super-admin`, and the
+  company-admin surface for workers, codes and devices. 610 → **786 tests, 0 failed**, build clean.
+  The implementer was adding one shared test helper when it was stopped, so treat the increment as
+  complete but unaudited.
+- **F4 + F4b was started and deliberately backed out.** The agent had rewritten `app.routes.ts` with
+  guards and English paths, but had not yet written `device.guard.ts` or updated
+  `rescue.service.ts` — so the PWA could not build. `app.routes.ts` was restored by hand to its F3
+  state (a `git checkout` would have destroyed F3's uncommitted routes) and re-verified at 538/538.
+  Nothing of F4 survives; it restarts clean.
+- Tree left green: **786 backend / 538 PWA**, both builds clean, verified by execution.
+
+**Next**
+1. **Review F3, D2 and D3** — three increments owe their gate, the largest unaudited surface this
+   project has carried. Nothing should be built on top until they clear.
+2. F4 + F4b from scratch.
+3. **Prove activation end to end against the real API** — type a real code, get a real device token.
+4. **Only then** empty `environment.deviceToken`. Flipping it before a code can be redeemed locks
+   the founder out of his own app with no way back but editing an environment file.
+
 ## 2026-08-30 (through the night) — B5 + B6: the money path closed, then the founder used it
 
 **The loop closes.** Speak → transcript → confirm → PDF → email → sealed, proven end to end against

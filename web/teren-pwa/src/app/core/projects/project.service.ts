@@ -4,7 +4,14 @@ import { Project } from '../db/models';
 import { canonicalProjectId } from './legacy-project-ids';
 import { PROJECT_SOURCE } from './project-source';
 
-const SELECTED_PROJECT_KEY = 'teren.selectedProjectId';
+/**
+ * Where the chosen site is remembered.
+ *
+ * Exported for the same reason as `PROJECT_CACHE_KEY`: it points into the cached list, so
+ * whatever clears one has to clear the other, and a second copy of the string is how that stops
+ * being true.
+ */
+export const SELECTED_PROJECT_KEY = 'teren.selectedProjectId';
 
 /**
  * The site the foreman is standing on.

@@ -23,6 +23,13 @@ public sealed class DemoResetTests(TerenTestApp app)
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
+    private const string DemoDeviceToken = TerenTestApp.DeviceToken;
+
+    /// <summary>1 company + 3 sites + 3 entries + 2 users + 1 device — the same number
+    /// DemoSeederTests pins, because a reset that re-seeded a different shape than a seed would
+    /// be a reset that quietly changed the demo.</summary>
+    private const int FullSeedRowCount = 10;
+
     private static readonly Guid OtherCompanyId = Guid.Parse("11111111-2222-3333-4444-555555555555");
     private static readonly Guid OtherProjectId = Guid.Parse("11111111-2222-3333-4444-555555555556");
     private static readonly Guid OtherEntryId = Guid.Parse("11111111-2222-3333-4444-555555555557");
@@ -150,10 +157,10 @@ public sealed class DemoResetTests(TerenTestApp app)
     public async Task Ten_demos_worth_of_junk_is_removed_and_the_seed_comes_back()
     {
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
         await GivenJunkFromDemosAsync(db, count: 10);
 
-        var result = await DemoReset.ResetAsync(db, ct: Ct);
+        var result = await DemoReset.ResetAsync(db, deviceToken: DemoDeviceToken, ct: Ct);
 
         result.Removed.Entries.ShouldBe(13); // 3 seeded + 10 demo leftovers
         result.Removed.Media.ShouldBe(10);
@@ -161,10 +168,12 @@ public sealed class DemoResetTests(TerenTestApp app)
         result.Removed.Projects.ShouldBe(3);
         result.Removed.Companies.ShouldBe(1);
         result.ReportedEntriesRemoved.ShouldBe(11); // 10 demo leftovers + seeded entry 1
-        result.Reseeded.ShouldBe(7);
+        result.Reseeded.ShouldBe(FullSeedRowCount);
 
         result.FinalState.ShouldBe(new DemoRowCounts(
-            Companies: 1, Projects: 3, Entries: 3, Media: 0, Reports: 0));
+            Companies: 1, Projects: 3, Entries: 3, Media: 0, Reports: 0,
+            AppUsers: 2, Devices: 1, ActivationCodes: 0, PasswordTokens: 0,
+            AdminSessions: 0, AdminAudits: 0));
 
         var entries = await AllEntriesAsync(db);
         entries.Select(e => e.Id).ShouldBe(
@@ -181,10 +190,10 @@ public sealed class DemoResetTests(TerenTestApp app)
         // every reported entry in the database — evidence somebody may rely on in a dispute —
         // would be silently deletable, and nothing else in the system would notice.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
         await GivenJunkFromDemosAsync(db, count: 2);
 
-        var result = await DemoReset.ResetAsync(db, ct: Ct);
+        var result = await DemoReset.ResetAsync(db, deviceToken: DemoDeviceToken, ct: Ct);
 
         result.GuardArmed.ShouldBeTrue();
 
@@ -206,9 +215,9 @@ public sealed class DemoResetTests(TerenTestApp app)
         // must be unwritable before, during and after — the reset deletes and re-seeds, it never
         // edits, so it has no reason to disarm this one.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
 
-        await DemoReset.ResetAsync(db, ct: Ct);
+        await DemoReset.ResetAsync(db, deviceToken: DemoDeviceToken, ct: Ct);
 
         var reported = (await AllEntriesAsync(db)).Single(e => e.ReportedAt is not null);
 
@@ -227,10 +236,10 @@ public sealed class DemoResetTests(TerenTestApp app)
         // captured entries could never leave the phone — a reset that looks like it worked and
         // silently breaks the demo it exists to protect.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
         await GivenJunkFromDemosAsync(db, count: 3);
 
-        await DemoReset.ResetAsync(db, ct: Ct);
+        await DemoReset.ResetAsync(db, deviceToken: DemoDeviceToken, ct: Ct);
 
         var companies = await db.Set<Company>().IgnoreQueryFilters()
             .Select(c => c.Id).ToListAsync(Ct);
@@ -261,17 +270,19 @@ public sealed class DemoResetTests(TerenTestApp app)
     public async Task Resetting_twice_leaves_the_same_state_as_resetting_once()
     {
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
         await GivenJunkFromDemosAsync(db, count: 4);
 
-        var first = await DemoReset.ResetAsync(db, ct: Ct);
-        var second = await DemoReset.ResetAsync(db, ct: Ct);
+        var first = await DemoReset.ResetAsync(db, deviceToken: DemoDeviceToken, ct: Ct);
+        var second = await DemoReset.ResetAsync(db, deviceToken: DemoDeviceToken, ct: Ct);
 
         second.FinalState.ShouldBe(first.FinalState);
         second.Removed.ShouldBe(new DemoRowCounts(
-            Companies: 1, Projects: 3, Entries: 3, Media: 0, Reports: 0));
+            Companies: 1, Projects: 3, Entries: 3, Media: 0, Reports: 0,
+            AppUsers: 2, Devices: 1, ActivationCodes: 0, PasswordTokens: 0,
+            AdminSessions: 0, AdminAudits: 0));
         second.ReportedEntriesRemoved.ShouldBe(1);
-        second.Reseeded.ShouldBe(7);
+        second.Reseeded.ShouldBe(FullSeedRowCount);
         second.GuardArmed.ShouldBeTrue();
     }
 
@@ -280,22 +291,22 @@ public sealed class DemoResetTests(TerenTestApp app)
     {
         await using var db = await app.CreateScratchDatabaseAsync();
 
-        var result = await DemoReset.ResetAsync(db, ct: Ct);
+        var result = await DemoReset.ResetAsync(db, deviceToken: DemoDeviceToken, ct: Ct);
 
         result.Removed.Total.ShouldBe(0);
-        result.Reseeded.ShouldBe(7);
-        result.FinalState.ShouldBe(new DemoRowCounts(1, 3, 3, 0, 0));
+        result.Reseeded.ShouldBe(FullSeedRowCount);
+        result.FinalState.ShouldBe(new DemoRowCounts(1, 3, 3, 0, 0, 2, 1, 0, 0, 0, 0));
     }
 
     [Fact]
     public async Task No_other_company_is_touched_including_its_reported_entries()
     {
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
         await GivenAnotherCompanyAsync(db);
         await GivenJunkFromDemosAsync(db, count: 2);
 
-        var result = await DemoReset.ResetAsync(db, ct: Ct);
+        var result = await DemoReset.ResetAsync(db, deviceToken: DemoDeviceToken, ct: Ct);
 
         result.Removed.Companies.ShouldBe(1);
         result.Removed.Entries.ShouldBe(5);
@@ -317,7 +328,7 @@ public sealed class DemoResetTests(TerenTestApp app)
         // fk_entry_supersedes_entry is RESTRICT, so one bulk DELETE can fail purely on the order
         // Postgres picked. ROADMAP C4 will produce these rows for real.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
 
         var original = Guid.NewGuid();
         var correction = Guid.NewGuid();
@@ -337,7 +348,7 @@ public sealed class DemoResetTests(TerenTestApp app)
         await db.SaveChangesAsync(Ct);
         db.ChangeTracker.Clear();
 
-        var result = await DemoReset.ResetAsync(db, ct: Ct);
+        var result = await DemoReset.ResetAsync(db, deviceToken: DemoDeviceToken, ct: Ct);
 
         result.Removed.Entries.ShouldBe(6);
         (await AllEntriesAsync(db)).Count.ShouldBe(3);
@@ -352,13 +363,14 @@ public sealed class DemoResetTests(TerenTestApp app)
         var interceptor = new FailOnceInterceptor("INSERT INTO company");
         await using var db = await app.CreateScratchDatabaseAsync(null, interceptor);
 
-        await DemoSeeder.SeedAsync(db, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
         await GivenJunkFromDemosAsync(db, count: 2);
         db.ChangeTracker.Clear();
 
         interceptor.Arm();
 
-        await Should.ThrowAsync<Exception>(async () => await DemoReset.ResetAsync(db, ct: Ct));
+        await Should.ThrowAsync<Exception>(async () =>
+            await DemoReset.ResetAsync(db, deviceToken: DemoDeviceToken, ct: Ct));
 
         interceptor.Fired.ShouldBeTrue("the failure was never injected, so nothing was proven");
         db.ChangeTracker.Clear();
@@ -382,7 +394,7 @@ public sealed class DemoResetTests(TerenTestApp app)
     public async Task Only_the_demo_company_prefix_is_swept_from_the_bucket()
     {
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
 
         var objects = new FakeDemoObjectPurge();
         objects.Put(
@@ -390,7 +402,7 @@ public sealed class DemoResetTests(TerenTestApp app)
             $"company/{DemoSeeder.CompanyId:D}/project/x/entry/y/report.pdf",
             $"company/{OtherCompanyId:D}/project/x/entry/y/b.jpg");
 
-        var result = await DemoReset.ResetAsync(db, objects, ct: Ct);
+        var result = await DemoReset.ResetAsync(db, objects, deviceToken: DemoDeviceToken, ct: Ct);
 
         objects.PrefixesListed.ShouldAllBe(p => p == DemoReset.ObjectPrefix);
         result.ObjectsRemoved.ShouldBe(2);
@@ -405,8 +417,8 @@ public sealed class DemoResetTests(TerenTestApp app)
         var objects = new FakeDemoObjectPurge();
         objects.Put($"company/{DemoSeeder.CompanyId:D}/project/x/entry/y/a.jpg");
 
-        (await DemoReset.ResetAsync(db, objects, ct: Ct)).ObjectsRemoved.ShouldBe(1);
-        (await DemoReset.ResetAsync(db, objects, ct: Ct)).ObjectsRemoved.ShouldBe(0);
+        (await DemoReset.ResetAsync(db, objects, deviceToken: DemoDeviceToken, ct: Ct)).ObjectsRemoved.ShouldBe(1);
+        (await DemoReset.ResetAsync(db, objects, deviceToken: DemoDeviceToken, ct: Ct)).ObjectsRemoved.ShouldBe(0);
     }
 
     [Fact]
@@ -418,9 +430,9 @@ public sealed class DemoResetTests(TerenTestApp app)
         await using var db = await app.CreateScratchDatabaseAsync();
         var objects = new FakeDemoObjectPurge { Fault = new HttpRequestException("no route to host") };
 
-        var result = await DemoReset.ResetAsync(db, objects, ct: Ct);
+        var result = await DemoReset.ResetAsync(db, objects, deviceToken: DemoDeviceToken, ct: Ct);
 
-        result.Reseeded.ShouldBe(7);
+        result.Reseeded.ShouldBe(FullSeedRowCount);
         result.ObjectsRemoved.ShouldBe(0);
         result.ObjectsUnavailable.ShouldNotBeNull().ShouldContain("no route to host");
         result.GuardArmed.ShouldBeTrue();
@@ -433,7 +445,7 @@ public sealed class DemoResetTests(TerenTestApp app)
         var jobs = new FakeDemoJobPurge();
         jobs.Enqueue("101", "102", "103");
 
-        var result = await DemoReset.ResetAsync(db, jobs: jobs, ct: Ct);
+        var result = await DemoReset.ResetAsync(db, jobs: jobs, deviceToken: DemoDeviceToken, ct: Ct);
 
         result.JobsRemoved.ShouldBe(3);
         result.JobsUnavailable.ShouldBeNull();
@@ -447,7 +459,7 @@ public sealed class DemoResetTests(TerenTestApp app)
         var jobs = new FakeDemoJobPurge { Unavailable = "Hangfire is switched off" };
         jobs.Enqueue("101");
 
-        var result = await DemoReset.ResetAsync(db, jobs: jobs, ct: Ct);
+        var result = await DemoReset.ResetAsync(db, jobs: jobs, deviceToken: DemoDeviceToken, ct: Ct);
 
         result.JobsRemoved.ShouldBe(0);
         result.JobsUnavailable.ShouldBe("Hangfire is switched off");
@@ -458,7 +470,7 @@ public sealed class DemoResetTests(TerenTestApp app)
     public async Task A_dry_run_reports_what_is_there_and_destroys_nothing()
     {
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
         await GivenJunkFromDemosAsync(db, count: 5);
 
         var objects = new FakeDemoObjectPurge();
@@ -469,7 +481,9 @@ public sealed class DemoResetTests(TerenTestApp app)
         var plan = await DemoReset.InspectAsync(db, objects, jobs, Ct);
 
         plan.Present.ShouldBe(new DemoRowCounts(
-            Companies: 1, Projects: 3, Entries: 8, Media: 5, Reports: 5));
+            Companies: 1, Projects: 3, Entries: 8, Media: 5, Reports: 5,
+            AppUsers: 2, Devices: 1, ActivationCodes: 0, PasswordTokens: 0,
+            AdminSessions: 0, AdminAudits: 0));
         plan.ReportedEntries.ShouldBe(6);
         plan.Objects.ShouldBe(1);
         plan.PendingJobs.ShouldBe(2);

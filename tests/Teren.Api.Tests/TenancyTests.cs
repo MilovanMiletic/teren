@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text.Json.Nodes;
 using Teren.Api.Tests.Infrastructure;
 using Teren.Core.Entities;
 using Teren.Core.Storage;
@@ -10,8 +11,14 @@ namespace Teren.Api.Tests;
 /// <summary>
 /// Invariant 2 (ARCHITECTURE §12): deny by default. No token, no request; and anything the
 /// caller's company does not own answers 404 — indistinguishable from something that does not
-/// exist. There is deliberately no 403 anywhere in this API, because a 403 confirms that an id
-/// is real, which is the one thing an enumerator wants to learn.
+/// exist. <b>No handler in this API ever returns 403</b>, because a handler's 403 would confirm
+/// that an id is real, which is the one thing an enumerator wants to learn.
+/// <para>
+/// D2 introduced a 403, and it does not weaken any of this: it is emitted only by
+/// <c>RoleFilter</c>, before a handler is entered and before an id is parsed, so it answers a
+/// question about the caller's <em>role</em> and never about a row's existence. See
+/// <see cref="ForbiddenDoctrineTests"/>, which reads the source tree to keep it that way.
+/// </para>
 /// <para>
 /// One qualifier, so the doctrine above is not read as more than it is: it is absolute when the
 /// caller <em>names</em> an existing resource, and necessarily weaker on the create path, where
@@ -24,15 +31,27 @@ namespace Teren.Api.Tests;
 /// </summary>
 public sealed class TenancyTests(TerenTestApp app) : ApiTestBase(app)
 {
+    /// <summary>
+    /// <b>Every <c>/api</c> route, and this list must grow with the surface.</b> D2 added the
+    /// public <c>/auth/*</c> routes deliberately OUTSIDE <c>/api</c> so that this test stays
+    /// <em>literally</em> true rather than "true with exceptions" — an exception list on the one
+    /// test that proves nothing is reachable anonymously is how it stops being worth running.
+    /// </summary>
     private static readonly string[] ApiRoutes =
     [
         "/api/projects",
         "/api/entries",
+        "/api/me",
+        "/api/workers",
+        "/api/devices",
     ];
 
     [Theory]
     [InlineData("/api/projects")]
     [InlineData("/api/entries")]
+    [InlineData("/api/me")]
+    [InlineData("/api/workers")]
+    [InlineData("/api/devices")]
     public async Task No_authorization_header_is_401(string route)
     {
         using var anonymous = App.CreateAnonymousClient();
@@ -308,6 +327,31 @@ public sealed class TenancyTests(TerenTestApp app) : ApiTestBase(app)
             .ShouldBe(HttpStatusCode.Unauthorized);
         (await anonymous.Get($"/api/entries/{entryId}")).StatusCode
             .ShouldBe(HttpStatusCode.Unauthorized);
+        (await anonymous.PostNothing("/api/auth/logout")).StatusCode
+            .ShouldBe(HttpStatusCode.Unauthorized);
+        (await anonymous.PostJson("/api/workers", new JsonObject())).StatusCode
+            .ShouldBe(HttpStatusCode.Unauthorized);
+        (await anonymous.Delete($"/api/devices/{Guid.NewGuid()}")).StatusCode
+            .ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task The_public_auth_routes_are_the_only_thing_outside_the_gate()
+    {
+        // The other half of the claim above: /auth/* is reachable anonymously ON PURPOSE — it is
+        // where a phone is activated and an admin signs in — and it is NOT under /api, so the list
+        // in ApiRoutes needs no exception. Asserting they answer at all keeps the split honest: if
+        // somebody moved them under /api, this would still pass while the test above went red.
+        using var anonymous = App.CreateAnonymousClient();
+
+        var login = await anonymous.PostJson(
+            "/auth/login",
+            new JsonObject { ["email"] = "nobody@nowhere.test", ["password"] = "wrong-password" });
+
+        // Refused on the merits, not by the gate — a 401 with a WWW-Authenticate challenge is what
+        // the /api gate produces, and this must not be that.
+        login.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        login.Headers.WwwAuthenticate.ShouldBeEmpty();
     }
 
     [Fact]

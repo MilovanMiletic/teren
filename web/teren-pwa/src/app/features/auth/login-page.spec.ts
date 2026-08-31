@@ -1,0 +1,156 @@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Router, provideRouter } from '@angular/router';
+import { TranslocoTestingModule } from '@jsverse/transloco';
+
+import { ActivationService } from '../../core/auth/activation.service';
+import { ConnectivityService } from '../../core/connectivity.service';
+import en from '../../../../public/i18n/en.json';
+import sr from '../../../../public/i18n/sr.json';
+import { LoginPage } from './login-page';
+
+describe('LoginPage', () => {
+  let fixture: ComponentFixture<LoginPage>;
+  let element: HTMLElement;
+
+  const activation = { activate: vi.fn(), requestCode: vi.fn(), login: vi.fn() };
+
+  function render(online = true): void {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [
+        LoginPage,
+        TranslocoTestingModule.forRoot({
+          langs: { sr, en },
+          translocoConfig: {
+            availableLangs: ['sr', 'en'],
+            defaultLang: 'sr',
+            reRenderOnLangChange: true,
+          },
+          preloadLangs: true,
+        }),
+      ],
+      providers: [
+        provideRouter([]),
+        { provide: ActivationService, useValue: activation },
+        { provide: ConnectivityService, useValue: { online: () => online } },
+      ],
+    });
+    fixture = TestBed.createComponent(LoginPage);
+    fixture.detectChanges();
+    element = fixture.nativeElement as HTMLElement;
+  }
+
+  function field(id: string): HTMLInputElement {
+    const input = element.querySelector<HTMLInputElement>(`#${id}`);
+    if (!input) {
+      throw new Error(`no #${id} on screen`);
+    }
+    return input;
+  }
+
+  function type(input: HTMLInputElement, value: string): void {
+    input.value = value;
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+  }
+
+  function submit(): Promise<void> {
+    element.querySelector('form')?.dispatchEvent(new Event('submit'));
+    fixture.detectChanges();
+    return fixture.whenStable().then(() => fixture.detectChanges());
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    activation.login.mockResolvedValue({
+      ok: true,
+      failure: null,
+      role: 'company_admin',
+      displayName: 'Milan Gradnja',
+    });
+    render();
+  });
+
+  it('takes an email address and a password', () => {
+    expect(field('login-email').getAttribute('type')).toBe('email');
+    expect(field('login-password').getAttribute('autocomplete')).toBe('current-password');
+  });
+
+  it('offers the code path in plain sight, for a foreman who followed the wrong link', () => {
+    // He has no password and never will (`ck_app_user_worker_has_no_password`), so a screen that
+    // only offered a password would be a dead end for the product's primary user.
+    const router = TestBed.inject(Router);
+    vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    const button = [...element.querySelectorAll('button')].find((candidate) =>
+      candidate.textContent?.includes('Pridruži se gradilištu kodom'),
+    );
+    button?.click();
+
+    expect(router.navigate).toHaveBeenCalledWith(['/activate']);
+  });
+
+  it('reveals the password on request, and hides it again', () => {
+    const toggle = element.querySelector<HTMLButtonElement>('.field__toggle');
+    expect(field('login-password').getAttribute('type')).toBe('password');
+
+    toggle?.click();
+    fixture.detectChanges();
+    // A long password on a glass keyboard is wrong about a third of the time; the alternative to
+    // revealing it is retyping it blind.
+    expect(field('login-password').getAttribute('type')).toBe('text');
+
+    toggle?.click();
+    fixture.detectChanges();
+    expect(field('login-password').getAttribute('type')).toBe('password');
+  });
+
+  it('signs in and says so, storing nothing this build could misuse', async () => {
+    type(field('login-email'), 'vlasnik@gradnja.rs');
+    type(field('login-password'), 'lozinka');
+
+    await submit();
+
+    expect(activation.login).toHaveBeenCalledWith('vlasnik@gradnja.rs', 'lozinka');
+    expect(element.textContent).toContain('Prijava je uspela');
+    expect(element.textContent).toContain('Milan Gradnja');
+    // The password does not outlive the request that used it.
+    expect(field('login-password').value).toBe('');
+  });
+
+  it('gives one sentence for a wrong email and a wrong password alike', async () => {
+    activation.login.mockResolvedValue({
+      ok: false,
+      failure: 'rejected',
+      role: null,
+      displayName: null,
+    });
+    type(field('login-email'), 'vlasnik@gradnja.rs');
+    type(field('login-password'), 'pogresno');
+
+    await submit();
+
+    // Two different sentences would make this screen an account-enumeration oracle by reading.
+    expect(element.textContent).toContain('Pogrešna imejl adresa ili lozinka');
+  });
+
+  it('will not send an empty form, and says which field is missing', async () => {
+    await submit();
+
+    expect(activation.login).not.toHaveBeenCalled();
+    expect(element.textContent).toContain('Upišite imejl adresu');
+  });
+
+  it('says a connection is needed before he types', () => {
+    render(false);
+    expect(element.textContent).toContain('Nema interneta');
+  });
+
+  it('does not offer a password reset it cannot perform', () => {
+    // The artboard carries "Zaboravljena lozinka?", but `/auth/password-reset` does not exist and
+    // needs an SMTP relay nobody has chosen yet. A link that visibly does nothing is worse than
+    // an absence on the screen whose whole job is to be trusted with a credential; it returns
+    // with D7.
+    expect(element.textContent).not.toContain('Zaboravljena lozinka');
+  });
+});

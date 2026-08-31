@@ -3,7 +3,7 @@ import { firstValueFrom } from 'rxjs';
 
 import { TEST_PROJECT, captureEntry } from '../../testing/capture-fixture';
 import { EntryNotOpenError, EntryStore } from './entry-store';
-import { LocalEntry } from './models';
+import { LocalEntry, OUTBOX_STATES } from './models';
 import { TEREN_DB, TerenDb } from './teren-db';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -480,6 +480,55 @@ describe('EntryStore', () => {
       expect(await store.earliestNextAttempt()).not.toBeNull();
     });
 
+    /**
+     * The invariant that stops F1's bug class returning through a different door.
+     *
+     * `dueOutboxItems` and `earliestNextAttempt` are two readers of one question — which rows the
+     * loop acts on — and they used to answer it differently: the due filter accepted `queued` and
+     * `failed`, the wake scheduler only `failed`. A row the due filter **defers** (its
+     * `nextAttemptAt` is in the future) that the scheduler **cannot see** is a row nothing ever
+     * wakes for, and the loop sleeps for good with work still in the queue. That is the same
+     * defect as a `blocked` row scheduling no timer, wearing a different hat.
+     *
+     * Two things make this a guard rather than a restatement of the code:
+     *
+     * 1. **The state list is derived, not written down.** `OUTBOX_STATES` comes from a
+     *    `Record<OutboxState, true>`, so a fifth state joins this loop automatically. A
+     *    hand-written array was the first version of this spec and it was worthless: the reviewer
+     *    added a fifth state, mapped it to a status the loop plainly must act on, and all 472
+     *    specs stayed green.
+     * 2. **The expectation is measured, not asserted.** Nothing here names which states are live.
+     *    It asks the due filter what it would do with the row when the row is due, then insists
+     *    the scheduler agrees when the very same row is deferred. Divergence is the failure,
+     *    whatever the states happen to be — so this cannot drift into echoing `isLive`'s body.
+     */
+    it('never defers a row the wake scheduler cannot see, in any outbox state', async () => {
+      for (const state of OUTBOX_STATES) {
+        const entryId = await queued();
+
+        // Written straight to the table: `setOutboxState` deliberately nulls `nextAttemptAt` for
+        // `blocked`, and the point is to test the *readers* against every shape a row can
+        // physically take on disk — including shapes only a future writer would produce.
+
+        // (a) Due right now — does the loop act on a row in this state at all?
+        await db.outbox.update(entryId, { state, nextAttemptAt: null });
+        const loopActsOnIt = (await store.dueOutboxItems()).some((i) => i.entryId === entryId);
+
+        // (b) The identical row, deferred. It must now be absent from the due list…
+        await db.outbox.update(entryId, {
+          state,
+          nextAttemptAt: new Date(Date.now() + 60_000).toISOString(),
+        });
+        expect((await store.dueOutboxItems()).some((i) => i.entryId === entryId)).toBe(false);
+
+        // …and something must be scheduled to come back for it — if, and only if, (a) said the
+        // loop acts on this state. Anything the due filter can defer, the scheduler must see.
+        expect((await store.earliestNextAttempt()) !== null).toBe(loopActsOnIt);
+
+        await db.outbox.delete(entryId);
+      }
+    });
+
     it('strands nothing in flight: a killed upload comes back to the queue', async () => {
       // `in_flight` lives on disk; the attempt it describes lives in a JavaScript task the web
       // platform ends without warning. Every reader of the outbox skips `in_flight`, so a row
@@ -509,6 +558,56 @@ describe('EntryStore', () => {
       await queued();
 
       expect(await store.releaseInFlight()).toBe(0);
+    });
+
+    describe('releaseBlockedByAuth', () => {
+      /** A row the loop gave up on, stamped with the kind that made it give up. */
+      async function blockedWith(kind: string): Promise<string> {
+        const entryId = await queued();
+        await store.setOutboxState(entryId, 'in_flight');
+        await store.setOutboxState(entryId, 'blocked', { failureKind: kind, lastError: 'no' });
+        return entryId;
+      }
+
+      it('releases every row a new credential could actually fix, with no per-entry tap', async () => {
+        // The morning this exists for: a revoked device, three entries, and a foreman who fixes
+        // all of them by typing one code. `unauthenticated` is in the set because builds *before*
+        // F1 wrote 401s as terminal, so phones in the field carry rows stamped with it.
+        const revoked = await blockedWith('unauthenticated');
+        const forbidden = await blockedWith('unauthorized');
+        const unconfigured = await blockedWith('not_configured');
+
+        expect(await store.releaseBlockedByAuth()).toBe(3);
+
+        for (const entryId of [revoked, forbidden, unconfigured]) {
+          expect(await store.getOutboxItem(entryId)).toMatchObject({
+            state: 'queued',
+            attempts: 0,
+            failureKind: null,
+            nextAttemptAt: null,
+          });
+          expect((await store.getEntry(entryId))?.status).toBe('queued');
+        }
+      });
+
+      it('leaves alone every row a new credential does not fix', async () => {
+        // A fresh token does not conjure up a missing project, and it does not turn http into
+        // https. Releasing these would put them straight back in the queue to fail identically —
+        // the queue claiming to have learned something it did not.
+        const missingProject = await blockedWith('rejected');
+        const plainHttp = await blockedWith('insecure_context');
+
+        expect(await store.releaseBlockedByAuth()).toBe(0);
+
+        for (const entryId of [missingProject, plainHttp]) {
+          expect((await store.getOutboxItem(entryId))?.state).toBe('blocked');
+        }
+      });
+
+      it('releases nothing when nothing is blocked', async () => {
+        await queued();
+        expect(await store.releaseBlockedByAuth()).toBe(0);
+      });
     });
 
     it('takes the oldest item first, by sequence rather than by timestamp', async () => {

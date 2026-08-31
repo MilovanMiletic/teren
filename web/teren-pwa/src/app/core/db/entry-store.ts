@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable, from } from 'rxjs';
 import Dexie, { liveQuery } from 'dexie';
 
-import { STALLED_AFTER_ATTEMPTS } from '../api/api-failure';
+import { FailureKind, STALLED_AFTER_ATTEMPTS } from '../api/api-failure';
 import { localDay } from './local-day';
 import {
   ConfirmDraft,
@@ -587,20 +587,30 @@ export class EntryStore {
     const nowIso = new Date(now).toISOString();
     const items = await this.db.outbox.orderBy('seq').toArray();
     return items.filter(
-      (item) =>
-        (item.state === 'queued' || item.state === 'failed') &&
-        (item.nextAttemptAt === null || item.nextAttemptAt <= nowIso),
+      (item) => isLive(item) && (item.nextAttemptAt === null || item.nextAttemptAt <= nowIso),
     );
   }
 
   /**
-   * When the loop should next wake for an item that is backing off, or null if nothing is
-   * waiting. Lets the loop sleep exactly as long as it has to instead of polling.
+   * When the loop should next wake for an item that is waiting, or null if nothing is.
+   *
+   * Lets the loop sleep exactly as long as it has to instead of polling — and it reads
+   * {@link isLive}, the *same* predicate {@link dueOutboxItems} reads, which is the point.
+   *
+   * This used to test `state === 'failed'` while the due filter accepted `queued` as well, and
+   * that asymmetry is the same defect F1 exists to fix, wearing a different hat: a row the due
+   * filter **defers** (its `nextAttemptAt` is in the future) but the scheduler **cannot see** is a
+   * row nothing ever wakes for. The loop then sleeps for good with work still in the queue. It was
+   * unreachable only because no caller happened to pass a `nextAttemptAt` alongside `queued` —
+   * a coincidence of call sites, not a property of the code, and one refactor from being false.
+   *
+   * The invariant, pinned by a spec over every `OutboxState`: **anything the due filter can defer,
+   * the wake scheduler must be able to see.**
    */
   async earliestNextAttempt(): Promise<string | null> {
     const items = await this.db.outbox.toArray();
     const waiting = items
-      .filter((item) => item.state === 'failed' && item.nextAttemptAt !== null)
+      .filter((item) => isLive(item) && item.nextAttemptAt !== null)
       .map((item) => item.nextAttemptAt!)
       .sort();
     return waiting[0] ?? null;
@@ -702,6 +712,48 @@ export class EntryStore {
       });
       await this.db.entries.update(entryId, { status: 'queued', updatedAt: nowIso });
     });
+  }
+
+  /**
+   * Put back every row that is stuck only because of the credential this phone was using.
+   *
+   * Called when the credential *changes* — a phone is activated, a revoked device is re-activated
+   * with a fresh code. That event is a statement that the reason those rows stopped no longer
+   * holds, and the whole point is that it costs the foreman **no taps at all**: he types one code
+   * and a morning's entries start moving again on their own.
+   *
+   * Scoped to {@link AUTH_FAILURE_KINDS}. A new token does not conjure up a missing project or an
+   * https origin, and releasing those rows would put them back in the queue to fail identically —
+   * the queue claiming to have learned something it did not.
+   *
+   * **What actually calls this today, stated plainly because the obvious reading is wrong.** The
+   * only caller is the credential-change effect in `UploadService.start()`, and in the *shipped*
+   * app that effect never fires: `SessionService.token()` falls back to `environment.deviceToken`,
+   * which is non-empty, and nothing calls `adopt()` until F3 lands the activation screen. So a
+   * phone upgrading from a pre-F1 build does **not** heal on its own — its blocked rows are
+   * released by one press of "Pokušaj sve ponovo", not automatically. This method's automatic path
+   * begins working when activation does.
+   *
+   * **And when it does, do not rely on the effect alone.** The heal is keyed on the token's string
+   * identity, so an idempotent re-activation that returns the *same* token would leave the queue
+   * exactly where it was — the one case where a foreman has most reason to expect it to move.
+   * `ActivationService` should call this explicitly on every successful activation and treat the
+   * effect as belt-and-braces for the case where a credential changes by some other route.
+   *
+   * Reuses {@link retryNow} per row rather than writing state itself, so there is exactly one path
+   * that clears a failure, and rows released here are indistinguishable from rows a foreman
+   * released by hand. Moving them to `queued` changes `watchOutboxBacklog()`, which the sync
+   * loop's existing subscription already turns into a `wake()` — so nothing has to be told to run.
+   *
+   * Returns how many rows were released, for the caller that wants to say so on screen.
+   */
+  async releaseBlockedByAuth(): Promise<number> {
+    const blocked = await this.db.outbox.where('state').equals('blocked').toArray();
+    const releasable = blocked.filter((item) => isAuthFailure(item.failureKind));
+    for (const item of releasable) {
+      await this.retryNow(item.entryId);
+    }
+    return releasable.length;
   }
 
   /**
@@ -850,6 +902,69 @@ export class EntryStore {
   ): Promise<void> {
     await this.db.media.update(mediaId, { uploadState });
   }
+}
+
+/**
+ * Whether the sync loop acts on a row in each outbox state.
+ *
+ * A `Record` over the whole union, not a boolean expression, and that is the entire guard: adding
+ * a fifth `OutboxState` **fails to compile** here until someone states, deliberately, whether the
+ * loop should pick it up. A `state === 'queued' || state === 'failed'` test would accept a new
+ * state in silence and answer `false` about it — which is precisely how a row becomes invisible to
+ * the loop, and precisely the defect F1 exists to fix.
+ *
+ * The excluded pair is deliberate and each for its own reason: `in_flight` has an attempt running
+ * against it in this process (and `releaseInFlight()` covers the process that died holding one),
+ * and `blocked` is terminal — re-offering it is the battery-burning behaviour the state exists to
+ * prevent.
+ */
+const LOOP_ACTS_ON: Record<OutboxState, boolean> = {
+  queued: true,
+  in_flight: false,
+  failed: true,
+  blocked: false,
+};
+
+/**
+ * The outbox rows the sync loop will act on.
+ *
+ * Read by {@link EntryStore.dueOutboxItems} and {@link EntryStore.earliestNextAttempt} both, so
+ * the two can never again disagree about which rows exist as far as the loop is concerned.
+ */
+function isLive(item: OutboxItem): boolean {
+  return LOOP_ACTS_ON[item.state];
+}
+
+/**
+ * The failure kinds a *new credential* can actually fix.
+ *
+ * Everything here is a statement about the phone's standing with the server, not about the entry:
+ * the token was refused, the caller was not allowed, or this build had no token at all. A fresh
+ * credential is a real answer to each. `unauthenticated` is in the set because builds *before* F1
+ * treated a 401 as terminal, so phones upgrading from one carry `blocked` rows stamped with it.
+ *
+ * Deliberately **not** here: `rejected` (a 404 project stays missing), `insecure_context` (a token
+ * does not turn http into https) and every retryable kind (the loop owns those). Releasing them
+ * would be the queue lying about what it learned.
+ *
+ * Typed `ReadonlySet<FailureKind>`, not `ReadonlySet<string>`: a typo, or a kind that no longer
+ * exists, is a compile error rather than a member that silently never matches.
+ */
+const AUTH_FAILURE_KINDS: ReadonlySet<FailureKind> = new Set<FailureKind>([
+  'unauthenticated',
+  'unauthorized',
+  'not_configured',
+]);
+
+/**
+ * Whether a stored `failureKind` is one a credential fixes.
+ *
+ * The stored value is `string | null` — the local data model deliberately does not depend on the
+ * API layer's union — so the widening happens here, at one guarded crossing, rather than by
+ * loosening the set's own type and giving up the compile-time check above.
+ */
+function isAuthFailure(kind: string | null): boolean {
+  return kind !== null && (AUTH_FAILURE_KINDS as ReadonlySet<string>).has(kind);
 }
 
 /**

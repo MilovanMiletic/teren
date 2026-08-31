@@ -1,0 +1,172 @@
+/*
+ * The credential form, shared by the activation screen and the sign-in screen.
+ *
+ * Built from `design/Login.dc.html` — the field card, its 12 px uppercase label, the 56 px field
+ * with a 1 px `field-line` edge, and the inline error treatment (a 1.5 px `err` edge plus a
+ * warning glyph and one sentence). `design/Code.dc.html` does not exist, so the activation screen
+ * borrows this exact object rather than inventing a second look for the same thing.
+ */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: var(--space-5);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field__label {
+  margin: 0;
+}
+
+.field__box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap-primary);
+  border: 1px solid var(--color-field-line);
+  border-radius: var(--radius-field);
+  background: var(--color-card);
+  padding: 0 var(--space-4);
+}
+
+/* An invalid field takes the heavier error edge, never a colour change on its text. */
+.field__box--invalid {
+  border: 1.5px solid var(--color-err-icon);
+}
+
+/* Room for the 44 px reveal button on the right without crowding the text. */
+.field__box--action {
+  padding-right: 6px;
+}
+
+.field__input {
+  flex-grow: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink);
+  /*
+   * 16 px is not a style choice: iOS Safari zooms the page when a focused field is smaller, and a
+   * zoomed page on the one screen between a foreman and the record button is a trap he has to
+   * pinch his way out of with gloves on.
+   */
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.4;
+  padding: var(--space-3) 0;
+}
+
+.field__input::placeholder {
+  color: var(--color-ink-3);
+  font-weight: 400;
+}
+
+.field__input:focus {
+  outline: none;
+}
+
+/* The focus ring belongs to the whole field, since the box is what reads as the control. */
+.field__box:focus-within {
+  outline: 3px solid var(--color-accent-deep);
+  outline-offset: 2px;
+}
+
+/*
+ * The code itself: spaced, tabular and uppercase, so eight characters read as eight characters
+ * and `XKD4-7HMP` lines up with the message he is copying from.
+ */
+.field__input--code {
+  font-weight: 600;
+  letter-spacing: 3px;
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+}
+
+.field__hint {
+  margin: 0;
+  line-height: 1.45;
+}
+
+/* The reveal toggle: a 44 px target inside the field, never a smaller one. */
+.field__toggle {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-ink-2);
+  cursor: pointer;
+}
+
+/* ---- Messages ------------------------------------------------------------------------------- */
+
+.form__message {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+}
+
+.form__message-text {
+  font-size: var(--text-meta);
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.form__message--err .form__message-text {
+  color: var(--color-err);
+}
+
+.form__message--err .form__message-icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--color-err-icon);
+}
+
+/* ---- Secondary path --------------------------------------------------------------------------- */
+
+.form__divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-6) var(--space-2);
+}
+
+.form__divider-line {
+  height: 1px;
+  flex-grow: 1;
+  background: var(--color-field-line);
+}
+
+.form__divider-word {
+  font-size: var(--text-meta);
+  font-weight: 500;
+  color: var(--color-ink-2);
+}
+
+.form__hint {
+  margin: var(--space-3) 0 0;
+  padding: 0 var(--space-4);
+  line-height: 1.5;
+  text-align: center;
+}
+
+@media (min-width: 1024px) {
+  /* In the desktop panel the hint sits under its button, not centred across a column. */
+  .form__hint {
+    padding: 0;
+    text-align: left;
+  }
+}

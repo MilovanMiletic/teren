@@ -31,6 +31,19 @@ public sealed class InsertRaceInterceptor : DbCommandInterceptor
     /// <summary>Runs the hook before the next INSERT into <c>media</c>, then disarms.</summary>
     public void ArmOnceBeforeMediaInsert(Func<Task> hook) => ArmOnce("INSERT INTO media", hook);
 
+    /// <summary>
+    /// Runs the hook immediately before the conditional UPDATE that claims an activation code,
+    /// then disarms.
+    /// <para>
+    /// This is the one that proves a single-use code is single-use <em>under contention</em>: the
+    /// hook runs a whole second activation, which commits, and the outer statement then finds
+    /// <c>consumed_at</c> already set and matches zero rows. Two phones, one code, exactly one
+    /// device — deterministically, rather than by firing two requests and hoping one loses.
+    /// </para>
+    /// </summary>
+    public void ArmOnceBeforeActivationCodeClaim(Func<Task> hook) =>
+        ArmOnce("UPDATE activation_code", hook);
+
     public void Disarm()
     {
         _hook = null;

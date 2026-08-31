@@ -23,8 +23,18 @@ public sealed record CreateEntryRequest
     public double? Longitude { get; init; }
     public double? GpsAccuracyM { get; init; }
 
-    /// <summary>Optional override of the device provenance derived from the token.</summary>
-    public Guid? DeviceId { get; init; }
+    // There is deliberately no DeviceId here any more (D2, profile-and-identity §8). It used to
+    // be an "optional override of the device provenance derived from the token", which made sense
+    // while one static token stood for the whole company and no device rows existed. With real
+    // devices it is a provenance lie on an evidence row: the phone would be telling the server
+    // which phone recorded a day's work, and the report would say so.
+    //
+    // The field is ACCEPTED AND IGNORED rather than rejected — System.Text.Json drops unmapped
+    // members by default, and nothing in this API sets UnmappedMemberHandling.Disallow. That is
+    // the deliberate choice: a 400 would break any phone in the field still sending it, and the
+    // whole point of an outbox is that a captured day eventually gets through. The shipped PWA
+    // does not send it (web/.../core/api/api-types.ts), so today this removes a hazard that
+    // nothing was using.
 }
 
 /// <summary>

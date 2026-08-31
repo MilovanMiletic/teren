@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Teren.Core.Entities;
+using Teren.Core.Identity;
 using Teren.Core.Reporting;
 
 namespace Teren.Infrastructure.Seeding;
@@ -30,7 +31,23 @@ public static class DemoSeeder
     public static readonly Guid Entry3Id = Guid.Parse("d3a0c1f0-5b8e-4f1a-9c62-000000000013");
     public static readonly Guid DemoDeviceId = Guid.Parse("d3a0c1f0-5b8e-4f1a-9c62-0000000000dd");
 
-    public static async Task<int> SeedAsync(DbContext db, CancellationToken ct = default)
+    /// <summary>The customer: the man who owns the company and receives the reports.</summary>
+    public static readonly Guid CompanyAdminId = Guid.Parse("d3a0c1f0-5b8e-4f1a-9c62-0000000000a1");
+
+    /// <summary>The foreman the three seeded entries were recorded by.</summary>
+    public static readonly Guid WorkerId = Guid.Parse("d3a0c1f0-5b8e-4f1a-9c62-0000000000a2");
+
+    /// <summary>His durable identity — globally unique, and what he types to re-activate a phone.</summary>
+    public const string WorkerUsername = "zoran.jovanovic";
+
+    public const string WorkerEmail = "zoran.jovanovic@vodoinstal-petrovic.example.com";
+    public const string CompanyAdminEmail = "petar.petrovic@vodoinstal-petrovic.example.com";
+
+    /// <summary>What the admin would recognise the demo phone by in a device list.</summary>
+    public const string DemoDeviceName = "Zoranov telefon";
+
+    public static async Task<int> SeedAsync(
+        DbContext db, string? deviceToken = null, CancellationToken ct = default)
     {
         var inserted = 0;
         var now = DateTime.UtcNow;
@@ -344,6 +361,130 @@ public static class DemoSeeder
         }
 
         await db.SaveChangesAsync(ct);
+
+        // Identity rows go in last and go in by hand. Two reasons, both load-bearing:
+        //
+        //   * They belong to TerenIdentityDbContext, which is a different context on a different
+        //     connection — and DemoReset re-seeds inside ONE transaction. Writing them through
+        //     that context would put them outside it, so a failed re-seed would leave the demo
+        //     company holding entries with no device: a permanently 401ing demo that reports
+        //     success. Raw SQL on this connection is the idiom DemoReset already uses throughout.
+        //   * app_user.company_id and device.company_id reference the company row above, which
+        //     until the SaveChanges on the line before this one exists only in the change tracker.
+        inserted += await SeedIdentityAsync(db, deviceToken, now, ct);
+
+        return inserted;
+    }
+
+    /// <summary>
+    /// The company's people and the demo phone.
+    /// <para>
+    /// <b>The device row is the compatibility hinge of the whole identity feature.</b> Its
+    /// <c>token_hash</c> is <c>SHA-256</c> of <c>Auth:DeviceToken</c>, so the token already
+    /// compiled into the PWA bundle authenticates <em>for real</em>, as a genuine device bound to
+    /// a genuine worker. That is what made it possible to delete the static-token authenticator
+    /// outright instead of carrying a dual-credential path: <c>Auth:DeviceToken</c> stopped being
+    /// a special case in code and became "the demo device's token, provisioned at seed time".
+    /// </para>
+    /// <para>
+    /// <b>The one thing this method updates on an existing row is a withdrawal stamp.</b> There
+    /// are exactly three that can leave a seeded demo unable to authenticate —
+    /// <c>device.revoked_at</c>, <c>app_user.disabled_at</c> and <c>company.suspended_at</c> — and
+    /// all three are cleared here, because <c>seed</c> is the command whose job is to put the demo
+    /// back into a state it can be given from. Without that, revoking the demo phone from psql
+    /// (which is exactly the capability D1 shipped) would be a one-way door: <c>seed</c> would
+    /// report "already present, nothing inserted" and the phone would 401 forever with nothing
+    /// anywhere saying why. Demo <em>content</em> — names, emails, the site list — is still never
+    /// overwritten; a row the founder edited by hand stays edited.
+    /// </para>
+    /// </summary>
+    private static async Task<int> SeedIdentityAsync(
+        DbContext db, string? deviceToken, DateTime now, CancellationToken ct)
+    {
+        var inserted = 0;
+
+        // The third withdrawal stamp, and the last thing that can leave a seeded demo unable to
+        // authenticate. Deliberately the only company column this ever writes: name and the rest
+        // are demo content the founder may have edited, and stay untouched.
+        inserted += await db.Database.ExecuteSqlRawAsync(
+            """
+            UPDATE company SET suspended_at = NULL
+            WHERE id = {0} AND suspended_at IS NOT NULL
+            """,
+            [CompanyId],
+            ct);
+
+        // The owner. password_hash stays NULL — he is invited, not provisioned with a password,
+        // and ck_app_user_worker_has_no_password only constrains workers.
+        inserted += await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO app_user
+                (id, company_id, role, username, display_name, email, password_hash, language,
+                 created_at)
+            VALUES ({0}, {1}, {2}, NULL, {3}, {4}, NULL, 'sr', {5})
+            ON CONFLICT (id) DO UPDATE SET disabled_at = NULL
+            WHERE app_user.disabled_at IS NOT NULL
+            """,
+            [CompanyAdminId, CompanyId, AppUserRoleNames.CompanyAdmin,
+             "Petar Petrović", CompanyAdminEmail, now],
+            ct);
+
+        // The foreman the seeded entries were recorded by. A worker's email is optional but is
+        // the normal case (§2 decision 6), and having one here is what makes the self-service
+        // "send me a new code" path demonstrable.
+        inserted += await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO app_user
+                (id, company_id, role, username, display_name, email, password_hash, language,
+                 created_at)
+            VALUES ({0}, {1}, {2}, {3}, {4}, {5}, NULL, 'sr', {6})
+            ON CONFLICT (id) DO UPDATE SET disabled_at = NULL
+            WHERE app_user.disabled_at IS NOT NULL
+            """,
+            [WorkerId, CompanyId, AppUserRoleNames.Worker, WorkerUsername,
+             "Zoran Jovanović", WorkerEmail, now],
+            ct);
+
+        if (string.IsNullOrWhiteSpace(deviceToken))
+        {
+            // A legitimate configuration, not a failure: it is the D7 end state, where the PWA
+            // stops carrying a baked-in token and the demo device is retired. Program.cs says so
+            // once at start-up; the seed simply provisions no phone.
+            return inserted;
+        }
+
+        // The one deliberate exception to "existing rows are never updated". Everything else the
+        // seeder writes is demo *content*, which the founder may have edited on purpose. This row
+        // is a *credential derived from configuration*, and `seed` is the command that is supposed
+        // to put the demo back into a state it can be given from.
+        //
+        // Three things can leave the demo phone unable to authenticate, and all three are restored
+        // here, because in every one of them `seed` would otherwise report success while the phone
+        // 401s forever with nothing anywhere saying why:
+        //
+        //   * a rotated Auth__DeviceToken, leaving a stale token_hash;
+        //   * a revoked_at stamp — and "revocation from psql" is exactly the capability D1 shipped,
+        //     so the way back from it has to be the command the founder already reaches for;
+        //   * revoked_by_user_id left pointing at whoever did it.
+        //
+        // The WHERE fires only when something actually differs, so a no-change re-seed still
+        // reports zero rows affected and idempotence is unaffected.
+        inserted += await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO device (id, company_id, user_id, name, token_hash, created_at)
+            VALUES ({0}, {1}, {2}, {3}, {4}, {5})
+            ON CONFLICT (id) DO UPDATE SET
+                token_hash = excluded.token_hash,
+                revoked_at = NULL,
+                revoked_by_user_id = NULL
+            WHERE device.token_hash IS DISTINCT FROM excluded.token_hash
+               OR device.revoked_at IS NOT NULL
+               OR device.revoked_by_user_id IS NOT NULL
+            """,
+            [DemoDeviceId, CompanyId, WorkerId, DemoDeviceName,
+             CredentialTokens.Hash(deviceToken), now],
+            ct);
+
         return inserted;
     }
 }

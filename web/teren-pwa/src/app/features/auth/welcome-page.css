@@ -1,0 +1,74 @@
+/*
+ * Welcome — what is specific to this screen. The shell is in `auth-layout.css`.
+ *
+ * Compact reproduces `design/Welcome.dc.html`: the brand block fills the space above and is
+ * optically centred, the two paths sit at the foot of the column with the hint beneath them.
+ */
+
+.welcome__brand {
+  flex-grow: 1;
+  justify-content: center;
+  padding: 0 var(--space-3);
+}
+
+.welcome__mark {
+  margin-bottom: 16px;
+}
+
+/* The artboard's spacing between the wordmark and the two lines under it. */
+.welcome__brand .auth__tagline {
+  margin-top: -2px;
+}
+
+.welcome__hint {
+  margin: var(--space-1) 0 0;
+  text-align: center;
+}
+
+@media (min-width: 768px) {
+  .welcome__mark {
+    /* Medium has room for a larger motif; it is proportioned, not a stretched phone. */
+    transform: scale(1.2);
+    transform-origin: center;
+    margin-bottom: var(--space-6);
+  }
+
+  .welcome__brand {
+    gap: var(--space-4);
+  }
+}
+
+@media (min-width: 1024px) {
+  .welcome__brand {
+    flex-grow: 0;
+    justify-content: flex-start;
+    padding: 0;
+  }
+
+  .welcome__mark {
+    transform: none;
+    margin-bottom: var(--space-4);
+  }
+
+  .welcome__brand .auth__tagline {
+    margin-top: 0;
+  }
+
+  /*
+   * The paths become a real panel: a card with its own padding, sitting beside the brand column
+   * rather than under it. This is the difference between a desktop layout and a phone column
+   * floating in the middle of a 1920 px window.
+   */
+  .welcome__paths {
+    gap: var(--space-3);
+    padding: var(--space-8);
+    border-radius: var(--radius-card-hero);
+    background: var(--color-card);
+    box-shadow: var(--shadow-card);
+  }
+
+  .welcome__hint {
+    text-align: left;
+    margin-top: var(--space-2);
+  }
+}

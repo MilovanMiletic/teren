@@ -23,7 +23,11 @@ export type IconName =
   | 'download'
   | 'file-text'
   | 'share'
-  | 'phone-home';
+  | 'phone-home'
+  | 'lock'
+  | 'mail'
+  | 'eye'
+  | 'eye-off';
 
 /**
  * The icon set: stroke-based, 24 px grid, stroke-width 2, round caps and joins
@@ -165,6 +169,24 @@ export type IconName =
           <rect x="5" y="2" width="14" height="20" rx="3" />
           <line x1="9" y1="12" x2="15" y2="12" />
           <line x1="12" y1="9" x2="12" y2="15" />
+        }
+        @case ('mail') {
+          <rect x="2" y="4" width="20" height="16" rx="2" />
+          <path d="M22 6l-10 7L2 6" />
+        }
+        @case ('lock') {
+          <rect x="3" y="11" width="18" height="11" rx="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        }
+        @case ('eye') {
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+          <circle cx="12" cy="12" r="3" />
+        }
+        @case ('eye-off') {
+          <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+          <path d="M6.61 6.61A18.15 18.15 0 0 0 1 12s4 8 11 8a9.74 9.74 0 0 0 5.39-1.61" />
+          <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+          <line x1="1" y1="1" x2="23" y2="23" />
         }
       }
     </svg>

@@ -1,7 +1,11 @@
+using System.Globalization;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Unicode;
+using System.Threading.RateLimiting;
 using FluentValidation;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Hangfire;
 using Microsoft.Extensions.Options;
 using Serilog;
@@ -62,7 +66,7 @@ ValidatorOptions.Global.PropertyNameResolver =
         ? null
         : JsonNamingPolicy.SnakeCaseLower.ConvertName(member.Name);
 
-// Scoped tenant context: DeviceTokenAuthFilter sets CompanyId from the caller's token before any
+// Scoped tenant context: BearerAuthFilter sets CompanyId from the caller's token before any
 // handler runs. Query filters are deny-by-default, so an unset tenant returns no rows rather
 // than everyone's rows.
 builder.Services.AddScoped<TenantContext>();
@@ -74,6 +78,15 @@ var connectionString = builder.Configuration.GetConnectionString("Postgres")
 
 builder.Services.AddDbContext<TerenDbContext>(options => options.UseNpgsql(connectionString));
 
+// The platform-side model (profile-and-identity §6, layer 3): app_user, device, activation_code
+// and friends, plus company read-only. It carries no query filters, which is what lets the
+// credential authenticator resolve a token before any tenant is known without reaching for
+// IgnoreQueryFilters. Its migrations live in their own history table so both models stay
+// scaffoldable and neither can drift from its schema.
+builder.Services.AddDbContext<TerenIdentityDbContext>(options => options
+    .UseNpgsql(connectionString, npgsql => npgsql
+        .MigrationsHistoryTable(TerenIdentityDbContext.MigrationsHistoryTable)));
+
 // Object storage: presigned PUT URLs out, HEAD verification back. Local values come from
 // appsettings.Development.json (throwaway MinIO credentials); production sets Storage__* env vars.
 builder.Services
@@ -83,14 +96,74 @@ builder.Services
     .ValidateOnStart();
 builder.Services.AddSingleton<IObjectStorage, S3ObjectStorage>();
 
-// M0 auth (ARCHITECTURE §12): one static device token. Missing configuration stops startup —
-// an API that silently accepts anonymous writes is worse than one that does not boot.
+// Auth: the bearer token a phone presents is hashed and looked up in the device table
+// (profile-and-identity §7). Auth:DeviceToken is no longer the authentication system — it is one
+// device's token, provisioned as a real row by DemoSeeder — so it is no longer required, and an
+// empty value means "no demo device" rather than "an API that accepts anonymous writes". The
+// gate itself is unconditional: no valid bearer token, no request, regardless of configuration.
 builder.Services
     .AddOptions<DeviceAuthOptions>()
     .Bind(builder.Configuration.GetSection(DeviceAuthOptions.SectionName))
     .ValidateDataAnnotations()
     .ValidateOnStart();
-builder.Services.AddScoped<IDeviceAuthenticator, StaticTokenDeviceAuthenticator>();
+builder.Services.AddScoped<ICredentialAuthenticator, DbCredentialAuthenticator>();
+
+// Session lifetimes, credential TTLs and the rate-limit window. Bound from the same Auth section;
+// every value in it is a security parameter and every one is pinned by a test.
+builder.Services
+    .AddOptions<AuthOptions>()
+    .Bind(builder.Configuration.GetSection(AuthOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+// The fixed window in front of /auth/* (profile-and-identity §7). Ten attempts per five minutes
+// per client IP, 429 with Retry-After. AddRateLimiter ships in the shared framework — no package.
+//
+// By IP and NOT by account, deliberately: a per-account lockout hands an attacker a way to lock a
+// paying customer out of his own reports with nothing but an email address.
+var authRateLimit = builder.Configuration
+    .GetSection(AuthOptions.SectionName)
+    .Get<AuthOptions>()?.RateLimit ?? new AuthRateLimitOptions();
+
+builder.Services.AddRateLimiter(limiter =>
+{
+    limiter.AddPolicy(AuthRateLimitPolicy.Name, http => RateLimitPartition.GetFixedWindowLimiter(
+        // RemoteIpAddress is trustworthy because Hosting:BehindProxy wires UseForwardedHeaders on
+        // the hosts that sit behind Caddy — and the API port is not published there, so nothing
+        // but the proxy can set the header. A null address (nothing has one in a unit-test host)
+        // collapses to one shared partition, which is the safe direction: stricter, not looser.
+        partitionKey: http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = authRateLimit.PermitLimit,
+            Window = authRateLimit.Window,
+            // No queue. A credential attempt that waits its turn is a request holding a thread on
+            // a small VPS; the honest answer is "not now, try again in N seconds".
+            QueueLimit = 0,
+        }));
+
+    limiter.OnRejected = async (context, ct) =>
+    {
+        var retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var window)
+            ? window
+            : authRateLimit.Window;
+
+        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        context.HttpContext.Response.Headers.RetryAfter =
+            ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
+
+        // Problem details like every other refusal in this API, so a client has one shape to
+        // parse. Says nothing about which account or which credential was being tried.
+        await context.HttpContext.Response.WriteAsJsonAsync(
+            new ProblemDetails
+            {
+                Title = "Too many requests",
+                Detail = "Too many attempts from this address. Wait a moment and try again.",
+                Status = StatusCodes.Status429TooManyRequests,
+            },
+            ct);
+    };
+});
 
 // B4: transcription, extraction, the processor and the sweeper.
 builder.Services.AddTerenPipeline(builder.Configuration);
@@ -121,6 +194,12 @@ if (args.Contains(DemoResetGuard.CommandName))
 builder.Services.AddSingleton<IValidator<CreateEntryRequest>, CreateEntryRequestValidator>();
 builder.Services.AddSingleton<IValidator<DeclareMediaRequest>, DeclareMediaRequestValidator>();
 builder.Services.AddSingleton<IValidator<ConfirmEntryRequest>, ConfirmEntryRequestValidator>();
+builder.Services.AddSingleton<IValidator<ActivateRequest>, ActivateRequestValidator>();
+builder.Services.AddSingleton<IValidator<ActivationCodeRequestBody>, ActivationCodeRequestBodyValidator>();
+builder.Services.AddSingleton<IValidator<LoginRequest>, LoginRequestValidator>();
+builder.Services.AddSingleton<IValidator<SetPasswordRequest>, SetPasswordRequestValidator>();
+builder.Services.AddSingleton<IValidator<CreateWorkerRequest>, CreateWorkerRequestValidator>();
+builder.Services.AddSingleton<IValidator<UpdateWorkerRequest>, UpdateWorkerRequestValidator>();
 
 // Staging and production put Caddy in front of this process (ARCHITECTURE §13): Caddy owns the
 // certificate and forwards over the private compose network in plain HTTP. Without this, two
@@ -187,20 +266,50 @@ if (args.Contains(DemoResetGuard.CommandName))
     return;
 }
 
+if (args.Contains(CreateSuperAdminCommand.CommandName))
+{
+    using var scope = app.Services.CreateScope();
+    var identityDb = scope.ServiceProvider.GetRequiredService<TerenIdentityDbContext>();
+
+    // Migrations first, for the same reason `reset-demo` learned to: on a box that has not been
+    // migrated this would otherwise die on a bare Npgsql 42P01, and this is the command a founder
+    // runs on a brand-new host before anything else exists.
+    await identityDb.Database.MigrateAsync();
+
+    Environment.ExitCode = await CreateSuperAdminCommand.RunAsync(
+        identityDb,
+        args,
+        Console.In,
+        Console.Out,
+        // Masked, non-echoing input when there is a terminal; one piped line when there is not.
+        maskInput: !Console.IsInputRedirected);
+
+    return;
+}
+
 if (args.Contains("migrate") || args.Contains("seed"))
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<TerenDbContext>();
+    var identityDb = scope.ServiceProvider.GetRequiredService<TerenIdentityDbContext>();
 
+    // Two models, two migration histories, and this order is not arbitrary: device.company_id
+    // and app_user.company_id reference the company table, which the evidence model owns.
     await db.Database.MigrateAsync();
-    Console.WriteLine("Migrations applied.");
+    await identityDb.Database.MigrateAsync();
+    Console.WriteLine("Migrations applied (schema + identity).");
 
     if (args.Contains("seed"))
     {
-        var inserted = await DemoSeeder.SeedAsync(db);
+        // The demo device's token. Empty means "provision no device", which is the D7 end state
+        // and is a working seed, not a failure.
+        var deviceToken = scope.ServiceProvider
+            .GetRequiredService<IOptions<DeviceAuthOptions>>().Value.DeviceToken;
+
+        var inserted = await DemoSeeder.SeedAsync(db, deviceToken);
         Console.WriteLine(inserted == 0
-            ? "Demo data already present; nothing inserted."
-            : $"Demo data seeded: {inserted} row(s) inserted.");
+            ? "Demo data already present and usable; nothing written."
+            : $"Demo data seeded: {inserted} row(s) written.");
     }
 
     return;
@@ -229,14 +338,46 @@ else if (!behindProxy)
 
 app.UseCors();
 
+// Before the endpoints it guards, and after UseForwardedHeaders so the partition key is the real
+// client address rather than the proxy's.
+app.UseRateLimiter();
+
 app.MapGet("/health", () => Results.Ok(new HealthResponse("ok", "teren-api")));
 
-// Everything under /api is behind the device token, which also resolves the tenant. Adding a
-// route to this group is all it takes to be tenant-scoped and authenticated.
-var api = app.MapGroup("/api").AddEndpointFilter<DeviceTokenAuthFilter>();
+// The public door: activation, login, set-password. DELIBERATELY NOT under /api, so that
+// TenancyTests.Every_api_route_sits_behind_the_token stays literally true rather than
+// "true with exceptions" — an exception list on that test is how it stops being worth running.
+app.MapGroup("/auth")
+    .RequireRateLimiting(AuthRateLimitPolicy.Name)
+    .WithTags("Auth")
+    .MapAuthEndpoints();
 
+// Everything under /api is behind the bearer token, which also resolves the tenant. Adding a
+// route to this group is all it takes to be tenant-scoped and authenticated.
+//
+// FILTER ORDER MATTERS AND IS ESTABLISHED HERE: group filters run outside route filters, so this
+// one runs first, each sub-group's RoleFilter runs next, and a route's ValidationFilter<T> runs
+// last. That is what makes 401 beat 403 beat 400 — an anonymous caller learns nothing about which
+// roles a route admits, and a caller of the wrong role learns nothing about its payload shape.
+var api = app.MapGroup("/api").AddEndpointFilter<BearerAuthFilter>();
+
+api.MapMeEndpoints();
 api.MapProjectEndpoints();
 api.MapEntryEndpoints();
+api.MapWorkerEndpoints();
+api.MapDeviceEndpoints();
+
+// Said once, loudly, rather than discovered as a 401 on a demo phone. An empty Auth:DeviceToken
+// is a legitimate configuration — it is the D7 end state — but on a box that is meant to be
+// demoable it means the seeded device does not exist and the bundled PWA token authenticates
+// nothing. Standing policy: visible failure, startup warning, never a boot refusal.
+if (!app.Services.GetRequiredService<IOptions<DeviceAuthOptions>>().Value.HasDeviceToken)
+{
+    app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Teren.Auth").LogWarning(
+        "Auth:DeviceToken is empty: no demo device is provisioned, so every device bearer token "
+        + "will be rejected until a device is activated. Set Auth__DeviceToken and re-run `seed` "
+        + "if this host is meant to run the demo.");
+}
 
 if (builder.Configuration.GetValue("Hangfire:Enabled", defaultValue: true))
 {

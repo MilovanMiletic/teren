@@ -434,7 +434,7 @@ describe('EntryDetail', () => {
     await settled(element, 'Proverite i potvrdite');
 
     element.querySelector<HTMLButtonElement>('.detail__notice-action')!.click();
-    expect(navigate).toHaveBeenCalledWith(['/potvrda', entry.id]);
+    expect(navigate).toHaveBeenCalledWith(['/confirm', entry.id]);
   });
 
   it('lets a foreman go back and correct an entry he has already confirmed', async () => {
@@ -461,7 +461,7 @@ describe('EntryDetail', () => {
     expect(element.querySelector('.detail__notice--err')).toBeNull();
 
     element.querySelector<HTMLButtonElement>('.detail__notice-action')!.click();
-    expect(navigate).toHaveBeenCalledWith(['/potvrda', entry.id]);
+    expect(navigate).toHaveBeenCalledWith(['/confirm', entry.id]);
   });
 
   it('offers no correction once the server says the report has gone out', async () => {

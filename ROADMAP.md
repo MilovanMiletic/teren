@@ -73,10 +73,53 @@ can be judged from a laptop. See `ARCHITECTURE.md` §13 for the three environmen
 | C2  | ☐ Weather enrichment         | Entry auto-carries conditions and temperature for its date and GPS location                                                                       |
 | C3  | ◐ Archive view               | Built 2026-08-29 (founder request, pulled ahead of M1): archive list + read-only entry record — structure, transcript, photos, audio, GPS, weather; offline-first from Dexie merged with `GET /api/entries`; three device classes incl. a two-pane desktop master-detail; a `confirmed`-but-unreported entry routes back to the gate; the report PDF downloads from the record. **Not done until *photos* have a read path** — B6 built an authenticated streaming endpoint for the report and shaped `IObjectStorage` so photos can reuse it, but the photo endpoint itself is not built, so an owner on a second device still sees no evidence (ARCHITECTURE §8) |
 | C4  | ☐ Immutability + corrections | Reported entries cannot change; a correction creates a new entry via `supersedes_entry_id`                                                        |
-| C5  | ☐ Device binding             | A join code binds a phone to a project — no login screen, no hardcoded project                                                                    |
+| C5  | ⊘ Device binding             | **Absorbed into the identity work 2026-08-30** — no longer a separate increment. The join code became a worker activation code; a device now binds to a *worker in a company*, not to a project (the project picker is a live control). See `plans/profile-and-identity.md` and the identity table below |
 | C6  | ☐ Weekly recap               | Weekly PDF summarising the week's entries                                                                                                         |
 | C7  | ☐ Production deploy          | Running on Hetzner with TLS, automated Postgres backups, error alerting                                                                           |
 | C8  | ☐ `[F]` Pilot onboarding     | A foreman from the distributor's network has it installed, understands it in under five minutes, and the founder has a channel for his complaints |
+
+### Identity and profiles (started 2026-08-30)
+
+Absorbs **C5** and pulls **M2** forward. Full specification in `plans/profile-and-identity.md`;
+increment ids below match its §11 table. Every increment lands green and demo-ready, so the
+sequence can be stopped at any point.
+
+| # | Increment | State |
+|---|---|---|
+| F1 | Outbox fix — a rejected credential no longer strands a day of evidence | ☑ reviewed, fixes in |
+| D1 | Identity schema, credentials, `DbCredentialAuthenticator`, closed identity model | ☑ reviewed, fixes in |
+| F2 | Session plumbing, `API_CONFIG` getter, the `pass()` gate | ☑ reviewed, fixes in |
+| F3 | `/welcome`, `/activate`, `/login` — verified in a browser at six widths | ☑ **awaiting review** |
+| D2 | Principal, role gates, 403/404 doctrine, rate limiter, login, `create-super-admin` | ☑ **built, UNREVIEWED** — 610 → 786 tests, build clean |
+| D3 | `/auth/activate`, self-service code, company-admin surface (workers, codes, devices) | ☑ **built, UNREVIEWED** — same run as D2 |
+| F4 | The `canMatch` gate + `?next=` deep links · **F4b** English route rename | ☐ **started and backed out** — see note below |
+| — | **Prove activation end to end against the real API** | ☐ **gates the flip below** |
+| D7/F9 | **Empty `environment.deviceToken`** — the increment that actually shuts the door | ☐ |
+| F5 | `/profile` — the worker's own account | ☐ |
+| F6 | `/company` — workers, codes, share text, devices, revoke | ☐ |
+| D4 | Platform surface: companies, users, filters, keyset paging, `admin_audit` | ☐ |
+| D5 | `app_log` + Serilog sink, allow-list, exception scrubbing, retention, redaction test | ☐ |
+| F7 | `/platform` — companies, users, invites, health, log viewer | ☐ |
+| D6 | `IMailSender` split, `InviteStrings`, Hangfire mail jobs | ☐ blocked on an SMTP relay |
+| F8 | Revocation surface on Home and the pending screen | ☐ |
+| D8 | `entry.created_by_user_id` / `confirmed_by_user_id`. **No backfill** | ☐ |
+
+**The ordering that matters:** a login screen secures nothing while `environment.deviceToken` is
+still baked into the bundle — anyone who opens devtools can read it and call the API directly. The
+row marked *gates the flip* is the one that turns this from screens into a closed door, and it must
+not be done before a code can actually be redeemed, or the founder is locked out of his own app.
+
+**Where the session of 2026-08-30 stopped.** D2 and D3 are on disk, green and unreviewed — the
+implementer was adding one shared test helper when the session ended, so treat the increment as
+complete but unaudited. **F4/F4b was started and deliberately backed out**: the agent had rewritten
+`app.routes.ts` with guards and English paths but had not yet written `device.guard.ts` or updated
+`rescue.service.ts`'s pathname parsing, which left the PWA unable to build. `app.routes.ts` was
+restored to its F3 state (Serbian paths, three auth routes, no guard) and re-verified at 538/538.
+**F4/F4b starts from scratch**; nothing of it survives except the knowledge that renaming routes and
+adding guards in one pass is the right grouping.
+
+Next session, in order: **review D2/D3 and F3**, then F4/F4b, then prove activation end to end
+against the real API, then the token flip.
 
 ---
 

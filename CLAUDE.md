@@ -121,7 +121,18 @@ before being presented as done; gating fixes go back to the implementer and are 
 
 ## Current state (update as it changes)
 
-- **Phase:** ROADMAP **B0–B6 ☑, C3 ◐, B3a next** (2026-08-30). Design system + 10 artboards in
+- **Phase:** ROADMAP **B0–B7 ☑, C3 ◐, identity work in progress** (2026-08-30). The current subject
+  is **profiles and identity** — `plans/profile-and-identity.md` is the approved specification and
+  ROADMAP's *Identity and profiles* table is the live increment tracker. **Start there.** Done and
+  reviewed: F1, D1, F2. **Built and UNREVIEWED: F3, D2, D3** — three increments owe their gate, which
+  is the largest unaudited surface this project has carried; review them before building anything on
+  top. F4/F4b was started and backed out (it left the PWA unbuildable); it restarts from scratch.
+  **The single most important ordering fact:** a login screen secures nothing while
+  `environment.deviceToken` is still baked into the PWA bundle — anyone can read it from devtools
+  and call the API directly. Emptying it (D7/F9) is what shuts the door, and it must not happen
+  until activation is proven end to end against the real API, or the founder is locked out of his
+  own app with no way back in but editing an environment file.
+- Design system + 10 artboards in
   `design/` (tokens.md is binding). B2 capture flow done incl. review fixes (Dexie v2, per-second
   chunk persistence, orphan rescue) **plus the adaptive-layout rework** (app header ≥768 with
   global language switcher, three device classes, layer/band tokens, `overflow:hidden` on base
@@ -181,12 +192,19 @@ before being presented as done; gating fixes go back to the implementer and are 
 - **Demo seed is now three sites** (`d3a0c1f0-5b8e-4f1a-9c62-` + `000000000002/3/4`), and those ids
   are a **contract** with `web/.../core/projects/project-source.ts`: if they drift, every
   `POST /api/entries` 404s and captured entries can never leave the phone. See ARCHITECTURE §6.
-- **Suites: 403 PWA specs** and **447 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
-  + Testcontainers over real Postgres, ~95 s; PdfPig in tests only, so report assertions read text
+- **Suites: 538 PWA specs** and **786 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
+  + Testcontainers over real Postgres, ~66 s; PdfPig in tests only, so report assertions read text
   back out of the rendered PDF). `dotnet test` needs Docker running.
-- **Check at session start:** the tree is green (`dotnet build` clean, **447 backend tests, 407 PWA
-  specs**, both verified by execution 2026-08-30). **Every increment has now passed its reviewer** —
-  the verbatim pair, the report-polish/download pair and B3a all cleared their gates.
+  *The figures here were stale before 2026-08-30 (403/447 recorded against an actual 436/476) —
+  both were re-measured off the tree, not carried forward.*
+- **Check at session start:** the tree is green (`dotnet build` clean, **786 backend tests, 538 PWA
+  specs**, both verified by execution 2026-08-30 at session end).
+  *If `dotnet build` reports `MSB3027 ... file is locked by Microsoft Visual Studio`, that is the
+  founder's IDE or a running API holding the output, not a code error — **never kill `dotnet.exe`**;
+  build to a scratch path with `-p:BaseOutputPath=` instead.* **Every increment has now passed its reviewer** —
+  the verbatim pair, the report-polish/download pair, B3a, and the identity pair (D1, F1+F2) all
+  cleared their gates. **Neither D1 nor F1+F2 had a delta review after its gating fixes** — both
+  implementers mutation-proved the fixes instead, as B4 did.
   The adaptive-rework *delta review* verdict is **permanently lost** (its session closed mid-run),
   so that increment never passed its gate; the salvage bug found afterwards was traced to async
   state sequencing, not to the rework. Design canvas still owes the 1280 desktop artboard variants.
@@ -194,6 +212,20 @@ before being presented as done; gating fixes go back to the implementer and are 
 - **Migrations are not applied by running the API.** `dotnet run --project src/Teren.Api -- migrate`
   is a separate step, and skipping it fails at runtime with a bare Npgsql `42703 column does not
   exist` — it has now bitten twice, once silently killing the money path on the dev database.
+  **Since D1 there are two migration histories**: the evidence schema, and
+  `__EFMigrationsHistory_identity` for `TerenIdentityDbContext`. `migrate` and `reset-demo` both
+  apply both; `dotnet ef` needs `--context`. The D1 review caught `reset-demo` applying only one and
+  dying with the same bare `42P01` on its *safe dry run* — the third time this class has bitten.
+- **Identity landed 2026-08-30 (increment D1)**, per `plans/profile-and-identity.md`: three roles
+  (super_admin / company_admin / worker), a worker's **username** is his durable identity, the
+  device credential proves it. `StaticTokenDeviceAuthenticator` is **deleted** — `Auth:DeviceToken`
+  is now just the demo device's token, provisioned into the `device` table as its SHA-256, which is
+  what keeps the PWA's baked-in token working. Nothing user-facing exists yet: no login screen, no
+  activation screen, no admin page. Those are D2/D3/F3 onward.
+- **`seed` clears three withdrawal stamps on existing rows** — `device.revoked_at`,
+  `app_user.disabled_at`, `company.suspended_at` — because each one silently makes the demo
+  unauthenticable while `seed` reports success. It never restores *content* the founder edited; a
+  test pins that line.
 - **Confirming clears `failure_reason`** (`EntryEndpoints.cs`, deliberate — it is what makes "fix the
   cause and confirm again" the retry path). Consequence: the record of *why the AI produced nothing*
   is destroyed the moment a foreman confirms, so diagnose a pipeline failure **before** confirming.

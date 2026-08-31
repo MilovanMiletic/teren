@@ -15,6 +15,7 @@ import { TerenApiClient } from '../api/teren-api.client';
 import { ConnectivityService } from '../connectivity.service';
 import { EntryStore } from '../db/entry-store';
 import { LocalEntry, LocalMedia, OutboxItem } from '../db/models';
+import { SessionService } from '../session/session.service';
 import { nextAttemptAt } from './backoff';
 import { sha256Hex } from './sha256';
 
@@ -43,7 +44,10 @@ import { sha256Hex } from './sha256';
  *
  * ## What it refuses to do
  *
- * - It does not attempt when the OS reports no network.
+ * - It does not attempt when the OS reports no network, and — since F1 — it does not attempt when
+ *   there is no usable credential either. The two are one condition as far as this loop is
+ *   concerned: something outside the queue is missing, no entry is at fault, and nothing is
+ *   written down about any of them.
  * - It does not retry a terminal failure. `blocked` items are invisible to the loop until a human
  *   presses "try again" — see `api-failure.ts` for why that distinction is the point of B3.
  * - It does not delete anything. A confirmed entry loses its outbox row (a work ticket, not
@@ -55,6 +59,7 @@ export class UploadService {
   private readonly api = inject(TerenApiClient);
   private readonly store = inject(EntryStore);
   private readonly connectivity = inject(ConnectivityService);
+  private readonly session = inject(SessionService);
 
   /** Serialises passes: one attempt at a time, in outbox order, exactly as §11 prescribes. */
   private running: Promise<void> = Promise.resolve();
@@ -78,6 +83,35 @@ export class UploadService {
       if (this.connectivity.online()) {
         this.wake();
       }
+    });
+
+    // A credential change is the second thing that can make a stuck queue movable, and — unlike a
+    // network that comes back — nothing else in the app notices it.
+    //
+    // A phone whose device was revoked accumulates rows failing with `unauthenticated`; a phone
+    // that was never activated may carry rows an older build wrote to `blocked`. Both are fixed by
+    // the same event: the foreman types a code. When that happens the auth-blocked rows are
+    // released and a pass runs, so a morning's entries start moving with **no per-entry tap** —
+    // which is the whole difference between a queue that heals and a chore.
+    //
+    // `seen` is captured before the effect so start-up does not count as a change. That guard is
+    // not cosmetic: the loop is documented never to pick a `blocked` item up on its own, and an
+    // effect that fired on the first read would quietly break exactly that promise.
+    let seen = this.session.token();
+    effect(() => {
+      const token = this.session.token();
+      if (token === seen) {
+        return;
+      }
+      seen = token;
+      // Losing a credential releases nothing. Revocation is not an invitation to retry.
+      if (!token) {
+        return;
+      }
+      this.running = this.running
+        .then(() => this.store.releaseBlockedByAuth())
+        .then(() => this.pass())
+        .catch(() => undefined);
     });
 
     // A new entry reaching the queue should go out now, not at the next tick. The subscription
@@ -139,6 +173,21 @@ export class UploadService {
     this.clearTimer();
 
     if (!this.connectivity.online()) {
+      return;
+    }
+
+    // No credential: make no attempt, change no state, record no failure.
+    //
+    // **The most important line in F1.** It makes "this phone has no usable token" structurally
+    // identical to "this phone has no signal" — the condition the entire app is built to survive.
+    // Without it the pass runs, `send()` throws `not_configured`, that kind is terminal, and a
+    // device that loses its session mid-queue blocks the morning by a second route, having blamed
+    // the entries for a problem that is not theirs.
+    //
+    // Returning without scheduling a wake is the same shape as the offline branch above, and safe
+    // for the same reason: the credential-change effect in `start()` wakes the loop the moment a
+    // token arrives, exactly as the connectivity effect does when the network comes back.
+    if (!this.session.usable()) {
       return;
     }
 
@@ -224,6 +273,12 @@ export class UploadService {
 
   /** The upload conversation for one entry. Throws {@link UploadFailure} on any setback. */
   private async send(entry: LocalEntry): Promise<void> {
+    // Unreachable since F1 — `pass()` returns before it gets here when the session is unusable —
+    // and kept as a backstop rather than deleted, because `not_configured` still has to *mean*
+    // something precise elsewhere: three branches (`archive/entry-detail.ts`, twice, and
+    // `confirm/confirm-page.ts`) read it as "this phone was never activated, so nothing it holds
+    // was ever sent". Producing it on the entry path would make that sentence false about sealed
+    // entries; leaving the guard in place costs one comparison and keeps the meaning intact.
     if (!this.api.configured) {
       throw new UploadFailure(
         'not_configured',

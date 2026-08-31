@@ -1,0 +1,240 @@
+/*
+ * The shell the three auth screens share: welcome, activation, sign-in.
+ *
+ * Included by each of them through `styleUrls`, so the rules are written once and still scoped
+ * per component the way every other screen's styles are. It is a feature stylesheet, not part of
+ * the design system — `styles.css` stays the place where a class is allowed to mean the same
+ * thing to the whole app.
+ *
+ * ## Three device classes, one structure
+ *
+ * - **compact (<768)** — the 390 artboards exactly: a column with the content stacked, the
+ *   primary matter at the bottom under the thumb.
+ * - **medium (768–1023)** — the same column, proportioned rather than stretched: `.column` caps
+ *   at 640, the motif grows, and the actions stop being full-bleed banners.
+ * - **expanded (≥1024)** — a real two-column layout. The left column carries the brand and the
+ *   explanation, the right carries the one thing to do. A centred phone column on a 1920 screen
+ *   is not a desktop design (CLAUDE.md, founder rule).
+ *
+ * There is deliberately **no `app-header`** on these screens. The header carries the current site
+ * and the back affordance for a phone that is already inside the app; a man on the welcome screen
+ * has no site, and the wordmark it shows is the hero of this very screen. The language switcher
+ * it would have carried is placed here instead.
+ */
+
+.auth {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+}
+
+/* ---- Top row ------------------------------------------------------------------------------ */
+
+.auth__top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: var(--tap-min);
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+
+.auth__title {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+/* Pushes the switcher to the right on a screen whose top row has no title (welcome). */
+.auth__spacer {
+  flex: 1 1 auto;
+}
+
+/*
+ * Compact keeps the switcher out of the top row and at the foot of the column, exactly as Home
+ * does: the top of a phone screen belongs to the task, and the switcher is a demo and development
+ * convenience (ARCHITECTURE §5).
+ */
+.auth__langs {
+  display: none;
+}
+
+.auth__foot-langs {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--space-6);
+  padding-bottom: var(--space-6);
+}
+
+@media (min-width: 768px) {
+  .auth__top {
+    padding-top: var(--space-6);
+  }
+
+  .auth__langs {
+    display: inline-flex;
+  }
+
+  .auth__foot-langs {
+    display: none;
+  }
+}
+
+/* ---- Body --------------------------------------------------------------------------------- */
+
+.auth__body {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+}
+
+@media (min-width: 1024px) {
+  .auth__body {
+    display: grid;
+    /*
+     * The explanation is allowed to be wider than the form. A 50/50 split leaves a 500 px field
+     * card with nothing in it but three rows, which is how a desktop layout ends up looking like
+     * a phone layout that was stretched.
+     */
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    gap: var(--space-8);
+    align-items: center;
+    padding-top: var(--space-8);
+    padding-bottom: var(--space-8);
+  }
+}
+
+/* ---- Brand column -------------------------------------------------------------------------- */
+
+.auth__brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-3);
+}
+
+.auth__word {
+  margin: 0;
+  /* A wordmark, as on every artboard — the dictionary holds a name, not a rendering. */
+  text-transform: uppercase;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 6px;
+}
+
+.auth__tagline {
+  margin: 0;
+  font-size: var(--text-h2);
+  font-weight: 600;
+}
+
+.auth__lead {
+  margin: 0;
+  max-width: 42ch;
+  font-size: var(--text-body);
+  line-height: 1.55;
+  color: var(--color-ink-2);
+}
+
+@media (min-width: 1024px) {
+  /* Left-aligned on a desktop: a centred column of text beside a form reads as a poster. */
+  .auth__brand {
+    align-items: flex-start;
+    text-align: left;
+    gap: var(--space-4);
+  }
+
+  .auth__word {
+    font-size: 44px;
+  }
+
+  .auth__tagline {
+    font-size: 24px;
+  }
+}
+
+/* ---- The points beside the form (expanded only) --------------------------------------------- */
+
+/*
+ * Two or three short paragraphs that answer the question the screen raises — what a join code is,
+ * who signs in with a password. They exist only where there is room for them: on a phone they
+ * would push the action below the fold, and the action is the screen.
+ */
+.auth__aside {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .auth__aside {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin-top: var(--space-5);
+  }
+
+  .auth__points {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    max-width: 46ch;
+  }
+
+  .auth__point {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .auth__point-title {
+    font-size: var(--text-body);
+    font-weight: 600;
+  }
+
+  .auth__point-body {
+    font-size: var(--text-meta);
+    line-height: 1.5;
+    color: var(--color-ink-2);
+  }
+}
+
+/* ---- Action column --------------------------------------------------------------------------- */
+
+.auth__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-bottom: var(--space-8);
+}
+
+@media (min-width: 768px) {
+  .auth__panel {
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+}
+
+@media (min-width: 1024px) {
+  .auth__panel {
+    max-width: none;
+    margin: 0;
+    padding-bottom: 0;
+  }
+}
+
+/*
+ * Medium only: a screen whose whole content is one card centres it.
+ *
+ * Compact cannot (the keyboard would push it off), and expanded does not (the two columns own
+ * the vertical rhythm). In between, a 480 px card hanging from the top row of a 1024 px tall
+ * tablet reads as a page that failed to load the rest of itself.
+ */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .auth__body--form {
+    justify-content: center;
+    padding-bottom: var(--space-8);
+  }
+}

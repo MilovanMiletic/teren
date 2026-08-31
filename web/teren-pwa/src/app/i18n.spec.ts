@@ -3,9 +3,12 @@ import { basename, join } from 'node:path';
 
 import en from '../../public/i18n/en.json';
 import sr from '../../public/i18n/sr.json';
+import { FAILURE_KINDS } from './core/api/api-failure';
+import { AUTH_FAILURES } from './core/auth/activation.service';
 import { CONFIRM_BANNERS } from './core/confirm/confirm-banner';
 import { CONFIRM_FAILURES } from './core/confirm/confirm.service';
 import { REPORT_FAILURES } from './core/report/report.service';
+import { REASON_KEYS } from './features/pending/pending-page';
 import { AVAILABLE_LANGUAGES, DEFAULT_LANGUAGE } from './i18n';
 
 /**
@@ -177,6 +180,56 @@ describe('translation dictionaries', () => {
     for (const failure of REPORT_FAILURES) {
       expect(enKeys).toContain(`archive.report.error.${failure}`);
       expect(srKeys).toContain(`archive.report.error.${failure}`);
+    }
+  });
+
+  /**
+   * The same guard for the reason under a stuck entry on the pending screen.
+   *
+   * `pending-page.ts` maps every `FailureKind` to a key through `REASON_KEYS`, and an unmapped
+   * kind falls back to `pending.reason.unknown` — so a missing sentence does not throw, does not
+   * fail a build, and does not fail any spec that happens not to walk that branch. It just tells a
+   * foreman "Slanje nije uspelo iz nepoznatog razloga" about a failure the classifier had named
+   * precisely, on the one screen whose whole job is to say what went wrong.
+   *
+   * `FAILURE_KINDS` is kept complete by a `Record<FailureKind, true>` the compiler checks, so
+   * adding a kind fails here until both dictionaries can name it. F1's own `unauthenticated` went
+   * in before this block existed; this is what stops the next one being noticed by a customer.
+   */
+  it('can name every failure the sync loop is able to record', () => {
+    expect(FAILURE_KINDS.length).toBeGreaterThan(0);
+    for (const kind of FAILURE_KINDS) {
+      const key = REASON_KEYS[kind];
+      expect(enKeys, `no English sentence for '${kind}'`).toContain(key);
+      expect(srKeys, `no Serbian sentence for '${kind}'`).toContain(key);
+      // …and it is a sentence about *this* kind, not the catch-all wearing a table's clothes.
+      if (kind !== 'unknown') {
+        expect(key, `'${kind}' falls back to the generic line`).not.toBe('pending.reason.unknown');
+      }
+    }
+  });
+
+  /**
+   * The same guard for the two screens that stand between a person and the app (F3).
+   *
+   * `activate-page.ts` and `login-page.ts` build `auth.code.error.${failure}` and
+   * `auth.login.error.${failure}` by concatenation, so the literal scan above cannot see a single
+   * one of those keys. Both screens read from the *same* union deliberately — the server's verdict
+   * is one thing, and what to say about it is two — so both prefixes are walked here. A raw
+   * `auth.code.error.rejected` on screen is not a broken build; it is a man standing in a yard
+   * with a code that does not work and a translation key where the reason should be.
+   */
+  it('can name every failure the auth screens are able to return, on both of them', () => {
+    expect(AUTH_FAILURES.length).toBeGreaterThan(0);
+    for (const failure of AUTH_FAILURES) {
+      for (const screen of ['auth.code.error', 'auth.login.error']) {
+        expect(enKeys, `no English sentence for '${screen}.${failure}'`).toContain(
+          `${screen}.${failure}`,
+        );
+        expect(srKeys, `no Serbian sentence for '${screen}.${failure}'`).toContain(
+          `${screen}.${failure}`,
+        );
+      }
     }
   });
 

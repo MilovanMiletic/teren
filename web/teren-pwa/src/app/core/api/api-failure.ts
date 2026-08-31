@@ -54,7 +54,27 @@ export type FailureKind =
   | 'incomplete'
   /** 400/404/422, or a 409 the server will repeat. The request itself is wrong. **Terminal.** */
   | 'rejected'
-  /** 401/403 from the API. This build's device token is not accepted. **Terminal.** */
+  /**
+   * **401.** The credential is not accepted *at this moment*: the device was revoked, its token
+   * has been replaced, or the phone has not been activated yet. Retry.
+   *
+   * Deliberately **not** terminal, and this is the difference that keeps a day of evidence alive.
+   * A 401 is a statement about *now*, not about the request: an admin un-revokes the device, or
+   * the foreman types a new code, and the queue heals with nobody touching a single entry. Made
+   * terminal — which is what it was until F1 — one rejected credential wrote every entry captured
+   * that morning to `blocked`, and a `blocked` row schedules no wake timer, so the loop went
+   * permanently dormant and a restart recovered nothing.
+   *
+   * A device that is revoked for good therefore retries at the ten-minute ceiling for ever. That
+   * is correct by this file's own doctrine: retries are made *visible* rather than abandoned, and
+   * {@link STALLED_AFTER_ATTEMPTS} turns "trying" into "not getting through" after about half an
+   * hour, which is a sentence a foreman can act on.
+   */
+  | 'unauthenticated'
+  /**
+   * **403 only.** The credential is fine and the caller is who he says he is; he may not do this.
+   * **Terminal**, because waiting cannot fix a wrong company or a wrong role.
+   */
   | 'unauthorized'
   /** This build has no API address or no device token. **Terminal.** */
   | 'not_configured'
@@ -64,12 +84,45 @@ export type FailureKind =
   | 'unknown';
 
 /**
+ * Every failure kind, enumerable at runtime and kept complete by the compiler.
+ *
+ * `Record<FailureKind, true>` is the one construct TypeScript checks for *completeness*, so adding
+ * a member to the union above and forgetting it here does not compile. That matters because the
+ * kinds are the input to a screen: `pending-page.ts` maps each to a sentence, and a kind with no
+ * entry falls back to "Slanje nije uspelo iz nepoznatog razloga" — a foreman told nothing about a
+ * failure the classifier had named precisely. `i18n.spec.ts` walks this list against
+ * `pending.reason.*` in both dictionaries, the way it already walks `REPORT_FAILURES`.
+ *
+ * The `true` values carry no meaning — the keys are the point.
+ */
+const ALL_FAILURE_KINDS: Record<FailureKind, true> = {
+  offline: true,
+  server: true,
+  storage: true,
+  incomplete: true,
+  rejected: true,
+  unauthenticated: true,
+  unauthorized: true,
+  not_configured: true,
+  insecure_context: true,
+  unknown: true,
+};
+
+/** Every kind the loop can record, for the specs that check each one can be named on screen. */
+export const FAILURE_KINDS = Object.keys(ALL_FAILURE_KINDS) as readonly FailureKind[];
+
+/**
  * The four kinds no retry can fix.
  *
  * Each is a statement about *this request* that will hold for as long as the request is the same:
- * the project does not exist, the declaration is refused, the token is not accepted, the origin
+ * the project does not exist, the declaration is refused, this caller may not do this, the origin
  * cannot compute a digest. Everything else — every network failure, every 5xx, every object that
- * has not appeared in storage yet — stays in the queue.
+ * has not appeared in storage yet, **and every rejected credential** — stays in the queue.
+ *
+ * `unauthenticated` is the one that had to be taken *out* of this set (F1). It reads like a
+ * permanent answer and is not: it describes the credential's standing at this instant, and the
+ * instant changes when an admin un-revokes a device or a foreman activates a new phone. Left in
+ * here it did real damage — see the kind's own doc comment for the morning it cost.
  */
 const TERMINAL_KINDS: ReadonlySet<FailureKind> = new Set<FailureKind>([
   'rejected',
@@ -140,8 +193,16 @@ export function classifyApiError(error: unknown): UploadFailure {
     return new UploadFailure('offline', 'the server could not be reached', 0);
   }
 
-  if (status === 401 || status === 403) {
-    return new UploadFailure('unauthorized', detailOf(error) ?? 'device token rejected', status);
+  // 401 and 403 mean opposite things and are the one split F1 exists to make. 401: this
+  // credential is not accepted *right now* — an admin un-revokes it, or the foreman types a new
+  // code, and the queue heals unattended, so it must stay in the outbox. 403: the credential is
+  // accepted and this caller may not do this, which no amount of waiting changes.
+  if (status === 401) {
+    return new UploadFailure('unauthenticated', detailOf(error) ?? 'credential not accepted', 401);
+  }
+
+  if (status === 403) {
+    return new UploadFailure('unauthorized', detailOf(error) ?? 'not allowed for this caller', 403);
   }
 
   if (status === 400 || status === 404 || status === 409 || status === 422) {

@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { WritableSignal, signal } from '@angular/core';
+import { WritableSignal, computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { TEST_PROJECT, captureEntry } from '../../testing/capture-fixture';
@@ -15,6 +15,7 @@ import { TerenApiClient } from '../api/teren-api.client';
 import { ConnectivityService } from '../connectivity.service';
 import { EntryStore } from '../db/entry-store';
 import { TEREN_DB, TerenDb } from '../db/teren-db';
+import { SessionService } from '../session/session.service';
 import { UploadService } from './upload.service';
 
 /**
@@ -27,7 +28,20 @@ import { UploadService } from './upload.service';
  * as what they are.
  */
 class FakeApi {
-  configured = true;
+  /**
+   * Mirrors the real client: `configured` is derived from the token, never set independently.
+   *
+   * That matters for one spec in particular. `TerenApiClient.configured` reads
+   * `API_CONFIG.deviceToken`, which since F2 reads the live session — so a phone with no
+   * credential reports `false` here, `send()` throws `not_configured`, and that kind is
+   * **terminal**. A fake that always said `true` would let the gate in `pass()` be deleted while
+   * the suite still passed in the shape that matters: the deletion would look like a successful
+   * upload rather than the blocked morning it really is.
+   */
+  tokenIsGood = true;
+  get configured(): boolean {
+    return this.tokenIsGood;
+  }
 
   /** What the server currently believes about the entry. */
   status = 'received';
@@ -177,17 +191,27 @@ describe('UploadService', () => {
   let api: FakeApi;
   let online: WritableSignal<boolean>;
   let uploads: UploadService;
+  /** The credential, as a signal, so a spec can revoke or issue one the way activation does. */
+  let token: WritableSignal<string>;
 
   beforeEach(() => {
     db = new TerenDb(`teren-test-${crypto.randomUUID()}`);
     api = new FakeApi();
     online = signal(true);
+    token = signal('trn_d_test-token');
 
     TestBed.configureTestingModule({
       providers: [
         { provide: TEREN_DB, useValue: db },
         { provide: TerenApiClient, useValue: api as unknown as TerenApiClient },
         { provide: ConnectivityService, useValue: { online: online.asReadonly() } },
+        {
+          provide: SessionService,
+          useValue: {
+            token: token.asReadonly(),
+            usable: computed(() => token().length > 0),
+          } as unknown as SessionService,
+        },
       ],
     });
 
@@ -205,6 +229,25 @@ describe('UploadService', () => {
     const entry = await captureEntry(store, { photoCount: options.photoCount ?? 0 });
     await store.queue(entry.id);
     return entry.id;
+  }
+
+  /**
+   * Change the credential the way an activation really does: one value, two visible effects.
+   *
+   * In the app both `SessionService.usable()` and `TerenApiClient.configured` are computed from
+   * the same token, so a spec that moved only one of them would be testing a phone that cannot
+   * exist — and would let the gate in `pass()` be deleted without anything going red.
+   */
+  function setCredential(value: string): void {
+    token.set(value);
+    api.tokenIsGood = value.length > 0;
+    // Flush the credential-change effect in `start()` deterministically.
+    //
+    // Without this the spec races the effect scheduler: `token.set()` only *schedules* the effect,
+    // so `flush()` could await a `running` chain the release had not been appended to yet, and the
+    // assertion would pass or fail depending on how loaded the machine was. A spec about whether a
+    // queue heals must not be a spec about scheduler timing.
+    TestBed.tick();
   }
 
   // ---- The money path -------------------------------------------------------------------------
@@ -507,7 +550,7 @@ describe('UploadService', () => {
 
     it('blocks when the build carries no device token', async () => {
       const entryId = await queued();
-      api.configured = false;
+      api.tokenIsGood = false;
 
       await uploads.flush();
 
@@ -516,6 +559,171 @@ describe('UploadService', () => {
         failureKind: 'not_configured',
       });
       expect(api.created).toHaveLength(0);
+    });
+  });
+
+  // ---- A rejected credential (F1, hazard H1) --------------------------------------------------
+
+  describe('a rejected credential', () => {
+    /**
+     * **The headline regression of F1** (`plans/profile-and-identity.md` §3 H1, §12).
+     *
+     * Before F1 this scenario ended with three rows in `blocked` and `nextAttemptAt: null`. Such a
+     * row is invisible to `dueOutboxItems()`, uncounted by `watchOutboxBacklog()` and ignored by
+     * `earliestNextAttempt()` — so **no wake timer is scheduled, the loop goes permanently dormant,
+     * and restarting the app recovers nothing.** The pass cascaded through the rest of the queue
+     * in the same sweep, so one revoked device blocked every entry captured that morning, each
+     * recoverable only by a per-entry tap the foreman had no reason to know he needed.
+     *
+     * Once an admin can press revoke, that is a live way to lose a day of evidence.
+     */
+    it('keeps a whole morning of entries retryable when the server rejects the credential', async () => {
+      const first = await queued();
+      api.receivedAt = null;
+      const second = await queued();
+      api.receivedAt = null;
+      const third = await queued();
+      const all = [first, second, third];
+
+      // The device was revoked between this morning and now. Sticky: every entry meets it.
+      api.failCreate = httpError(401, 'device token rejected');
+      api.sticky = true;
+
+      await uploads.flush();
+
+      for (const entryId of all) {
+        const item = await store.getOutboxItem(entryId);
+        expect(item?.state).toBe('failed');
+        expect(item?.failureKind).toBe('unauthenticated');
+        // The property that was missing: a next attempt exists, so the row is due again later.
+        expect(item?.nextAttemptAt).not.toBeNull();
+        expect(Date.parse(item!.nextAttemptAt!)).toBeGreaterThan(Date.now());
+      }
+
+      // Zero rows blocked. This is the assertion that failed before F1.
+      const blocked = (await db.outbox.toArray()).filter((item) => item.state === 'blocked');
+      expect(blocked).toHaveLength(0);
+
+      // …and something will actually wake to try again. A queue that is "retryable" but schedules
+      // no timer is dormant with extra steps.
+      expect(await store.earliestNextAttempt()).not.toBeNull();
+
+      // Every byte still on the phone, which is the promise underneath all of this.
+      for (const entryId of all) {
+        expect((await store.listMediaForUpload(entryId)).every((f) => f.blob.size > 0)).toBe(true);
+      }
+
+      // The credential is accepted again — an admin un-revoked the device. Nothing is tapped.
+      api.sticky = false;
+      api.failCreate = null;
+      for (const entryId of all) {
+        await store.setOutboxState(entryId, 'queued'); // fast-forward the backoff, as elsewhere
+      }
+      api.receivedAt = null;
+      await uploads.flush();
+
+      for (const entryId of all) {
+        expect((await store.getEntry(entryId))?.status).toBe('confirmed_by_server');
+        expect(await store.getOutboxItem(entryId)).toBeUndefined();
+      }
+    });
+
+    it('still blocks a 403, because no amount of waiting makes a caller allowed', async () => {
+      // The other half of the split. A 403 is terminal exactly as it always was: retrying a wrong
+      // company or a wrong role forever would be the battery-burning loop `blocked` exists to stop.
+      const entryId = await queued();
+      api.failCreate = httpError(403, 'not allowed for this caller');
+      api.sticky = true;
+
+      await uploads.flush();
+
+      expect(await store.getOutboxItem(entryId)).toMatchObject({
+        state: 'blocked',
+        failureKind: 'unauthorized',
+        nextAttemptAt: null,
+      });
+    });
+  });
+
+  // ---- No credential at all -------------------------------------------------------------------
+
+  describe('with no usable credential', () => {
+    /**
+     * The gate in `pass()`, and the reason it asserts *no state change* rather than "no request".
+     *
+     * Without it the pass runs, `send()` throws `not_configured`, and that kind is terminal — so a
+     * phone that loses its session mid-queue blocks the morning by a second route, having blamed
+     * the entries for a problem that has nothing to do with them. "No credential" has to be
+     * structurally identical to "no signal": nothing attempted, nothing recorded, nothing blamed.
+     *
+     * Deleting the gate makes this spec fail on `attempts` and `failureKind`, not merely on the
+     * request count — which is what makes it a real guard rather than a restatement of the code.
+     */
+    it('records nothing at all — no attempt, no state change, no failure', async () => {
+      const entryId = await queued();
+      setCredential('');
+
+      await uploads.flush();
+
+      // State first, deliberately: 'no request was sent' is the weaker property and would
+      // still hold if the loop recorded a failure without reaching the network. What must be true
+      // is that the queue learned *nothing* — the entry is untouched, unblamed, and exactly as it
+      // was before a pass that had no business running.
+      const item = await store.getOutboxItem(entryId);
+      expect(item?.state).toBe('queued');
+      expect(item?.attempts).toBe(0);
+      expect(item?.failureKind).toBeNull();
+      expect(item?.lastError).toBeNull();
+      expect((await store.getEntry(entryId))?.status).toBe('queued');
+      expect(api.created).toHaveLength(0);
+    });
+
+    it('sends everything the moment a credential arrives, with no per-entry tap', async () => {
+      // Activation, from the queue's point of view. The foreman types one code; the entries
+      // captured while the phone had no session go out on their own.
+      setCredential('');
+      const first = await queued();
+      api.receivedAt = null;
+      const second = await queued();
+      TestBed.runInInjectionContext(() => uploads.start());
+      await uploads.flush();
+      expect(api.created).toHaveLength(0);
+
+      api.receivedAt = null;
+      setCredential('trn_d_freshly-activated');
+      await uploads.flush();
+      await uploads.flush();
+
+      for (const entryId of [first, second]) {
+        expect((await store.getEntry(entryId))?.status).toBe('confirmed_by_server');
+      }
+    });
+
+    it('releases rows an older build blocked, when a credential changes', async () => {
+      // A phone upgrading from a pre-F1 build carries `blocked` rows stamped `unauthenticated`,
+      // plus rows blocked as `not_configured` from before it was ever activated. A new credential
+      // is a real answer to both, and it must cost zero taps.
+      const revoked = await queued();
+      api.receivedAt = null;
+      const neverActivated = await queued();
+      await store.setOutboxState(revoked, 'blocked', { failureKind: 'unauthenticated' });
+      await store.setOutboxState(neverActivated, 'blocked', { failureKind: 'not_configured' });
+      // …and one that a credential cannot fix, which must stay exactly where it is.
+      const missingProject = await queued();
+      await store.setOutboxState(missingProject, 'blocked', { failureKind: 'rejected' });
+
+      TestBed.runInInjectionContext(() => uploads.start());
+      await uploads.flush();
+
+      api.receivedAt = null;
+      setCredential('trn_d_re-activated');
+      await uploads.flush();
+      await uploads.flush();
+
+      expect((await store.getEntry(revoked))?.status).toBe('confirmed_by_server');
+      expect((await store.getEntry(neverActivated))?.status).toBe('confirmed_by_server');
+      // The 404 project is not something a token fixes, and the queue must not pretend otherwise.
+      expect((await store.getOutboxItem(missingProject))?.state).toBe('blocked');
     });
   });
 

@@ -1,0 +1,53 @@
+<div class="screen" *transloco="let t">
+  <div class="column auth">
+    <div class="auth__top">
+      <span class="auth__spacer"></span>
+      <app-language-switcher class="auth__langs" />
+    </div>
+
+    <div class="auth__body">
+      <section class="auth__brand welcome__brand">
+        <app-auth-mark class="welcome__mark" />
+
+        <h1 class="auth__word">{{ t('app.name') }}</h1>
+        <p class="auth__tagline">{{ t('app.tagline') }}</p>
+        <p class="auth__lead">{{ t('auth.welcome.body') }}</p>
+
+        <!-- Expanded only: what each of the two paths is for, beside the two buttons. -->
+        <div class="auth__aside">
+          <ul class="auth__points">
+            <li class="auth__point">
+              <span class="auth__point-title">{{ t('auth.welcome.aside.worker.title') }}</span>
+              <span class="auth__point-body">{{ t('auth.welcome.aside.worker.body') }}</span>
+            </li>
+            <li class="auth__point">
+              <span class="auth__point-title">{{ t('auth.welcome.aside.office.title') }}</span>
+              <span class="auth__point-body">{{ t('auth.welcome.aside.office.body') }}</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!--
+        The two ways in. On a phone they sit at the foot of the column under the thumb; from 1024
+        up the same markup becomes the panel in the right-hand column.
+      -->
+      <section class="auth__panel welcome__paths">
+        <button type="button" class="btn btn--primary" (click)="signIn()">
+          {{ t('auth.welcome.signIn') }}
+        </button>
+
+        <button type="button" class="btn btn--tertiary" (click)="join()">
+          <app-icon name="lock" [size]="20" />
+          {{ t('auth.welcome.joinWithCode') }}
+        </button>
+
+        <p class="t-meta welcome__hint">{{ t('auth.welcome.codeHint') }}</p>
+      </section>
+    </div>
+
+    <div class="auth__foot-langs">
+      <app-language-switcher />
+    </div>
+  </div>
+</div>

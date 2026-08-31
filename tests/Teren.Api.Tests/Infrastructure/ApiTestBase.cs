@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Teren.Core.Entities;
 using Microsoft.Extensions.DependencyInjection;
+using Teren.Core.Identity;
 using Teren.Core.Processing;
 using Teren.Infrastructure.Persistence;
 using Teren.Infrastructure.Processing;
@@ -38,6 +39,152 @@ public abstract class ApiTestBase(TerenTestApp app) : IAsyncLifetime
     {
         Client?.Dispose();
         return ValueTask.CompletedTask;
+    }
+
+    // ------------------------------------------------------------ identity arrange helpers
+
+    /// <summary>
+    /// The password every seeded admin in this suite has. Long enough to satisfy
+    /// <c>PasswordPolicy</c>, and obviously a test value.
+    /// </summary>
+    protected const string AdminPassword = "teren-test-password-not-a-secret";
+
+    /// <summary>
+    /// Hashed <b>once per process</b>. 600 000 PBKDF2 iterations is ~200–400 ms by design, and
+    /// paying it per arranged admin would add tens of seconds to the suite for no coverage —
+    /// <see cref="PasswordHashTests"/> is what proves the hash, and every login test still pays a
+    /// real verify.
+    /// </summary>
+    private static readonly Lazy<string> SharedAdminPasswordHash =
+        new(() => PasswordHash.Hash(AdminPassword));
+
+    /// <summary>An admin of the given company, with a password he can sign in with.</summary>
+    protected async Task<AppUser> GivenCompanyAdminAsync(
+        Guid? id = null, Guid? companyId = null, string? email = null, bool withPassword = true)
+    {
+        var admin = new AppUser
+        {
+            Id = id ?? TestIds.CompanyAdminA,
+            CompanyId = companyId ?? TestIds.CompanyA,
+            Role = AppUserRole.CompanyAdmin,
+            Username = null,
+            DisplayName = "Petar Petrović",
+            Email = email ?? TestIds.CompanyAdminAEmail,
+            PasswordHash = withPassword ? SharedAdminPasswordHash.Value : null,
+            Language = "sr",
+            CreatedAt = DateTime.UtcNow,
+        };
+
+        await using var identity = App.CreateIdentityDbContext();
+        identity.Users.Add(admin);
+        await identity.SaveChangesAsync(Ct);
+
+        return admin;
+    }
+
+    /// <summary>Teren staff: no company, by constraint as well as by convention.</summary>
+    protected async Task<AppUser> GivenSuperAdminAsync(string? email = null)
+    {
+        var admin = new AppUser
+        {
+            Id = TestIds.SuperAdmin,
+            CompanyId = null,
+            Role = AppUserRole.SuperAdmin,
+            Username = null,
+            DisplayName = "Teren Staff",
+            Email = email ?? TestIds.SuperAdminEmail,
+            PasswordHash = SharedAdminPasswordHash.Value,
+            Language = "sr",
+            CreatedAt = DateTime.UtcNow,
+        };
+
+        await using var identity = App.CreateIdentityDbContext();
+        identity.Users.Add(admin);
+        await identity.SaveChangesAsync(Ct);
+
+        return admin;
+    }
+
+    /// <summary>
+    /// Signs in through the real <c>POST /auth/login</c> and returns a client carrying the session
+    /// token. Deliberately not a hand-written <c>admin_session</c> row: the thing under test in
+    /// every admin test is that a token issued by the login route authenticates on the API, and a
+    /// fixture that inserted the row itself would prove only that the fixture works.
+    /// </summary>
+    protected async Task<HttpClient> SignInAsync(string email, string password = AdminPassword)
+    {
+        using var anonymous = App.CreateAnonymousClient();
+
+        var response = await anonymous.PostJson(
+            "/auth/login",
+            new JsonObject { ["email"] = email, ["password"] = password });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.TextAsync());
+
+        var token = (await response.JsonAsync()).GetText("session_token");
+
+        return App.CreateClientWithToken(token);
+    }
+
+    /// <summary>A company admin, created and signed in, in one step.</summary>
+    protected async Task<HttpClient> GivenCompanyAdminClientAsync(
+        Guid? id = null, Guid? companyId = null, string? email = null)
+    {
+        var admin = await GivenCompanyAdminAsync(id, companyId, email);
+        return await SignInAsync(admin.Email!);
+    }
+
+    protected async Task<HttpClient> GivenSuperAdminClientAsync()
+    {
+        var admin = await GivenSuperAdminAsync();
+        return await SignInAsync(admin.Email!);
+    }
+
+    /// <summary>Reads a worker row straight from the identity model, past every handler.</summary>
+    protected async Task<AppUser?> LoadUserAsync(Guid userId)
+    {
+        await using var identity = App.CreateIdentityDbContext();
+        return await identity.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, Ct);
+    }
+
+    protected async Task<List<Device>> LoadDevicesAsync(Guid userId)
+    {
+        await using var identity = App.CreateIdentityDbContext();
+        return await identity.Devices.AsNoTracking()
+            .Where(d => d.UserId == userId)
+            .OrderBy(d => d.CreatedAt)
+            .ToListAsync(Ct);
+    }
+
+    /// <summary>
+    /// The phones the <em>test</em> activated, oldest first — the fixture's own demo device
+    /// excluded.
+    /// <para>
+    /// The baseline already gives the seeded worker a phone (<see cref="TestIds.DeviceA"/>), which
+    /// is not noise: it is exactly the state a man replacing a broken phone is in, and activation
+    /// correctly supersedes it. Counting it as if it were a device under test would make every
+    /// "exactly one device" assertion say two, so the assertions name what they mean instead.
+    /// </para>
+    /// </summary>
+    protected async Task<List<Device>> NewlyActivatedDevicesAsync(Guid? userId = null) =>
+        [.. (await LoadDevicesAsync(userId ?? TestIds.WorkerA))
+            .Where(d => d.Id != TestIds.DeviceA)];
+
+    protected async Task<List<ActivationCode>> LoadActivationCodesAsync(Guid userId)
+    {
+        await using var identity = App.CreateIdentityDbContext();
+        return await identity.ActivationCodes.AsNoTracking()
+            .Where(c => c.UserId == userId)
+            .OrderBy(c => c.CreatedAt)
+            .ToListAsync(Ct);
+    }
+
+    protected async Task<List<AdminAudit>> LoadAuditAsync()
+    {
+        await using var identity = App.CreateIdentityDbContext();
+        return await identity.AdminAudits.AsNoTracking()
+            .OrderBy(a => a.CreatedAt)
+            .ToListAsync(Ct);
     }
 
     // ------------------------------------------------------------ arrange helpers

@@ -1,0 +1,155 @@
+<div class="screen" *transloco="let t">
+  <div class="column auth">
+    <div class="auth__top">
+      <button type="button" class="btn-icon" [attr.aria-label]="t('common.back')" (click)="back()">
+        <app-icon name="chevron-left" [size]="20" />
+      </button>
+      <h1 class="t-h1 auth__title">{{ t('auth.login.title') }}</h1>
+      <app-language-switcher class="auth__langs" />
+    </div>
+
+    <div class="auth__body auth__body--form">
+      <section class="auth__brand login__intro">
+        <app-auth-mark [scale]="0.75" class="login__mark" />
+        <p class="auth__lead">{{ t('auth.login.lead') }}</p>
+
+        <div class="auth__aside">
+          <h2 class="t-label">{{ t('auth.login.aside.title') }}</h2>
+          <ul class="auth__points">
+            <li class="auth__point">
+              <span class="auth__point-body">{{ t('auth.login.aside.body') }}</span>
+            </li>
+            <li class="auth__point">
+              <span class="auth__point-body">{{ t('auth.login.aside.worker') }}</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="auth__panel">
+        <form class="card card--hero form" (submit)="onSubmit($event)">
+          @if (!connectivity.online()) {
+            <div class="notice notice--warn login__offline" role="status">
+              <app-icon name="wifi-off" [size]="20" class="notice__icon" />
+              <div class="notice__text">
+                <span class="notice__title">{{ t('auth.login.offline.title') }}</span>
+                <span class="t-meta">{{ t('auth.login.offline.body') }}</span>
+              </div>
+            </div>
+          }
+
+          <div class="field">
+            <label class="t-label field__label" for="login-email">
+              {{ t('auth.login.email.label') }}
+            </label>
+            <div class="field__box" [class.field__box--invalid]="touched() && !emailGiven()">
+              <input
+                id="login-email"
+                class="field__input"
+                type="email"
+                name="email"
+                inputmode="email"
+                autocomplete="email"
+                autocapitalize="none"
+                autocorrect="off"
+                spellcheck="false"
+                enterkeyhint="next"
+                [value]="email()"
+                [attr.placeholder]="t('auth.login.email.placeholder')"
+                (input)="onEmail($any($event.target).value)"
+              />
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="t-label field__label" for="login-password">
+              {{ t('auth.login.password.label') }}
+            </label>
+            <div
+              class="field__box field__box--action"
+              [class.field__box--invalid]="
+                (touched() && !passwordGiven()) || failure() === 'rejected'
+              "
+            >
+              <input
+                id="login-password"
+                class="field__input"
+                [type]="reveal() ? 'text' : 'password'"
+                name="password"
+                autocomplete="current-password"
+                autocapitalize="none"
+                autocorrect="off"
+                spellcheck="false"
+                enterkeyhint="go"
+                [value]="password()"
+                (input)="onPassword($any($event.target).value)"
+              />
+              <button
+                type="button"
+                class="field__toggle"
+                [attr.aria-label]="
+                  reveal() ? t('auth.login.password.hide') : t('auth.login.password.show')
+                "
+                [attr.aria-pressed]="reveal()"
+                (click)="toggleReveal()"
+              >
+                <app-icon [name]="reveal() ? 'eye-off' : 'eye'" [size]="22" />
+              </button>
+            </div>
+          </div>
+
+          @if (errorKey(); as error) {
+            <p class="form__message form__message--err" role="alert">
+              <app-icon
+                name="alert-triangle"
+                [size]="15"
+                [strokeWidth]="2.5"
+                class="form__message-icon"
+              />
+              <span class="form__message-text">{{ t(error) }}</span>
+            </p>
+          }
+
+          <button type="submit" class="btn btn--primary" [disabled]="busy()">
+            {{ busy() ? t('auth.login.submitting') : t('auth.login.submit') }}
+          </button>
+        </form>
+
+        @if (signedInAs(); as name) {
+          <!--
+            The credential is good and nothing is stored: the office screens do not exist yet, and
+            saying so is better than a redirect to a screen that would have to apologise.
+          -->
+          <div class="card notice notice--ok" role="status">
+            <app-icon name="check" [size]="20" class="notice__icon" />
+            <div class="notice__text">
+              <span class="notice__title">{{ t('auth.login.success.title') }}</span>
+              <span class="t-meta">{{ t('auth.login.success.body', { name }) }}</span>
+            </div>
+          </div>
+        }
+
+        <div class="form__divider">
+          <span class="form__divider-line"></span>
+          <span class="form__divider-word">{{ t('auth.or') }}</span>
+          <span class="form__divider-line"></span>
+        </div>
+
+        <!--
+          The way out for a foreman who followed the wrong link. He has no password and never
+          will; this is the only door that opens for him.
+        -->
+        <button type="button" class="btn btn--tertiary" (click)="join()">
+          <app-icon name="lock" [size]="20" />
+          {{ t('auth.login.joinWithCode') }}
+        </button>
+
+        <p class="t-meta form__hint">{{ t('auth.login.codeHint') }}</p>
+      </section>
+    </div>
+
+    <div class="auth__foot-langs">
+      <app-language-switcher />
+    </div>
+  </div>
+</div>

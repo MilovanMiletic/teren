@@ -127,6 +127,13 @@ public static class Wire
     public static Task<HttpResponseMessage> PostNothing(this HttpClient client, string url) =>
         client.PostAsync(url, new StringContent(string.Empty), Ct);
 
+    public static Task<HttpResponseMessage> PatchJson(
+        this HttpClient client, string url, JsonNode body) =>
+        client.PatchAsync(url, JsonContent(body.ToJsonString()), Ct);
+
+    public static Task<HttpResponseMessage> Delete(this HttpClient client, string url) =>
+        client.DeleteAsync(url, Ct);
+
     private static StringContent JsonContent(string json)
     {
         var content = new StringContent(json, Encoding.UTF8);

@@ -139,6 +139,26 @@ export interface LocalMedia {
 export type OutboxState = 'queued' | 'in_flight' | 'failed' | 'blocked';
 
 /**
+ * Every outbox state, enumerable at runtime and kept complete by the compiler.
+ *
+ * `Record<OutboxState, true>` is the one construct TypeScript checks for *completeness*: adding a
+ * member to the union above and forgetting it here is a compile error, where a hand-written array
+ * of literals would happily be missing one and every spec that walked it would keep passing while
+ * checking less than it claimed. Same pattern as `CONFIRM_FAILURES` and `REPORT_FAILURES`.
+ *
+ * The `true` values carry no meaning — the keys are the point.
+ */
+const ALL_OUTBOX_STATES: Record<OutboxState, true> = {
+  queued: true,
+  in_flight: true,
+  failed: true,
+  blocked: true,
+};
+
+/** Every state a row can be in, for the specs that must walk all of them. */
+export const OUTBOX_STATES = Object.keys(ALL_OUTBOX_STATES) as readonly OutboxState[];
+
+/**
  * One row per entry that has not yet been confirmed by the server: the unit of network work.
  * The outbox drives every network operation (ARCHITECTURE.md §11). B2 only ever creates rows in
  * `queued`; B3 adds the loop that moves them, using the attempt bookkeeping already carried here.

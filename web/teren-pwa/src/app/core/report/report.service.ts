@@ -188,6 +188,11 @@ export class ReportService {
         return failed('offline', true);
       case 'server':
         return failed('server', true);
+      // A revoked device and a forbidden role both mean "the server will not hand over this PDF".
+      // The download has no retry that could change either, so they share one sentence — and
+      // `unauthenticated` is named explicitly so it cannot fall into `default` and be offered as
+      // a retryable unknown.
+      case 'unauthenticated':
       case 'unauthorized':
         return failed('unauthorized', false);
       case 'not_configured':

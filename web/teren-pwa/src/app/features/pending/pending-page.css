@@ -284,3 +284,34 @@
     text-align: left;
   }
 }
+
+/* ---- Try all again --------------------------------------------------------------------------- */
+
+/*
+ * The sweeping retry, directly under the list it acts on.
+ *
+ * One control, placed once: duplicating it into the expanded rail would put two buttons with the
+ * same job on one screen and leave a foreman guessing whether they differ.
+ */
+.retryAll {
+  padding-top: var(--space-5);
+}
+
+/*
+ * Compact: full-width, thumb-reachable at the foot of the queue.
+ *
+ * `--tap-primary` rather than a raw value: this button summarises the per-row retries above it,
+ * and a hard-coded 52px made it *shorter* than the 56px rows it stands for — the hierarchy
+ * inverted by a number nobody would think to check.
+ */
+.retryAll__button {
+  min-height: var(--tap-primary);
+}
+
+@media (min-width: 768px) {
+  /* Medium: the pane is wide enough that a full-bleed button reads as a banner. Size to content. */
+  .retryAll__button {
+    width: auto;
+    min-width: 240px;
+  }
+}

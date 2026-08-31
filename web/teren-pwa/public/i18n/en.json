@@ -429,12 +429,14 @@
       "storage": "The upload was interrupted before all files arrived.",
       "incomplete": "Some files have not arrived on the server yet.",
       "rejected": "The server did not accept this entry.",
+      "unauthenticated": "This phone's access to the server has been withdrawn, or has not been set up yet. The entry is safe and will be sent as soon as access is restored.",
       "unauthorized": "This phone is not authorised to send to the server.",
       "notConfigured": "This app has no server set up.",
       "insecureContext": "Entries can only be sent over a secure (https) address.",
       "unknown": "Sending failed for an unexpected reason."
     },
     "retry": "Try again",
+    "retryAll": "Try all again",
     "meta": "Audio {{duration}} · {{photos}}",
     "trustNote": "Nothing is deleted from your phone until the server confirms the entry was received.",
     "empty": {
@@ -449,5 +451,113 @@
       "total": "Total"
     },
     "evidenceSafe": "The recording and the photos are safe on this phone. Nothing was lost."
+  },
+  "auth": {
+    "or": "or",
+    "welcome": {
+      "body": "Record thirty seconds of speech on site. Teren turns it into a tidy diary and a report for the client.",
+      "signIn": "Sign in",
+      "joinWithCode": "Join a site with a code",
+      "codeHint": "You get the join code from the owner of the company.",
+      "aside": {
+        "worker": {
+          "title": "On site",
+          "body": "A foreman joins once with a code and never signs in again. The app opens straight on the record button, with or without signal."
+        },
+        "office": {
+          "title": "In the office",
+          "body": "The owner signs in with an email address and a password, and follows every site the company runs."
+        }
+      }
+    },
+    "code": {
+      "title": "Join a site",
+      "lead": "Enter your username and the code you were given. This is done once on this phone.",
+      "username": {
+        "label": "USERNAME",
+        "placeholder": "zoran.jovanovic"
+      },
+      "code": {
+        "label": "JOIN CODE",
+        "placeholder": "XKD4-7HMP",
+        "hint": "Eight characters from the message. Type it however you like — the app reads O as 0 and fixes the rest."
+      },
+      "submit": "Join the site",
+      "submitting": "Joining…",
+      "usernameRequired": "Enter your username.",
+      "codeIncomplete": "The code has eight characters.",
+      "offline": {
+        "title": "No internet",
+        "body": "A code can only be checked on the server, so this one screen needs a connection. Your code is not used up by waiting."
+      },
+      "resend": {
+        "action": "New phone? Send me a code",
+        "sending": "Sending…",
+        "sent": {
+          "title": "If that username exists, a code is on its way",
+          "body": "It goes to the email address on file for you. If you have no address saved, ask your foreman or the owner for a code."
+        }
+      },
+      "success": {
+        "title": "This phone is ready",
+        "body": "Recording for {{company}}, as {{name}}.",
+        "released": "Entries that were waiting for access are being sent now.",
+        "action": "Start recording"
+      },
+      "error": {
+        "offline": "There is no internet, so the code could not be checked. The code is not used up — try again when the signal is back.",
+        "server": "The server is not answering just now. The code is not used up — try again in a moment.",
+        "rejected": "That username and code do not go together. Check both and try again — a code lasts seven days and works once, so ask for a new one if this one is old.",
+        "notAvailable": "This server does not offer joining by code yet. The code is not used up — tell the owner of the company.",
+        "tooManyAttempts": "Too many attempts from this device. Wait a few minutes and try again.",
+        "unknown": "Joining did not work, for a reason the app cannot name. The code is not used up — try again."
+      },
+      "aside": {
+        "title": "About the join code",
+        "source": "The owner of the company gives you the code — eight characters, usually in a message.",
+        "singleUse": "It lasts seven days and works once, for one phone.",
+        "thenWhat": "After that the app opens straight on the record button. No sign-in, no password, and it works where there is no signal."
+      }
+    },
+    "login": {
+      "title": "Sign in",
+      "lead": "For the owner of the company and for Teren staff.",
+      "email": {
+        "label": "EMAIL ADDRESS",
+        "placeholder": "vlasnik@gradnja.rs"
+      },
+      "password": {
+        "label": "PASSWORD",
+        "show": "Show password",
+        "hide": "Hide password"
+      },
+      "submit": "Sign in",
+      "submitting": "Signing in…",
+      "emailRequired": "Enter your email address.",
+      "passwordRequired": "Enter your password.",
+      "joinWithCode": "Join a site with a code",
+      "codeHint": "You get the code from the owner of the company — on site nobody needs a password.",
+      "offline": {
+        "title": "No internet",
+        "body": "Signing in is checked on the server, so this screen needs a connection."
+      },
+      "success": {
+        "title": "Signed in",
+        "body": "Welcome, {{name}}. The office screens are still being built, so there is nothing to open here yet."
+      },
+      "error": {
+        "offline": "There is no internet, so the sign-in could not be checked. Try again when the signal is back.",
+        "server": "The server is not answering just now. Try again in a moment.",
+        "rejected": "Wrong email address or password.",
+        "notAvailable": "This server does not offer signing in with an email address yet.",
+        "tooManyAttempts": "Too many sign-in attempts from this device. Wait a few minutes and try again.",
+        "unknown": "Signing in did not work, for a reason the app cannot name. Try again."
+      },
+      "aside": {
+        "title": "Who signs in here",
+        "body": "The owner of the company follows every site, every worker and their join codes.",
+        "worker": "A foreman on site does not sign in with a password. He joins once with a code."
+      }
+    }
   }
 }

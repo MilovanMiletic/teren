@@ -8,19 +8,19 @@ import { RescueService, openEntryIds } from './rescue.service';
 
 describe('openEntryIds', () => {
   it('exempts the entry the saved screen is showing', () => {
-    expect(openEntryIds('/unos/72c32db1-1db8-499e-88b1-dd644af662f2')).toEqual([
+    expect(openEntryIds('/entry/72c32db1-1db8-499e-88b1-dd644af662f2')).toEqual([
       '72c32db1-1db8-499e-88b1-dd644af662f2',
     ]);
   });
 
   it('ignores a query string or fragment on the way', () => {
-    expect(openEntryIds('/unos/abc?x=1#y')).toEqual(['abc']);
+    expect(openEntryIds('/entry/abc?x=1#y')).toEqual(['abc']);
   });
 
   it('exempts nothing on any other screen', () => {
     expect(openEntryIds('/')).toEqual([]);
-    expect(openEntryIds('/cekaju')).toEqual([]);
-    expect(openEntryIds('/snimanje')).toEqual([]);
+    expect(openEntryIds('/pending')).toEqual([]);
+    expect(openEntryIds('/record')).toEqual([]);
   });
 });
 

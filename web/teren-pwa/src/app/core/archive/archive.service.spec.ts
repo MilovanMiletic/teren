@@ -48,6 +48,16 @@ describe('ArchiveService', () => {
     expect((await archive.listEntries('p')).status).toBe('unauthorized');
   });
 
+  it('says the same thing about a 401 and a 403 — the split is the outbox’s, not this screen’s', async () => {
+    // F1 gave the upload path two credential kinds, because only it has to decide whether to keep
+    // retrying. Here both mean "the server would not show us the archive" and share one sentence.
+    // The trap this pins: `toRemoteStatus` has a `default:` arm, so a new kind that is not named
+    // explicitly degrades in silence to `unavailable` — the archive would tell a foreman the
+    // server was unwell when in fact his device had been revoked.
+    api.listEntries.mockRejectedValue(new HttpErrorResponse({ status: 403 }));
+    expect((await archive.listEntries('p')).status).toBe('unauthorized');
+  });
+
   it('does not call a server this build has no credentials for', async () => {
     api.configured = false;
 

@@ -92,11 +92,37 @@ describe('classifyApiError', () => {
       expect(classifyApiError(problem(status)).terminal).toBe(true);
     });
 
-    it.each([401, 403])('does not retry %d — this build cannot become authorised', (status) => {
-      const failure = classifyApiError(problem(status));
+    it('does not retry a 403 — waiting cannot make this caller allowed', () => {
+      // 403 says the credential is good and this caller may not do this. No amount of time
+      // changes a wrong company or a wrong role.
+      const failure = classifyApiError(problem(403));
 
       expect(failure.kind).toBe('unauthorized');
       expect(failure.terminal).toBe(true);
+    });
+  });
+
+  describe('the 401/403 split', () => {
+    it('keeps a 401 in the queue — a rejected credential is a statement about *now*', () => {
+      // The hazard this split exists to close (`plans/profile-and-identity.md` §3, H1). Until F1
+      // a 401 was terminal, so revoking a device wrote every entry captured that morning to
+      // `blocked` — and a blocked row schedules no wake timer, so the loop went dormant for good
+      // and a restart recovered nothing. An admin un-revoking, or a foreman typing a new code,
+      // has to be able to heal the queue with nobody touching a single entry.
+      const failure = classifyApiError(problem(401, 'device token rejected'));
+
+      expect(failure.kind).toBe('unauthenticated');
+      expect(failure.terminal).toBe(false);
+      expect(failure.status).toBe(401);
+    });
+
+    it('tells 401 and 403 apart, because they mean opposite things', () => {
+      // Collapsing these two into one kind is precisely the defect F1 fixes. If this ever fails
+      // because someone re-merged them, read H1 before "simplifying" it back.
+      expect(classifyApiError(problem(401)).kind).toBe('unauthenticated');
+      expect(classifyApiError(problem(403)).kind).toBe('unauthorized');
+      expect(isTerminal('unauthenticated')).toBe(false);
+      expect(isTerminal('unauthorized')).toBe(true);
     });
   });
 
@@ -155,7 +181,16 @@ describe('the terminal set', () => {
     ] as const) {
       expect(isTerminal(kind)).toBe(true);
     }
-    for (const kind of ['offline', 'server', 'storage', 'incomplete', 'unknown'] as const) {
+    for (const kind of [
+      'offline',
+      'server',
+      'storage',
+      'incomplete',
+      // The one that was moved *out* of the terminal set at F1, and the whole reason the queue
+      // now survives a revoked device.
+      'unauthenticated',
+      'unknown',
+    ] as const) {
       expect(isTerminal(kind)).toBe(false);
     }
   });

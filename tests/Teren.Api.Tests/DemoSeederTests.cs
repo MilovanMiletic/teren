@@ -17,7 +17,13 @@ namespace Teren.Api.Tests;
 [Collection(TerenCollection.Name)]
 public sealed class DemoSeederTests(TerenTestApp app)
 {
-    private const int FullSeedRowCount = 7; // 1 company + 3 sites + 3 entries
+    // 1 company + 3 sites + 3 entries + 2 users + 1 device
+    private const int FullSeedRowCount = 10;
+
+    /// <summary>The demo device's token. The seeded device's token_hash is SHA-256 of this, which
+    /// is the whole compatibility hinge: the token already in the PWA bundle authenticates for
+    /// real, as a genuine device row.</summary>
+    private const string DemoDeviceToken = TerenTestApp.DeviceToken;
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -26,7 +32,7 @@ public sealed class DemoSeederTests(TerenTestApp app)
     {
         await using var db = await app.CreateScratchDatabaseAsync();
 
-        var inserted = await DemoSeeder.SeedAsync(db, Ct);
+        var inserted = await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
 
         inserted.ShouldBe(FullSeedRowCount);
         (await db.Set<Company>().IgnoreQueryFilters().CountAsync(Ct)).ShouldBe(1);
@@ -38,9 +44,9 @@ public sealed class DemoSeederTests(TerenTestApp app)
     public async Task Seeding_twice_inserts_nothing_the_second_time()
     {
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
 
-        var second = await DemoSeeder.SeedAsync(db, Ct);
+        var second = await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
 
         second.ShouldBe(0);
         (await db.Set<Project>().IgnoreQueryFilters().CountAsync(Ct)).ShouldBe(3);
@@ -51,10 +57,10 @@ public sealed class DemoSeederTests(TerenTestApp app)
     public async Task Seeding_a_third_time_is_still_a_no_op()
     {
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, Ct);
-        await DemoSeeder.SeedAsync(db, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
 
-        (await DemoSeeder.SeedAsync(db, Ct)).ShouldBe(0);
+        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct)).ShouldBe(0);
     }
 
     [Fact]
@@ -80,10 +86,10 @@ public sealed class DemoSeederTests(TerenTestApp app)
         });
         await db.SaveChangesAsync(Ct);
 
-        var inserted = await DemoSeeder.SeedAsync(db, Ct);
+        var inserted = await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
 
-        // Two sites and three entries; the company and site 1 were already there.
-        inserted.ShouldBe(5);
+        // Two sites, three entries, two users and the device; the company and site 1 were there.
+        inserted.ShouldBe(8);
         (await db.Set<Company>().IgnoreQueryFilters().CountAsync(Ct)).ShouldBe(1);
         (await db.Set<Project>().IgnoreQueryFilters().CountAsync(Ct)).ShouldBe(3);
         (await db.Set<Entry>().IgnoreQueryFilters().CountAsync(Ct)).ShouldBe(3);
@@ -93,7 +99,7 @@ public sealed class DemoSeederTests(TerenTestApp app)
     public async Task A_row_the_founder_edited_by_hand_is_never_overwritten()
     {
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
 
         var edited = await db.Set<Project>().IgnoreQueryFilters()
             .FirstAsync(p => p.Id == DemoSeeder.Project1Id, Ct);
@@ -102,7 +108,7 @@ public sealed class DemoSeederTests(TerenTestApp app)
         await db.SaveChangesAsync(Ct);
         db.ChangeTracker.Clear();
 
-        (await DemoSeeder.SeedAsync(db, Ct)).ShouldBe(0);
+        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct)).ShouldBe(0);
 
         var after = await db.Set<Project>().IgnoreQueryFilters().AsNoTracking()
             .FirstAsync(p => p.Id == DemoSeeder.Project1Id, Ct);
@@ -123,7 +129,7 @@ public sealed class DemoSeederTests(TerenTestApp app)
         DemoSeeder.Project3Id.ShouldBe(Guid.Parse("d3a0c1f0-5b8e-4f1a-9c62-000000000004"));
 
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
 
         var ids = await db.Set<Project>().IgnoreQueryFilters()
             .Select(p => p.Id).ToListAsync(Ct);
@@ -139,7 +145,7 @@ public sealed class DemoSeederTests(TerenTestApp app)
         // status the confirmation flow can be demonstrated from, and a multi-recipient site so
         // B6 has a real case.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
 
         var entries = await db.Set<Entry>().IgnoreQueryFilters().ToListAsync(Ct);
         entries.ShouldAllBe(e => e.ProjectId == DemoSeeder.Project1Id);
@@ -165,7 +171,7 @@ public sealed class DemoSeederTests(TerenTestApp app)
         // seeded is a demo that cannot be given.
         await using var db = await app.CreateScratchDatabaseAsync();
 
-        await Should.NotThrowAsync(async () => await DemoSeeder.SeedAsync(db, Ct));
+        await Should.NotThrowAsync(async () => await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct));
 
         var structures = await db.Set<Entry>().IgnoreQueryFilters()
             .Select(e => e.Structure).ToListAsync(Ct);
