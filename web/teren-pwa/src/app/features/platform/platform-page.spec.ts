@@ -207,13 +207,30 @@ describe('PlatformPage', () => {
     await settle();
   }
 
-  async function choose(selector: string, value: string): Promise<void> {
-    const select = element.querySelector<HTMLSelectElement>(selector);
-    if (!select) {
-      throw new Error(`no select matching ${selector}`);
+  /**
+   * Pick a customer the way the founder does: open the list, click the row that says his name.
+   *
+   * **By name, not by id.** It used to set `.value` on a `<select>` and fire a `change`, which was
+   * the only handle a native control offered — and which asserted nothing about whether the option
+   * was reachable, labelled, or even rendered. `app-select-field` is a listbox, so the spec can
+   * now do what a person does, and the name is what a person sees. A customer missing from the
+   * list, or listed under the wrong name, fails here instead of passing.
+   */
+  async function chooseCustomer(name: string): Promise<void> {
+    const combobox = element.querySelector<HTMLButtonElement>('[role="combobox"]');
+    if (!combobox) {
+      throw new Error('no customer dropdown on this dialog');
     }
-    select.value = value;
-    select.dispatchEvent(new Event('change'));
+    combobox.click();
+    await settle();
+
+    const option = Array.from(element.querySelectorAll<HTMLElement>('[role="option"]')).find(
+      (row) => row.textContent?.includes(name),
+    );
+    if (!option) {
+      throw new Error(`no customer named ${name} in the dropdown`);
+    }
+    option.click();
     await settle();
   }
 
@@ -467,7 +484,7 @@ describe('PlatformPage', () => {
       expect(inDialog('Admin firme').getAttribute('aria-selected')).toBe('true');
       expect(inDialog('Teren tim').getAttribute('aria-selected')).toBe('false');
       // A company admin needs a company; the field is on this tab and only this tab.
-      expect(element.querySelector('#platform-add-company')).not.toBeNull();
+      expect(element.querySelector('[role="combobox"]')).not.toBeNull();
     });
 
     it('has no company field for a member of staff, because he must not have one', async () => {
@@ -489,7 +506,7 @@ describe('PlatformPage', () => {
     it('sends no company for a member of staff, even after one was chosen on the other tab', async () => {
       await render();
       await openAdd();
-      await choose('#platform-add-company', MockPlatformGateway.VODOINSTAL_ID);
+      await chooseCustomer('Vodoinstal Petrović d.o.o.');
 
       await pressIn('Teren tim');
       await type('#platform-add-name', 'Nova Kolegica');
@@ -505,12 +522,17 @@ describe('PlatformPage', () => {
     it('forgets the company on the way back too, so nothing stale can be submitted', async () => {
       await render();
       await openAdd();
-      await choose('#platform-add-company', MockPlatformGateway.VODOINSTAL_ID);
+      await chooseCustomer('Vodoinstal Petrović d.o.o.');
 
       await pressIn('Teren tim');
       await pressIn('Admin firme');
 
-      expect(element.querySelector<HTMLSelectElement>('#platform-add-company')?.value).toBe('');
+      // The dropdown is back to its placeholder, which is what "nothing is chosen" now looks like:
+      // `app-select-field` has no `value` to read, it says the choice or it says the invitation.
+      expect(
+        element.querySelector('[role="combobox"]')?.textContent,
+        'the dropdown came back still naming a customer nothing had chosen',
+      ).toContain('Izaberite firmu');
       // And with no company the form cannot fire at all — the 400 arrives as a disabled button.
       await type('#platform-add-name', 'Jovan Jovanović');
       await type('#platform-add-email', 'jovan@firma.rs');
@@ -524,7 +546,7 @@ describe('PlatformPage', () => {
     it('will not send a nameless or address-less person, and says so by refusing the button', async () => {
       await render();
       await openAdd();
-      await choose('#platform-add-company', MockPlatformGateway.VODOINSTAL_ID);
+      await chooseCustomer('Vodoinstal Petrović d.o.o.');
 
       expect(inDialog('Dodaj i napravi link').disabled).toBe(true);
 
@@ -543,7 +565,7 @@ describe('PlatformPage', () => {
     it('keeps the link on screen instead of closing over it', async () => {
       await render();
       await openAdd();
-      await choose('#platform-add-company', MockPlatformGateway.VODOINSTAL_ID);
+      await chooseCustomer('Vodoinstal Petrović d.o.o.');
       await type('#platform-add-name', 'Jovan Jovanović');
       await type('#platform-add-email', 'jovan@firma.rs');
 
@@ -561,7 +583,7 @@ describe('PlatformPage', () => {
     it('re-reads the directory so the new account is on it', async () => {
       await render();
       await openAdd();
-      await choose('#platform-add-company', MockPlatformGateway.VODOINSTAL_ID);
+      await chooseCustomer('Vodoinstal Petrović d.o.o.');
       await type('#platform-add-name', 'Jovan Jovanović');
       await type('#platform-add-email', 'jovan@firma.rs');
 
@@ -575,7 +597,7 @@ describe('PlatformPage', () => {
     it('copies the link, and never claims a copy the browser refused', async () => {
       await render();
       await openAdd();
-      await choose('#platform-add-company', MockPlatformGateway.VODOINSTAL_ID);
+      await chooseCustomer('Vodoinstal Petrović d.o.o.');
       await type('#platform-add-name', 'Jovan Jovanović');
       await type('#platform-add-email', 'jovan@firma.rs');
       await pressIn('Dodaj i napravi link');
@@ -590,7 +612,7 @@ describe('PlatformPage', () => {
       Reflect.deleteProperty(navigator, 'clipboard');
       await render();
       await openAdd();
-      await choose('#platform-add-company', MockPlatformGateway.VODOINSTAL_ID);
+      await chooseCustomer('Vodoinstal Petrović d.o.o.');
       await type('#platform-add-name', 'Jovan Jovanović');
       await type('#platform-add-email', 'jovan@firma.rs');
       await pressIn('Dodaj i napravi link');
@@ -604,7 +626,7 @@ describe('PlatformPage', () => {
     it('starts clean every time it is opened, so no link outlives its dialog', async () => {
       await render();
       await openAdd();
-      await choose('#platform-add-company', MockPlatformGateway.VODOINSTAL_ID);
+      await chooseCustomer('Vodoinstal Petrović d.o.o.');
       await type('#platform-add-name', 'Jovan Jovanović');
       await type('#platform-add-email', 'jovan@firma.rs');
       await pressIn('Dodaj i napravi link');

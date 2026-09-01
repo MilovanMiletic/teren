@@ -344,19 +344,20 @@
             </label>
 
             @if (tab() === 'company_admin') {
-              <label class="field">
-                <span class="t-label">{{ t('platform.add.company.label') }}</span>
-                <select
-                  id="platform-add-company"
-                  class="field__input"
-                  [value]="newCompanyId()"
-                  (change)="newCompanyId.set($any($event.target).value)"
-                >
-                  <option value="">{{ t('platform.add.company.choose') }}</option>
-                  @for (customer of customerOptions(); track customer.id) {
-                    <option [value]="customer.id">{{ customer.name }}</option>
-                  }
-                </select>
+              <!--
+                `app-select-field`, not a `<select>`. A native one renders its open list with the
+                operating system — square corners, a Windows-blue bar, the system font — and no CSS
+                reaches inside it, so the one control in this dialog looked like a different
+                product the moment it was opened.
+              -->
+              <app-select-field
+                class="field"
+                [label]="t('platform.add.company.label')"
+                [placeholder]="t('platform.add.company.choose')"
+                [options]="customerOptions()"
+                [value]="newCompanyId()"
+                (changed)="newCompanyId.set($event)"
+              >
                 @if (customerOptions().length === 0) {
                   <!--
                     Two sentences, never one. An empty dropdown because the product has no
@@ -370,7 +371,7 @@
                       : t('platform.add.company.none')
                   }}</span>
                 }
-              </label>
+              </app-select-field>
             }
 
             @if (addReasonKey(); as reason) {

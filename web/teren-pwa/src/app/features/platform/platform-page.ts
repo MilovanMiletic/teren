@@ -15,6 +15,7 @@ import { Icon } from '../../ui/icon';
 import { InfoPopover } from '../../ui/info-popover';
 import { LanguageSwitcher } from '../../ui/language-switcher';
 import { ModalSheet } from '../../ui/modal-sheet';
+import { SelectField } from '../../ui/select-field';
 import { SessionLink } from '../../ui/session-link';
 import { ViewportService } from '../../ui/viewport.service';
 import { platformReasonFor } from './platform-reason';
@@ -101,6 +102,7 @@ type AddTab = 'company_admin' | 'super_admin';
     InfoPopover,
     LanguageSwitcher,
     ModalSheet,
+    SelectField,
     SessionLink,
     TranslocoDirective,
   ],
