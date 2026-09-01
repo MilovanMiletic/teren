@@ -3,6 +3,7 @@ import { Routes } from '@angular/router';
 import {
   requiresCompanyAdmin,
   requiresDevice,
+  requiresNoAdminSession,
   requiresNoDevice,
   requiresSuperAdmin,
 } from './core/session/device.guard';
@@ -128,8 +129,18 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/activate-page').then((m) => m.ActivatePage),
   },
   {
+    /*
+     * The password door.
+     *
+     * **`requiresNoAdminSession`, not `requiresNoDevice`** — changed on 2026-09-01, and the guard's
+     * own comment is the record of why. Guarded on the *device* session, this route bounced any
+     * browser that had ever been activated as a phone; the founder's laptop is a demo phone and
+     * the platform console at once, so on it there was no reachable way to sign in at all, and
+     * therefore no reachable admin or platform screen. The question this screen has to ask is
+     * whether somebody is already signed in, which is a different question entirely.
+     */
     path: 'login',
-    canMatch: [requiresNoDevice],
+    canMatch: [requiresNoAdminSession],
     loadComponent: () => import('./features/auth/login-page').then((m) => m.LoginPage),
   },
   {

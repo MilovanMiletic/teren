@@ -184,8 +184,16 @@ function navigationTargets(): { targets: NavigationTarget[]; unresolvable: strin
  *
  * **38 → 40**: the people list opens one account's page, and that page has the way back to the
  * people. Counted off the tree.
+ *
+ * **40 → 41**: `platform-link.ts`, the chrome control that opens `/platform`.
+ *
+ * Worth recording what this count could not catch, since it was green throughout. All forty
+ * navigations resolved, `/platform` among them — but its *only* navigation was the one
+ * `login-page.ts` performs on a successful sign-in, and on the founder's own browser `/login` was
+ * itself unreachable (`requiresNoAdminSession`). A route table cannot see that: reachability is a
+ * property of the guards, not of the paths. `device.guard.spec.ts` pins it where it lives.
  */
-const NAVIGATION_COUNT = 40;
+const NAVIGATION_COUNT = 41;
 
 /**
  * The query parameters a navigation may put on the URL, by the name of the constant that holds

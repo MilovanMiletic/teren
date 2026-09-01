@@ -32,7 +32,8 @@ export type IconName =
   | 'info'
   | 'log-in'
   | 'log-out'
-  | 'copy';
+  | 'copy'
+  | 'building';
 
 /**
  * The icon set: stroke-based, 24 px grid, stroke-width 2, round caps and joins
@@ -215,6 +216,14 @@ export type IconName =
         @case ('user') {
           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
           <circle cx="12" cy="7" r="4" />
+        }
+        @case ('building') {
+          <path d="M3 21h18" />
+          <path d="M5 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16" />
+          <path d="M15 21V9h2a2 2 0 0 1 2 2v10" />
+          <path d="M9 7h2" />
+          <path d="M9 11h2" />
+          <path d="M9 15h2" />
         }
       }
     </svg>

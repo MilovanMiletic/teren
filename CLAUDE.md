@@ -278,12 +278,12 @@ before being presented as done; gating fixes go back to the implementer and are 
   **It is a real credential to the demo company published in the repo**, and redeeming it revokes the
   demo phone until the next `seed`. Harmless on a laptop; **needs a decision at B3a**, when that
   company goes behind a public URL.
-- **Suites: 966 PWA specs** (62 files) and **892 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
+- **Suites: 1288 PWA specs** (67 files) and **901 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
   + Testcontainers over real Postgres, ~66 s; PdfPig in tests only, so report assertions read text
   back out of the rendered PDF). `dotnet test` needs Docker running.
   *The figures here were stale before 2026-08-30 (403/447 recorded against an actual 436/476) —
   both were re-measured off the tree, not carried forward.*
-- **Check at session start:** the tree is green — **892 backend tests and 966 PWA specs, both
+- **Check at session start:** the tree is green — **901 backend tests and 1288 PWA specs, both
   re-verified by execution 2026-09-01**, `dotnet build` clean with 0 warnings, `ng build` clean with
   no budget warning.
 - **"It doesn't work" has meant "it isn't running" twice in a row (2026-09-01).** First "frontend was
@@ -297,6 +297,24 @@ before being presented as done; gating fixes go back to the implementer and are 
   process.
   *The local stack is four manual steps (`docker compose up -d`, `migrate`, `dotnet run`,
   `npm start`) and there is no one-command "bring it all up". That is why this keeps happening.*
+  *A third variant on 2026-09-01: `ng serve` was **running and serving a stale bundle**. Its watcher
+  had stopped, so hours-old code was on 4200 while the tree was green. `touch` any source file to
+  wake it; before disbelieving a passing suite, check that what the browser holds is what you wrote.*
+- **A route can be registered, guarded correctly, fully tested — and unreachable.** The founder's
+  "the super admin pages aren't wired in" (2026-09-01) was not about the pages: `/login` was gated on
+  `requiresNoDevice`, so a browser holding a *device* session was bounced off it. **His browser is
+  the demo phone.** `/welcome` — where the app's only sign-in link lives — bounces for the same
+  reason, and `session-link.ts` renders nothing for a device session by design. Three individually
+  correct guards, and no reachable door to the admin or platform surfaces at all. `/login` is now
+  gated on `requiresNoAdminSession`, and `ui/platform-link.ts` is the way *back* (the header and
+  Home's footer), which nothing had been until now — `login-page.ts`'s post-sign-in navigation was
+  the only route into `/platform` in the whole app.
+  *`app.routes.spec.ts` proves every navigation resolves to a route. **That is the wrong
+  direction** and cannot see this class of defect: reachability is a property of the guards in
+  combination. The journey is pinned in `device.guard.spec.ts` instead — sign in with a device
+  session, reach `/platform`, go Home, come back through the chrome, at 1280 and at 390.*
+  *`requiresNoAdminSession` sends a signed-in admin to his surface by **role**, never to `?next=`:
+  honouring it would let `/login?next=/company` bounce a super admin between two guards for ever.*
   ***Re-run both suites after every review.*** Twice on 2026-08-31 a reviewer or a stopped implementer
   left its own mutation in the working tree — a typo'd unique-constraint name that turned a duplicate
   email into a 500, and a removed `pathMatch: 'full'` that made the PWA suite hang forever instead of

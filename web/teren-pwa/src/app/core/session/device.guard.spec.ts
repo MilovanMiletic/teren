@@ -19,9 +19,11 @@ import { PlatformPage } from '../../features/platform/platform-page';
 import { SetPasswordPage } from '../../features/auth/set-password-page';
 import { CompaniesPage } from '../../features/platform/companies-page';
 import { PersonPage } from '../../features/platform/person-page';
+import { ADMIN_SESSION_STORAGE_KEY, AdminSession } from './admin-session';
 import {
   requiresCompanyAdmin,
   requiresDevice,
+  requiresNoAdminSession,
   requiresNoDevice,
   requiresSuperAdmin,
 } from './device.guard';
@@ -37,6 +39,28 @@ const SESSION: Session = {
   companyId: '33333333-3333-3333-3333-333333333333',
   companyName: 'Gradnja d.o.o.',
   activatedAt: '2026-08-30T08:00:00.000Z',
+};
+
+/** Teren's own staff, signed in with a password. No company, by construction. */
+const STAFF: AdminSession = {
+  token: 'trn_s_a-real-session-token',
+  expiresAt: '2099-01-01T00:00:00.000Z',
+  role: 'super_admin',
+  userId: '44444444-4444-4444-4444-444444444444',
+  displayName: 'Milovan Miletić',
+  companyId: null,
+  companyName: null,
+  signedInAt: '2026-09-01T08:00:00.000Z',
+};
+
+/** The customer's own admin, who does have one. */
+const OWNER: AdminSession = {
+  ...STAFF,
+  role: 'company_admin',
+  userId: '55555555-5555-5555-5555-555555555555',
+  displayName: 'Petar Petrović',
+  companyId: SESSION.companyId,
+  companyName: SESSION.companyName,
 };
 
 /** The entry a foreman's boss sent him a link to. */
@@ -96,10 +120,15 @@ describe('the device gate', () => {
     deepLink = `${diary}?${ARCHIVE_ENTRY_PARAM}=${ENTRY_ID}`;
   });
 
-  async function boot(session: Session | null): Promise<void> {
+  async function boot(session: Session | null, admin: AdminSession | null = null): Promise<void> {
     localStorage.clear();
     if (session) {
       localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+    }
+    // The two credentials are independent and a browser may hold both — that is not an edge case,
+    // it is the founder's own machine, which is a demo phone and the platform console at once.
+    if (admin) {
+      localStorage.setItem(ADMIN_SESSION_STORAGE_KEY, JSON.stringify(admin));
     }
 
     TestBed.resetTestingModule();
@@ -206,10 +235,27 @@ describe('the device gate', () => {
       expect(xhrSpy).not.toHaveBeenCalled();
     });
 
-    it('is never shown a sign-in screen it has no sign-in for', async () => {
+    it('is not shown the screen for joining a phone it has already joined', async () => {
       // A stray link: a bookmark from the day he joined, or a URL passed round in a group chat.
       expect(await follow(welcome)).toBe(home);
-      expect(await follow(login)).toBe(home);
+    });
+
+    /**
+     * **This asserted the opposite until 2026-09-01, and the inversion is the fix.**
+     *
+     * `/login` was guarded on the *device* session, so an activated browser was bounced off it to
+     * Home. That reads as care for a foreman — he has no password — and it was, until you notice
+     * what else it does: the founder's browser is activated as the demo phone, so on the one
+     * machine this product is administered from, the password door was shut. With `/welcome`
+     * bouncing for the same reason and `session-link.ts` rendering nothing for a device session,
+     * **there was no reachable route into the admin or platform surfaces at all** — which is
+     * precisely what "the pages aren't wired in" turned out to mean.
+     *
+     * Every guard involved was individually correct, so nothing was red. The screen he now lands
+     * on carries a join-by-code path built for exactly the man who arrives here by mistake.
+     */
+    it('reaches the password door, because a browser is not a phone', async () => {
+      expect(await follow(login)).toBe(login);
     });
 
     /**
@@ -250,6 +296,80 @@ describe('the device gate', () => {
   });
 
   /**
+   * The founder's own browser: a demo phone **and** the platform console at the same time.
+   *
+   * This describe block exists because every screen, route, gateway and endpoint of F7 was built,
+   * reviewed and green while the surface was in practice unreachable. The defect lived entirely in
+   * the *combination* of three individually correct guards, which is a shape no per-route
+   * assertion can see — so it is asserted here as a journey rather than as a decision.
+   *
+   * Each `it` below is one leg of the round trip the founder could not complete on 2026-09-01.
+   */
+  describe('a browser that is a phone and a console at once', () => {
+    it('can open the password door while holding a device session', async () => {
+      await boot(SESSION);
+      expect(await follow(login)).toBe(login);
+    });
+
+    it('reaches the platform surface once he is signed in, phone session and all', async () => {
+      await boot(SESSION, STAFF);
+
+      expect(await follow(platform)).toBe(platform);
+      expect(await follow(platformCompanies)).toBe(platformCompanies);
+      expect(await follow(platformPerson.replace(':userId', STAFF.userId))).toContain('platform');
+    });
+
+    it('still opens the record button, because the two credentials do not displace each other', async () => {
+      await boot(SESSION, STAFF);
+      expect(await follow(home)).toBe(home);
+    });
+
+    /**
+     * The office machine: an admin credential and no phone at all.
+     *
+     * Worth its own leg because it is the *other* population, and the guards answer it by a
+     * different branch — there is no device session for `requiresSuperAdmin` to send to Home.
+     */
+    it('serves a console with no phone on it', async () => {
+      await boot(null, STAFF);
+      expect(await follow(platform)).toBe(platform);
+      // Home is a screen about a phone, and this browser is not one.
+      expect(await follow(home)).toBe(welcome);
+    });
+
+    it('sends a signed-in admin who revisits the door back to his own surface', async () => {
+      await boot(null, STAFF);
+      expect(await follow(login)).toBe(platform);
+
+      await boot(null, OWNER);
+      expect(await follow(login)).toBe(company);
+    });
+
+    /**
+     * The redirect loop the door must not open, and the reason it ignores `?next=`.
+     *
+     * A member of staff following a stale `/login?next=/company` would, if the door honoured the
+     * parameter, be forwarded to `/company` — which `requiresCompanyAdmin` answers with
+     * `/login?next=/company`, for ever. Microtask recursion, a blank screen and no error: the same
+     * shape `pathMatch: 'full'` exists to prevent on Home, and the reason `requiresNoAdminSession`
+     * decides the destination from the role rather than from the URL.
+     *
+     * **A `toBe` here would pass against a loop that never terminates**, because it would never be
+     * reached, so the navigation is what is under test — that it returns at all is half the
+     * assertion.
+     */
+    it('will not be walked into a redirect loop by a stale return URL', async () => {
+      await boot(null, STAFF);
+
+      const landed = await follow(`${login}?${RETURN_URL_PARAM}=${encodeURIComponent(company)}`);
+
+      expect(landed, 'the door honoured `next` into a screen that bounces straight back').toBe(
+        platform,
+      );
+    });
+  });
+
+  /**
    * The shape of the answer, not just its value.
    *
    * `SessionService` reads the credential from `localStorage` during construction precisely so
@@ -268,7 +388,7 @@ describe('the device gate', () => {
     it('returns a plain decision, never something to wait on', async () => {
       await boot(SESSION);
 
-      for (const guard of [requiresDevice, requiresNoDevice]) {
+      for (const guard of [requiresDevice, requiresNoDevice, requiresNoAdminSession]) {
         const answer = TestBed.runInInjectionContext(() => guard(anyRoute, [], noSnapshot)) as {
           then?: unknown;
           subscribe?: unknown;
@@ -343,8 +463,17 @@ describe('the device gate', () => {
         // sharper case: `requiresNoDevice` would be wrong for it too, because the founder's own
         // phone may hold a device session while he opens a link meant for somebody else.
         expect(route.canMatch ?? []).toEqual([]);
-      } else if (url === welcome || url === login) {
+      } else if (url === welcome) {
+        // The one screen that is genuinely about a *phone* that belongs to nobody yet. Keep it
+        // the only one: the branch below is the record of what happened when `/login` shared it.
         expect(route.canMatch, url).toEqual([requiresNoDevice]);
+      } else if (url === login) {
+        // **Not `requiresNoDevice`, and this branch is the reminder of why** (2026-09-01). Guarded
+        // on the device session, this route bounced any browser that had ever been activated as a
+        // phone — including the founder's, which is the demo phone and the platform console at
+        // once. With `/welcome` bouncing for the same reason, that closed every route into the
+        // admin and platform surfaces while leaving the whole suite green.
+        expect(route.canMatch, url).toEqual([requiresNoAdminSession]);
       } else if (url === company || url === worker) {
         // The two screens gated on an *admin* credential rather than on this phone's device
         // session. A company admin signs in with a password and never holds a device token, so

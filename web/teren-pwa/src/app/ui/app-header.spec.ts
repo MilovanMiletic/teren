@@ -97,9 +97,13 @@ describe('AppHeader', () => {
     // office link between the two — it is the admin's way in, and it belongs with the other
     // navigation rather than after the control that is about the person. F7 put the session last,
     // outside the navigation group, because leaving is not a place you can go.
-    expect(controls.slice(-4)).toEqual([
+    // The platform link joined the navigation group on 2026-09-01, beside the office link and for
+    // the same reason: both are "where do I go that is not this screen", and both render
+    // themselves away for the population that may not go there.
+    expect(controls.slice(-5)).toEqual([
       'app-language-switcher',
       'app-company-link',
+      'app-platform-link',
       'app-profile-link',
       'app-session-link',
     ]);

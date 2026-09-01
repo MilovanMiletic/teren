@@ -69,14 +69,63 @@ export const requiresDevice: CanMatchFn = (): true | UrlTree => {
 };
 
 /**
- * Welcome and Login: the screens that only make sense before this phone belongs to anyone.
+ * `/login`: the password door, for anybody who is not already through it.
+ *
+ * ## Why this is not `requiresNoDevice`, which is what guarded it until 2026-09-01
+ *
+ * **A browser is not a phone.** `requiresNoDevice` answers "does this browser hold a *device*
+ * session", and it guarded `/login` on the reasoning that an activated phone belongs to a foreman,
+ * who has no password. That reasoning is sound about a foreman and wrong about the machine this
+ * product is actually administered from: the founder's browser is the demo phone **and** the
+ * platform console at the same time, and on it every door to a password sign-in was shut.
+ *
+ * The failure was total and silent. `/login` bounced to Home; `/welcome`, which is where the only
+ * "sign in" link lives, bounced to Home for the same reason; `session-link.ts` renders nothing at
+ * all for a browser with a device session; and `/platform` answers an activated device with a
+ * redirect to Home, so even typing the URL did not help. **Every route into the admin and platform
+ * surfaces was closed, and no spec noticed, because each guard is individually correct.** That is
+ * what "the pages aren't wired in" meant, and it was never about the pages.
+ *
+ * A foreman who follows a stale link now sees the login screen rather than being bounced off it.
+ * That screen was built for him — `login-page.ts` carries the join-by-code path in plain sight for
+ * exactly this man — and a door he does not need is a far smaller harm than a door the
+ * administrator cannot open.
+ *
+ * ## The question it asks instead, and the loop it must not create
+ *
+ * Only "is somebody already signed in here". If so he is sent to **his own surface**, decided by
+ * his role — and **never to `?next=`**, which is the one detail here that is load-bearing. A super
+ * admin arriving at `/login?next=/company` would otherwise be forwarded to `/company`, which
+ * `requiresCompanyAdmin` answers with `/login?next=/company`, for ever: a blank screen and no
+ * error, the same infinite-redirect shape `pathMatch: 'full'` exists to prevent on Home. A stale
+ * deep link is worth less than a screen that loads.
+ *
+ * Still a pure boolean over one signal read, for the reason the file comment gives.
+ */
+export const requiresNoAdminSession: CanMatchFn = (): true | UrlTree => {
+  const role = inject(AdminSessionService).role();
+  if (role === null) {
+    return true;
+  }
+
+  // His own surface. `role()` applies the session's expiry, so an expired admin falls into the
+  // branch above and gets the form rather than a redirect to a screen full of 401s.
+  return inject(Router).parseUrl(role === 'super_admin' ? '/platform' : '/company');
+};
+
+/**
+ * Welcome: the screen that only makes sense before this phone belongs to anyone.
  *
  * An activated worker who follows a stray link — a shared URL, a bookmark from the day he joined
  * — must never be shown a sign-in screen for a sign-in he does not have and cannot perform. He is
  * sent on to wherever the link said he was going, or to the record button.
  *
  * `/activate` is deliberately **not** guarded by this: it is the re-activation door, and the
- * phone that needs it most is one that already holds a session the server has revoked.
+ * phone that needs it most is one that already holds a session the server has revoked. `/login`
+ * is no longer guarded by it either — see {@link requiresNoAdminSession} for the day that cost.
+ *
+ * **This now guards exactly one route.** Keep it that way, or read that comment first: the
+ * question it asks is about a *phone*, and only Welcome is a screen about a phone.
  */
 export const requiresNoDevice: CanMatchFn = (): true | UrlTree => {
   const sessions = inject(SessionService);

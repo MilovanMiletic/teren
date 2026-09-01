@@ -12,6 +12,82 @@ Entry format:
 
 ---
 
+## 2026-09-01 — the platform surface was unreachable, and every guard was correct
+
+**Talked about**
+
+The founder signed in as a seeded super admin and reported: *"The pages aren't wired in, after the
+sign in I don't see any super admin pages."*
+
+**What it actually was**
+
+Not the pages. `POST /auth/login` answered his account with `role: super_admin`, `/api/platform/*`
+answered 200, and a browser driven through the sign-in landed on `/platform` and rendered the real
+directory. Every part of F7 worked. What did not exist was a way in **on his machine**.
+
+Three guards, each correct on its own:
+
+- `/login` was gated on `requiresNoDevice`, so any browser holding a *device* session was bounced
+  to Home. His browser is the demo phone — he activated it with `DEM0-TEST`.
+- `/welcome`, where the only "sign in" link in the app lives, bounces for the same reason.
+- `session-link.ts` renders nothing at all for a browser with a device session, by design.
+
+So the password door was shut, and with it every admin and platform screen behind it. And after a
+sign-in there was still no way *back*: the only navigation into `/platform` anywhere in the app was
+the one `login-page.ts` performs on success, so one reload or one tap on Home and the surface was
+gone until he typed the URL again.
+
+**The reason nothing was red, which is the part worth keeping**
+
+`app.routes.spec.ts` proves every navigation resolves to a registered route. That is the wrong
+direction: it cannot see a route with no navigation into it, and it certainly cannot see a route
+whose only navigation sits on a screen the browser is redirected away from. **Reachability is a
+property of the guards in combination, not of the route table** — and each guard had its own spec
+asserting its own behaviour, correctly, in isolation.
+
+**Built**
+
+- `requiresNoAdminSession` (`core/session/device.guard.ts`), now guarding `/login`. It asks the one
+  question that screen is about — is somebody already signed in here — and sends him to his own
+  surface by **role**, never to `?next=`. Honouring the parameter would let
+  `/login?next=/company` bounce a super admin between two guards for ever.
+- `ui/platform-link.ts` — the way back, in the app header and at the foot of Home's scroll, visible
+  only to a signed-in super admin. `company-link.ts`'s twin; the office got one at F6 and the
+  platform did not. A new `building` icon, deliberately unlike the `user` and `globe` beside it.
+- `showPlatform` on `AppHeader`, off on the three `/platform` screens, so the control never points
+  at the screen it is standing on.
+- Specs: a `describe` block that walks the whole round trip as a journey rather than as a decision
+  — sign in with a device session, reach `/platform`, go Home, come back through the chrome, and at
+  390 where the header does not exist. Plus the loop the door must not open.
+
+**Verified**
+
+1288 PWA specs and `ng build` green. The round trip driven in a real browser against the live API
+at 1280 and 390: `/login` reachable with a device session, sign-in lands on `/platform`, Home shows
+the control in both the header and the footer, and both lead back. No dead self-link on the
+platform screens themselves.
+
+**Also learned:** `ng serve` had stopped rebuilding. It served a bundle without any of this until a
+`touch` on a source file woke the watcher — which is the third time in two days that "it doesn't
+work" has had a stopped or stale process underneath it. Check the watcher before disbelieving a
+green suite.
+
+**Founder actions**
+
+- [ ] **Should a foreman see a "Prijavi se" control?** It is in the veto queue. The mechanical
+      objection is gone — `/login` now accepts a browser with a device session, so the control
+      would work — and what remains is the product call. Without it, reaching the platform on a
+      browser that has never signed in means typing `/login` once.
+- [ ] The seeded super admin was inserted by raw SQL with a five-character password (`teren`).
+      Fine on a laptop; on anything public use `create-super-admin`, which enforces the 12-character
+      floor and writes the audit row.
+
+**Next**
+
+B3a — VPS, domain, https origin. Founder-blocked.
+
+---
+
 ## 2026-09-01 — D4, the platform surface
 
 **Built — `/api/platform/*`, gated to `super_admin`**

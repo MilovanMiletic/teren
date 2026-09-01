@@ -28,12 +28,19 @@ import { Icon } from './icon';
  *
  * **A foreman is never offered a sign-in.** He does not have one: `plans/profile-and-identity.md`
  * decision 4 gives passwords to admins only, and a foreman joins once with a code and never signs
- * in again. A "Prijavi se" on his header would be a control that leads to `/login`, which
- * `requiresNoDevice` bounces an activated phone straight back out of — the definition of a control
- * that does nothing, which is the very defect this increment is fixing elsewhere in the header.
- * Whether he should nevertheless see one before M2 is an open founder question (CLAUDE.md
- * §Founder-veto queue), and this component does not pre-empt it: it renders itself away, exactly
- * as `company-link.ts` does for the same population.
+ * in again. Whether he should nevertheless see one before M2 is an open founder question
+ * (CLAUDE.md §Founder-veto queue), and this component does not pre-empt it: it renders itself
+ * away, exactly as `company-link.ts` does for the same population.
+ *
+ * **The second reason this row used to give is now false, and its removal is the point.** It said
+ * a "Prijavi se" here would be a dead control, because `requiresNoDevice` bounced an activated
+ * phone straight back out of `/login`. It did — and since the founder's own browser is a demo
+ * phone as well as the platform console, that bounce was the thing that made the whole admin
+ * surface unreachable on the one machine this product is administered from (2026-09-01).
+ * `/login` is now guarded on the *admin* session (`requiresNoAdminSession`), so a control here
+ * would work. It stays absent on the founder's open question alone, which is a decision rather
+ * than a mechanism — and the way back to the platform is `platform-link.ts`, which is visible
+ * precisely to the man who has somewhere to go.
  *
  * The middle row is not theoretical. `AdminSessionService.signedIn()` applies the session's own
  * expiry against the clock, and the route gate only runs at navigation — so an admin who leaves
@@ -173,8 +180,9 @@ export class SessionLink {
    * Sign out, or go and sign in.
    *
    * Both end at `/login` on purpose. Signing out removes one `localStorage` row and no evidence
-   * (`AdminSessionService.signOut`), and where the browser also holds a device session the gate
-   * forwards him on to Home rather than showing a foreman a password field.
+   * (`AdminSessionService.signOut`), and the screen he lands on is the form itself — including on
+   * a browser that also holds a device session, which is the founder's. Until 2026-09-01 that case
+   * was forwarded to Home, which meant signing out of the platform was a one-way door.
    */
   protected act(state: 'in' | 'out'): void {
     if (state === 'out') {

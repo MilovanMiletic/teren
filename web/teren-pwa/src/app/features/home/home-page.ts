@@ -30,6 +30,7 @@ import { InstallInvitation } from '../../ui/install-invitation';
 import { LanguageSwitcher } from '../../ui/language-switcher';
 import { PluralService } from '../../ui/plural.service';
 import { CompanyLink } from '../../ui/company-link';
+import { PlatformLink } from '../../ui/platform-link';
 import { ProfileLink } from '../../ui/profile-link';
 
 /**
@@ -48,6 +49,7 @@ import { ProfileLink } from '../../ui/profile-link';
     Icon,
     InstallInvitation,
     LanguageSwitcher,
+    PlatformLink,
     ProfileLink,
     TranslocoDirective,
   ],

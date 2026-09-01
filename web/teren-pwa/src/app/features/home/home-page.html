@@ -222,6 +222,13 @@
       path gains no chrome from it (F6).
     -->
     <app-company-link />
+    <!--
+      And the same for Teren's own staff. The header carries it too, but the header is
+      `display: none` below 768 — so without this line the founder's phone, which is the one
+      browser that is a demo device and the platform console at once, has no way back to
+      `/platform` at all (platform-link.ts).
+    -->
+    <app-platform-link />
     <app-profile-link />
   </div>
 

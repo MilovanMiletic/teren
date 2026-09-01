@@ -5,6 +5,7 @@ import { TranslocoDirective } from '@jsverse/transloco';
 import { CompanyLink } from './company-link';
 import { Icon } from './icon';
 import { LanguageSwitcher } from './language-switcher';
+import { PlatformLink } from './platform-link';
 import { ProfileLink } from './profile-link';
 import { SessionLink } from './session-link';
 
@@ -36,6 +37,7 @@ import { SessionLink } from './session-link';
     DatePipe,
     Icon,
     LanguageSwitcher,
+    PlatformLink,
     ProfileLink,
     SessionLink,
     TranslocoDirective,
@@ -85,6 +87,16 @@ import { SessionLink } from './session-link';
         -->
         @if (showCompany()) {
           <app-company-link class="on-header" />
+        }
+        <!--
+          Teren's own surface, for the one person who has one. It renders itself away for everybody
+          else (platform-link.ts). Until it existed, /platform was reachable only by the navigation
+          the login screen performs on a successful sign-in — one reload and the founder was back
+          to typing the URL. No backticks in here: this is an inline template literal, and one of
+          them ends the string and takes every component that imports this one down with it.
+        -->
+        @if (showPlatform()) {
+          <app-platform-link class="on-header" />
         }
         @if (showProfile()) {
           <app-profile-link class="on-header" />
@@ -220,6 +232,15 @@ export class AppHeader {
    * shape of dead control the profile link had already been given an input to avoid.
    */
   readonly showCompany = input(true);
+
+  /**
+   * Whether to offer the way to Teren's own surface.
+   *
+   * The same rule and the same default as {@link showCompany}, switched off by the three
+   * `/platform` screens. It is the input the company link had to be given a day late, written in
+   * from the start this time.
+   */
+  readonly showPlatform = input(true);
 
   readonly back = output<void>();
   readonly choose = output<void>();
