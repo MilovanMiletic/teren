@@ -437,4 +437,164 @@ public sealed class PlatformSurfaceTests(TerenTestApp app) : ApiTestBase(app)
 
         body.GetProperty("actions").EnumerateArray().ShouldBeEmpty();
     }
+
+    // ------------------------------------------------------------------- creating an admin
+
+    private static JsonObject NewAdmin(
+        string role, string email, Guid? companyId = null, string name = "Nikola Nikolić")
+    {
+        var body = new JsonObject
+        {
+            ["role"] = role,
+            ["display_name"] = name,
+            ["email"] = email,
+        };
+        if (companyId is Guid id)
+        {
+            body["company_id"] = id.ToString();
+        }
+        return body;
+    }
+
+    /// <summary>
+    /// The thing D4 could not do, and the reason `/platform` had no "add" button: until now an
+    /// administrator could only be conjured at a console or by hand in psql.
+    /// </summary>
+    [Fact]
+    public async Task Creating_a_company_admin_returns_him_and_the_link_that_lets_him_in()
+    {
+        using var staff = await GivenSuperAdminClientAsync();
+
+        var response = await staff.PostJson(
+            "/api/platform/users",
+            NewAdmin(AppUserRoleNames.CompanyAdmin, "nikola@gradnja.rs", TestIds.CompanyA));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Created, await response.TextAsync());
+
+        var body = await response.JsonAsync();
+        var user = body.GetProperty("user");
+        user.GetText("role").ShouldBe(AppUserRoleNames.CompanyAdmin);
+        user.GetGuid("company_id").ShouldBe(TestIds.CompanyA);
+        // He has no password and no way to have chosen one yet — that is what the link is for.
+        user.GetProperty("password_pending").GetBoolean().ShouldBeTrue();
+        user.IsNull("username").ShouldBeTrue();
+
+        var invite = body.GetProperty("invite");
+        invite.GetText("purpose").ShouldBe("invite");
+        invite.GetText("token").ShouldStartWith("trn_p_");
+
+        // Account and link in one transaction: an admin who exists with no way in is an
+        // onboarding the founder would have to notice was unfinished.
+        await using var identity = App.CreateIdentityDbContext();
+        var created = await identity.Users.FirstAsync(u => u.Email == "nikola@gradnja.rs", Ct);
+        (await identity.PasswordTokens.CountAsync(
+            t => t.UserId == created.Id && t.ConsumedAt == null && t.SupersededAt == null, Ct))
+            .ShouldBe(1);
+
+        (await LoadAuditAsync())
+            .ShouldContain(a => a.Action == AdminAuditActions.AdminCreated && a.SubjectId == created.Id);
+    }
+
+    [Fact]
+    public async Task A_new_member_of_staff_needs_no_company_and_may_not_have_one()
+    {
+        using var staff = await GivenSuperAdminClientAsync();
+
+        var ok = await staff.PostJson(
+            "/api/platform/users", NewAdmin(AppUserRoleNames.SuperAdmin, "kolega@teren.rs"));
+        ok.StatusCode.ShouldBe(HttpStatusCode.Created, await ok.TextAsync());
+        (await ok.JsonAsync()).GetProperty("user").IsNull("company_id").ShouldBeTrue();
+
+        // ck_app_user_company_scope makes "a super admin inside a tenant" unstorable — layer 2 of
+        // the privacy claim, expressed as a constraint. Answered as a sentence, never as a 500.
+        var refused = await staff.PostJson(
+            "/api/platform/users",
+            NewAdmin(AppUserRoleNames.SuperAdmin, "drugi@teren.rs", TestIds.CompanyA));
+        refused.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task A_company_admin_without_a_company_is_refused_before_the_check_constraint_is()
+    {
+        using var staff = await GivenSuperAdminClientAsync();
+
+        var response = await staff.PostJson(
+            "/api/platform/users", NewAdmin(AppUserRoleNames.CompanyAdmin, "nicija@gradnja.rs"));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    /// <summary>
+    /// A foreman belongs to a company and is added by that company's own admin, who knows who is on
+    /// his sites. Teren staff creating one would be the platform writing into a tenant's surface —
+    /// and every entry that man records is then signed with a name the customer never chose.
+    /// </summary>
+    [Fact]
+    public async Task A_foreman_cannot_be_created_from_the_platform()
+    {
+        using var staff = await GivenSuperAdminClientAsync();
+
+        var response = await staff.PostJson(
+            "/api/platform/users",
+            NewAdmin(AppUserRoleNames.Worker, "poslovodja@gradnja.rs", TestIds.CompanyA));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task An_address_that_already_has_an_account_is_a_conflict_not_a_second_account()
+    {
+        var existing = await GivenCompanyAdminAsync();
+        using var staff = await GivenSuperAdminClientAsync();
+
+        var response = await staff.PostJson(
+            "/api/platform/users",
+            NewAdmin(AppUserRoleNames.CompanyAdmin, existing.Email!, TestIds.CompanyA));
+
+        // Email is the login key and globally unique (ux_app_user_email). Two accounts on one
+        // address would make "which of these signs in" a coin flip.
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+
+        await using var identity = App.CreateIdentityDbContext();
+        (await identity.Users.CountAsync(u => u.Email == existing.Email, Ct)).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task An_unknown_company_is_a_404_and_creates_nobody()
+    {
+        using var staff = await GivenSuperAdminClientAsync();
+
+        var response = await staff.PostJson(
+            "/api/platform/users",
+            NewAdmin(AppUserRoleNames.CompanyAdmin, "nigde@gradnja.rs", Guid.NewGuid()));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+
+        await using var identity = App.CreateIdentityDbContext();
+        (await identity.Users.AnyAsync(u => u.Email == "nigde@gradnja.rs", Ct)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task The_new_admin_can_actually_set_a_password_and_sign_in_with_it()
+    {
+        // The whole point, proven end to end rather than by inspecting rows: create → set password
+        // with the returned token → sign in → reach the company surface.
+        using var staff = await GivenSuperAdminClientAsync();
+
+        var created = await (await staff.PostJson(
+            "/api/platform/users",
+            NewAdmin(AppUserRoleNames.CompanyAdmin, "novi@gradnja.rs", TestIds.CompanyA)))
+            .JsonAsync();
+
+        var token = created.GetProperty("invite").GetText("token");
+
+        using var anonymous = App.CreateAnonymousClient();
+        var set = await anonymous.PostJson(
+            "/auth/password",
+            new JsonObject { ["token"] = token, ["password"] = "a-passphrase-he-chose-himself" });
+        set.StatusCode.ShouldBe(HttpStatusCode.OK, await set.TextAsync());
+
+        using var admin = await SignInAsync("novi@gradnja.rs", "a-passphrase-he-chose-himself");
+        (await admin.Get("/api/workers")).StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
 }

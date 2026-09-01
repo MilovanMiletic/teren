@@ -146,3 +146,45 @@ export const requiresCompanyAdmin: CanMatchFn = (): true | UrlTree => {
     next ? { queryParams: { [RETURN_URL_PARAM]: next } } : {},
   );
 };
+
+/**
+ * `/platform` — Teren's own surface, for Teren's own staff (F7).
+ *
+ * The twin of {@link requiresCompanyAdmin}, and it answers the same three ways for the same
+ * reasons:
+ *
+ * - **A foreman's phone goes to Home**, not to a sign-in screen he has no password for. He cannot
+ *   have one: `ck_app_user_worker_has_no_password` makes it unstorable.
+ * - **A company admin goes to `/login`** carrying where he was. He may not see this surface — the
+ *   server would refuse him with a 403 from `RoleFilter` — and `/login` is where he can sign in as
+ *   somebody who may. It does not loop: nothing on the login screen redirects on the strength of
+ *   an *admin* session, and `requiresNoDevice` admits him.
+ * - **Anyone else goes to `/login`** with `?next=`, so a deep link survives the round trip.
+ *
+ * **Not "company admin or better".** The roles are not a hierarchy: a super admin has no company
+ * and is refused by every evidence route on purpose, so a gate written as a rank would be the
+ * first step towards Teren staff reading a customer's diary. Two questions, asked separately.
+ *
+ * Still a pure boolean over one signal read — `AdminSessionService` reads the credential from
+ * `localStorage` during construction and applies the session's own expiry, so this awaits nothing.
+ */
+export const requiresSuperAdmin: CanMatchFn = (): true | UrlTree => {
+  const admins = inject(AdminSessionService);
+  if (admins.isSuperAdmin()) {
+    return true;
+  }
+
+  const router = inject(Router);
+
+  if (inject(SessionService).activated()) {
+    return router.parseUrl('/');
+  }
+
+  const attempted = router.getCurrentNavigation()?.extractedUrl;
+  const next = attempted ? safeReturnUrl(router.serializeUrl(attempted)) : null;
+
+  return router.createUrlTree(
+    ['/login'],
+    next ? { queryParams: { [RETURN_URL_PARAM]: next } } : {},
+  );
+};

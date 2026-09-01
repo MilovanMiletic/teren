@@ -85,6 +85,20 @@ export class AdminSessionService {
   }
 
   /**
+   * The other route gate's single question: may this browser open `/platform`?
+   *
+   * A method rather than a `computed`, for the reason above — and the two are deliberately
+   * separate questions rather than one `role()` comparison at the call site, because the roles are
+   * not a hierarchy. **A super admin is not a company admin with more.** He has no company by
+   * construction (`ck_app_user_company_scope`), so `/company` has nothing on it for him, and the
+   * evidence routes refuse him by design (`RoleGates.Evidence`). Writing this as "at least
+   * company_admin" would be the first step towards a super admin who can read diaries.
+   */
+  isSuperAdmin(): boolean {
+    return this.current()?.role === 'super_admin';
+  }
+
+  /**
    * The live session, with an expired one resolved to `null`.
    *
    * **It reads and never writes.** Clearing the stored row from here would be a signal write on a

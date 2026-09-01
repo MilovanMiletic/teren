@@ -3,6 +3,7 @@ using Teren.Api.Contracts;
 using Teren.Api.Platform;
 using Teren.Api.Validation;
 using Teren.Core.Entities;
+using Teren.Core.Identity;
 
 namespace Teren.Api.Endpoints;
 
@@ -68,6 +69,13 @@ public static class PlatformEndpoints
             .WithName("ListPlatformUsers")
             .WithSummary("Every account, filtered by company, role, status or free text.")
             .Produces<PlatformUserListResponse>();
+
+        group.MapPost("/users", CreateAdminAsync)
+            .AddEndpointFilter<ValidationFilter<CreateAdminRequest>>()
+            .WithName("CreateAdmin")
+            .WithSummary("Add a company admin or another member of staff, with his first link.")
+            .Produces<PlatformCreateAdminResponse>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/users/{id}/invite", InviteUserAsync)
             .WithName("InvitePlatformUser")
@@ -190,6 +198,67 @@ public static class PlatformEndpoints
         return TypedResults.Ok(
             await directory.ListUsersAsync(
                 company_id, parsedRole, parsedStatus, q, after, limit, ct));
+    }
+
+    /// <summary>
+    /// Add an administrator.
+    /// <para>
+    /// Every refusal below is a <b>409</b> or a <b>400</b> and never a 403: the caller's role is
+    /// already right — <see cref="RoleFilter"/> settled that before this ran — and what is wrong is
+    /// the request. A 403 here would mean something different from a 403 anywhere else in the
+    /// product, which is exactly the erosion the doctrine exists to prevent.
+    /// </para>
+    /// </summary>
+    private static async Task<IResult> CreateAdminAsync(
+        CreateAdminRequest request,
+        HttpContext http,
+        PlatformDirectory directory,
+        CancellationToken ct)
+    {
+        if (!EmailAddress.TryNormalise(request.Email, out var email))
+        {
+            return ApiProblems.BadRequest("email does not look like an email address.");
+        }
+
+        var result = await directory.CreateAdminAsync(
+            request.Role!,
+            request.DisplayName!,
+            email,
+            request.CompanyId,
+            request.Language,
+            http.GetPrincipal().UserId,
+            ct);
+
+        return result.Outcome switch
+        {
+            PlatformDirectory.CreateAdminOutcome.Created =>
+                TypedResults.Created(
+                    $"/api/platform/users?company_id={result.Created!.User.CompanyId}",
+                    result.Created),
+
+            // The database would refuse both of these anyway (ck_app_user_company_scope). Saying
+            // so here means the answer is a sentence rather than a 500 from a CHECK.
+            PlatformDirectory.CreateAdminOutcome.CompanyRequired =>
+                ApiProblems.BadRequest(
+                    "company_id is required for a company_admin: an administrator without a "
+                    + "company has nothing to administer."),
+
+            PlatformDirectory.CreateAdminOutcome.CompanyForbidden =>
+                ApiProblems.BadRequest(
+                    "a super_admin has no company by construction; leave company_id out."),
+
+            PlatformDirectory.CreateAdminOutcome.RoleNotAllowed =>
+                ApiProblems.BadRequest(
+                    "role must be super_admin or company_admin. A foreman is added by his own "
+                    + "company's admin, who knows who is on his sites."),
+
+            PlatformDirectory.CreateAdminOutcome.CompanyNotFound =>
+                ApiProblems.NotFound("That company was not found."),
+
+            _ => ApiProblems.Conflict(
+                $"{email} already has an account. Invite that account instead of creating a "
+                + "second one."),
+        };
     }
 
     private static async Task<IResult> InviteUserAsync(

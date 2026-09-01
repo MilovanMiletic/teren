@@ -203,6 +203,7 @@ builder.Services.AddSingleton<IValidator<SetPasswordRequest>, SetPasswordRequest
 builder.Services.AddSingleton<IValidator<CreateWorkerRequest>, CreateWorkerRequestValidator>();
 builder.Services.AddSingleton<IValidator<UpdateWorkerRequest>, UpdateWorkerRequestValidator>();
 builder.Services.AddSingleton<IValidator<CreateCompanyRequest>, CreateCompanyRequestValidator>();
+builder.Services.AddSingleton<IValidator<CreateAdminRequest>, CreateAdminRequestValidator>();
 
 // Staging and production put Caddy in front of this process (ARCHITECTURE §13): Caddy owns the
 // certificate and forwards over the private compose network in plain HTTP. Without this, two

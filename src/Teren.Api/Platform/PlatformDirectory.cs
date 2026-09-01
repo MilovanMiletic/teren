@@ -379,6 +379,174 @@ public sealed class PlatformDirectory(
             issued.Superseded);
     }
 
+    /// <summary>
+    /// Why a create was refused, in terms the endpoint turns into a status.
+    /// <para>
+    /// An enum rather than exceptions, and rather than the directory returning an
+    /// <c>IResult</c>: every one of these is an ordinary answer a screen has to render, not a
+    /// fault, and keeping HTTP out of this class is what lets the privacy guard reason about its
+    /// whole surface.
+    /// </para>
+    /// </summary>
+    public enum CreateAdminOutcome
+    {
+        Created,
+        /// <summary>Not `super_admin` or `company_admin`. Workers are their own admin's to add.</summary>
+        RoleNotAllowed,
+        EmailTaken,
+        CompanyNotFound,
+        /// <summary>A company admin with no company — `ck_app_user_company_scope` forbids it.</summary>
+        CompanyRequired,
+        /// <summary>A super admin with one — the same constraint, from the other side.</summary>
+        CompanyForbidden,
+    }
+
+    public readonly record struct CreateAdminResult(
+        CreateAdminOutcome Outcome,
+        PlatformCreateAdminResponse? Created);
+
+    /// <summary>
+    /// Create an administrator and mint his first set-password link, in one transaction.
+    ///
+    /// <para>
+    /// <b>This is what D4 was missing.</b> Until it existed, an admin could only be conjured with
+    /// `create-super-admin` at a console or by hand-writing rows in psql — so `/platform` could
+    /// list and invite people it had no way to bring into being, and onboarding a new customer
+    /// meant a terminal. The two halves are one transaction because an account that exists with no
+    /// way in is an unfinished onboarding the founder has to notice for himself.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Workers are refused, and that is a boundary rather than a gap.</b> A foreman belongs to a
+    /// company and is added by that company's own admin, who knows who is on his sites. Teren staff
+    /// creating foremen inside a customer's company would be the platform writing into a tenant's
+    /// own surface — and every entry that man then records is signed with a name the customer never
+    /// chose.
+    /// </para>
+    ///
+    /// <para>
+    /// The two company rules are the database's, restated here so the answer is a sentence rather
+    /// than a 500 from a CHECK: <c>ck_app_user_company_scope</c> makes super_admin ⟺ no company an
+    /// identity, in both directions.
+    /// </para>
+    /// </summary>
+    public async Task<CreateAdminResult> CreateAdminAsync(
+        string role,
+        string displayName,
+        string email,
+        Guid? companyId,
+        string? language,
+        Guid actorUserId,
+        CancellationToken ct)
+    {
+        if (role != AppUserRoleNames.SuperAdmin && role != AppUserRoleNames.CompanyAdmin)
+        {
+            return new CreateAdminResult(CreateAdminOutcome.RoleNotAllowed, null);
+        }
+
+        var parsed = AppUserRoleNames.Parse(role);
+
+        if (parsed == AppUserRole.CompanyAdmin && companyId is null)
+        {
+            return new CreateAdminResult(CreateAdminOutcome.CompanyRequired, null);
+        }
+
+        if (parsed == AppUserRole.SuperAdmin && companyId is not null)
+        {
+            return new CreateAdminResult(CreateAdminOutcome.CompanyForbidden, null);
+        }
+
+        string? companyName = null;
+        if (companyId is Guid wanted)
+        {
+            companyName = await db.Companies
+                .Where(c => c.Id == wanted)
+                .Select(c => c.Name)
+                .FirstOrDefaultAsync(ct);
+
+            if (companyName is null)
+            {
+                return new CreateAdminResult(CreateAdminOutcome.CompanyNotFound, null);
+            }
+        }
+
+        // Checked before the insert so the answer names the address, and enforced by
+        // `ux_app_user_email` regardless — the catch below is what makes a race honest rather than
+        // a 500.
+        if (await db.Users.AnyAsync(u => u.Email == email, ct))
+        {
+            return new CreateAdminResult(CreateAdminOutcome.EmailTaken, null);
+        }
+
+        var now = DateTime.UtcNow;
+        var user = new AppUser
+        {
+            Id = Guid.NewGuid(),
+            CompanyId = companyId,
+            Role = parsed,
+            // Admins sign in by email; a username would be a second identifier nothing reads.
+            Username = null,
+            DisplayName = displayName.Trim(),
+            Email = email,
+            // No password, ever, from here: he chooses his own through the link below, and the
+            // founder never learns it.
+            PasswordHash = null,
+            Language = string.IsNullOrWhiteSpace(language) ? "sr" : language.Trim(),
+            CreatedAt = now,
+        };
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+
+        db.Users.Add(user);
+        db.AdminAudits.Add(Audit(
+            actorUserId, AdminAuditActions.AdminCreated, "app_user", user.Id, companyId, now));
+
+        var issued = await PasswordTokens.IssueAsync(
+            db, user, actorUserId, "platform", PasswordTokenLifetime, ct);
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex, "ux_app_user_email"))
+        {
+            // Two founders adding the same person at once. The database settled it; this reports
+            // the loser as the ordinary conflict it is rather than as a fault.
+            await transaction.RollbackAsync(ct);
+            db.ChangeTracker.Clear();
+            return new CreateAdminResult(CreateAdminOutcome.EmailTaken, null);
+        }
+
+        await transaction.CommitAsync(ct);
+
+        return new CreateAdminResult(
+            CreateAdminOutcome.Created,
+            new PlatformCreateAdminResponse(
+                new PlatformUserResponse(
+                    user.Id,
+                    user.CompanyId,
+                    companyName,
+                    AppUserRoleNames.ToWire(user.Role),
+                    user.Username,
+                    user.DisplayName,
+                    user.Email,
+                    user.Language,
+                    Utc(user.CreatedAt),
+                    null,
+                    null,
+                    true),
+                new InviteUserResponse(
+                    PasswordTokenPurposeNames.ToWire(issued.Purpose),
+                    issued.Token,
+                    PasswordTokens.LinkFor(authOptions.Value.AppUrl, issued.Token),
+                    Utc(issued.ExpiresAt),
+                    issued.Superseded)));
+    }
+
+    private static bool IsUniqueViolation(DbUpdateException ex, string constraintName) =>
+        ex.InnerException is Npgsql.PostgresException { SqlState: "23505" } pg
+        && string.Equals(pg.ConstraintName, constraintName, StringComparison.Ordinal);
+
     // ---------------------------------------------------------------------------------- audit
 
     /// <summary>

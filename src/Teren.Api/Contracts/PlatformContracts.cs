@@ -154,3 +154,48 @@ public sealed record PlatformAuditResponse(
 public sealed record PlatformAuditListResponse(
     IReadOnlyList<PlatformAuditResponse> Actions,
     string? NextCursor);
+
+/// <summary>
+/// Create an administrator — the one thing D4 could not do, and the reason `/platform` had no
+/// "add" button until now.
+/// <para>
+/// **Workers are deliberately not creatable here.** A foreman belongs to a company and is added by
+/// that company's own admin, who knows who is on his sites; Teren staff conjuring foremen into a
+/// customer's company would be the platform writing into a tenant's own surface. The role is
+/// therefore `super_admin` or `company_admin` and the endpoint refuses anything else.
+/// </para>
+/// </summary>
+public sealed record CreateAdminRequest
+{
+    /// <summary>`super_admin` or `company_admin`. Never `worker`.</summary>
+    public string? Role { get; init; }
+
+    public string? DisplayName { get; init; }
+
+    /// <summary>
+    /// Required, and not out of politeness: `ck_app_user_admin_has_email` makes an admin without
+    /// one impossible, and an admin who cannot be emailed is an admin who can never be reset.
+    /// </summary>
+    public string? Email { get; init; }
+
+    /// <summary>
+    /// Required for a `company_admin`, and **forbidden for a `super_admin`** —
+    /// `ck_app_user_company_scope` makes "a super admin inside a tenant" unstorable, which is
+    /// layer 2 of the privacy claim expressed as a constraint rather than a convention.
+    /// </summary>
+    public Guid? CompanyId { get; init; }
+
+    public string? Language { get; init; }
+}
+
+/// <summary>
+/// The new administrator, and the link that lets him choose a password.
+/// <para>
+/// Both in one response on purpose: an account that exists but has no way in is an onboarding the
+/// founder has to notice is unfinished. Creating and inviting happen in one transaction for the
+/// same reason `CreateWorkerAsync` mints a code in the same transaction as the worker.
+/// </para>
+/// </summary>
+public sealed record PlatformCreateAdminResponse(
+    PlatformUserResponse User,
+    InviteUserResponse Invite);

@@ -65,6 +65,19 @@ public static class AdminAuditActions
 
     public const string CompanyCreated = "company_created";
 
+    /// <summary>
+    /// Teren staff brought an administrator into being — a company admin, or another member of
+    /// staff.
+    /// <para>
+    /// **The very first super admin is not audited by this**, and cannot be: he is seeded, by
+    /// `create-super-admin` or by the production seed, before any actor exists to name. Every
+    /// admin after him arrives through `POST /api/platform/users` and is recorded here with the
+    /// person who created him. That asymmetry is worth knowing when reading the trail: an account
+    /// with no `admin_created` row is the bootstrap one.
+    /// </para>
+    /// </summary>
+    public const string AdminCreated = "admin_created";
+
     /// <summary>Teren staff withdrew a customer's access. Every credential belonging to that
     /// company stops authenticating on next contact — which is why it is audited and why the
     /// screen that does it has to say so.</summary>

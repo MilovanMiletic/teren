@@ -326,3 +326,37 @@ public sealed class CreateCompanyRequestValidator : AbstractValidator<CreateComp
             .MaximumLength(MaxNameLength);
     }
 }
+
+/// <summary>
+/// An administrator needs a name, an address and a role. The two company rules are
+/// <b>deliberately not here</b>: whether a `company_id` is required depends on the role and
+/// whether the company exists needs the database, and splitting one decision across a validation
+/// problem and a handler's answer is how a caller gets two different vocabularies for one mistake.
+/// </summary>
+public sealed class CreateAdminRequestValidator : AbstractValidator<CreateAdminRequest>
+{
+    private const int MaxDisplayNameLength = 120;
+
+    public CreateAdminRequestValidator()
+    {
+        RuleLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(r => r.Role)
+            .NotEmpty()
+            .WithMessage("role is required: super_admin or company_admin.");
+
+        RuleFor(r => r.DisplayName)
+            .NotEmpty()
+            .WithMessage("display_name is what this person is called; it cannot be empty.")
+            .Must(name => name!.Trim().Length > 0)
+            .WithMessage("display_name cannot be blank.")
+            .MaximumLength(MaxDisplayNameLength);
+
+        // Required, unlike a worker's: ck_app_user_admin_has_email makes an admin without an
+        // address impossible, and one who cannot be emailed can never be reset.
+        RuleFor(r => r.Email)
+            .NotEmpty()
+            .WithMessage("email is required for an administrator; it is how he signs in.")
+            .MaximumLength(EmailAddress.MaximumLength);
+    }
+}

@@ -200,7 +200,7 @@ const NAVIGATION_COUNT = 36;
 const QUERY_PARAM_CONSTANTS = ['ARCHIVE_ENTRY_PARAM', 'RETURN_URL_PARAM'];
 
 /** How many `queryParams: { … }` literals the app writes today. Pinned for the same reason. */
-const QUERY_PARAM_USE_COUNT = 7;
+const QUERY_PARAM_USE_COUNT = 8;
 
 /** Every `queryParams: { … }` object literal written at a navigation call site. */
 function queryParamKeys(): { key: string; source: string; file: string }[] {
