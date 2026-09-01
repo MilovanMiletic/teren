@@ -1,5 +1,5 @@
-import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import { TranslocoDirective } from '@jsverse/transloco';
 
 import {
@@ -97,7 +97,6 @@ type AddTab = 'company_admin' | 'super_admin';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AppHeader,
-    DatePipe,
     Icon,
     InfoPopover,
     LanguageSwitcher,
@@ -110,6 +109,7 @@ type AddTab = 'company_admin' | 'super_admin';
 })
 export class PlatformPage {
   private readonly platform = inject(PlatformService);
+  private readonly router = inject(Router);
 
   protected readonly viewport = inject(ViewportService);
 
@@ -184,6 +184,18 @@ export class PlatformPage {
   protected readonly issuedFor = signal<Person | null>(null);
   protected readonly copied = signal(false);
 
+  /**
+   * How the customers list went, kept apart from the directory's own status.
+   *
+   * The dropdown said **"No customers yet. Add one first."** whenever the list was empty — which
+   * is a lie when it is empty because the request failed. The founder would go and add a customer
+   * he already has. Two different sentences, so the screen never claims to know the product is
+   * empty when what it actually knows is that it could not ask. Found by the F7 review.
+   */
+  protected readonly customersStatus = signal<PlatformStatus>('ok');
+
+  protected readonly customersUnreadable = computed(() => this.customersStatus() !== 'ok');
+
   protected readonly customerOptions = computed(() => sortCustomers(this.customers()));
 
   protected readonly addReasonKey = computed(() => platformReasonFor(this.addStatus()));
@@ -215,6 +227,7 @@ export class PlatformPage {
 
     this.people.set(people.people);
     this.customers.set(customers.customers);
+    this.customersStatus.set(customers.status);
     // The people list is the screen; a customers list that failed on its own only costs the
     // dialog its dropdown, and saying "the server is unwell" over a directory that loaded fine
     // would be the screen claiming something it does not know.
@@ -240,6 +253,11 @@ export class PlatformPage {
       return 'none';
     }
     return this.ascending() ? 'ascending' : 'descending';
+  }
+
+  /** To the customers. Both screens point at each other, so neither is a dead end. */
+  protected openCompanies(): void {
+    void this.router.navigate(['/platform/companies']);
   }
 
   protected openAdd(): void {

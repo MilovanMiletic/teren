@@ -97,3 +97,25 @@ export interface LoginResponse {
   /** Null for a super admin, who has no company by construction (`ck_app_user_company_scope`). */
   company?: ActivateCompanyResponse | null;
 }
+
+/**
+ * `POST /auth/password` — an invited administrator choosing his own passphrase.
+ *
+ * **Unauthenticated, and validated on the token alone.** That is what makes the link work for a man
+ * who has never signed in, and it is also why the link is a credential: whoever opens it first sets
+ * the password. Twelve characters minimum, no composition rules — length is what matters
+ * (`PasswordPolicy`).
+ */
+export interface SetPasswordRequest {
+  token: string;
+  password: string;
+}
+
+/**
+ * The address is echoed back so the screen can hand it to the login form he is about to see.
+ * Not a leak: the caller has just proved he holds a single-use token issued for that account.
+ */
+export interface SetPasswordResponse {
+  email?: string | null;
+  role?: string | null;
+}

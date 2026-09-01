@@ -7,6 +7,8 @@ import {
   LoginRequest,
   LoginResponse,
   RequestActivationCodeRequest,
+  SetPasswordRequest,
+  SetPasswordResponse,
 } from './auth-types';
 
 /**
@@ -42,11 +44,14 @@ export class MockAuthGateway implements AuthGateway {
   static readonly CODE = 'XKD47HMP';
   static readonly EMAIL = 'vlasnik@gradnja.rs';
   static readonly PASSWORD = 'lozinka-koja-nije-tajna';
+  /** The one set-password link this stand-in honours. */
+  static readonly TOKEN = 'trn_p_a-real-invite-token';
 
   /** Every request that reached the wire, so a spec can assert on what was actually sent. */
   readonly activations: ActivateRequest[] = [];
   readonly codeRequests: RequestActivationCodeRequest[] = [];
   readonly logins: LoginRequest[] = [];
+  readonly passwordSets: SetPasswordRequest[] = [];
 
   async activate(request: ActivateRequest): Promise<ActivateResponse> {
     this.activations.push(request);
@@ -79,6 +84,23 @@ export class MockAuthGateway implements AuthGateway {
   async requestActivationCode(request: RequestActivationCodeRequest): Promise<void> {
     // Accepted whatever the username is. The uniform answer is the point, not a shortcut.
     this.codeRequests.push(request);
+  }
+
+  /**
+   * The invite link's other end.
+   *
+   * Refuses anything but {@link MockAuthGateway.TOKEN} with a **401**, which is what the server
+   * answers for a token that is unknown, already used, superseded or expired — four states it
+   * deliberately does not tell apart, because the difference is an oracle about which links exist.
+   */
+  async setPassword(request: SetPasswordRequest): Promise<SetPasswordResponse> {
+    this.passwordSets.push(request);
+
+    if (request.token !== MockAuthGateway.TOKEN) {
+      throw unauthorized();
+    }
+
+    return { email: MockAuthGateway.EMAIL, role: 'company_admin' };
   }
 
   async login(request: LoginRequest): Promise<LoginResponse> {

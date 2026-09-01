@@ -178,8 +178,11 @@ function navigationTargets(): { targets: NavigationTarget[]; unresolvable: strin
  *
  * **34 → 36 with the office rework (2026-09-01)**: the people list opens one man's page, and that
  * page has the way back to the people. Counted off the tree.
+ *
+ * **36 → 38 at F7**: the platform's people list opens the customers page, and `/set-password`
+ * sends a man who has just chosen a passphrase on to `/login`. Counted off the tree.
  */
-const NAVIGATION_COUNT = 36;
+const NAVIGATION_COUNT = 38;
 
 /**
  * The query parameters a navigation may put on the URL, by the name of the constant that holds
@@ -346,10 +349,16 @@ describe('app routes', () => {
       // One foreman: his code, his phones, the revoke. A route rather than a card that opens
       // inside the list, which is what makes "never two men's codes on one screen" structural.
       'company/worker/:workerId',
+      // Where an invite link lands (F7). Unguarded like `activate`: the man opening it has no
+      // credential at all, which is the entire point of the link.
+      'set-password',
       // Teren's own surface (F7). Gated on `requiresSuperAdmin` — a third admin credential, and
       // deliberately not "company admin or better": the roles are not a hierarchy, and a gate
       // written as a rank is the first step towards staff reading a customer's diary.
       'platform',
+      // The customers, on a route of their own so the heaviest action in the product does not
+      // sit beside a row about somebody's phone.
+      'platform/companies',
       '**',
     ]);
     expect(routes.at(-1)?.redirectTo).toBe('');

@@ -18,6 +18,7 @@ function failingWith(error: unknown): AuthGateway {
     activate: () => Promise.reject(error),
     requestActivationCode: () => Promise.reject(error),
     login: () => Promise.reject(error),
+    setPassword: () => Promise.reject(error),
   };
 }
 

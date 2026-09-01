@@ -9,6 +9,8 @@ import {
   LoginRequest,
   LoginResponse,
   RequestActivationCodeRequest,
+  SetPasswordRequest,
+  SetPasswordResponse,
 } from './auth-types';
 
 /**
@@ -51,6 +53,12 @@ export interface AuthGateway {
 
   /** Sign an admin in by email and password. */
   login(request: LoginRequest): Promise<LoginResponse>;
+
+  /**
+   * Set a password from an invite or reset link. Rejects with an `HttpErrorResponse`; what a 400
+   * or a 401 *means* is policy and lives in `ActivationService`.
+   */
+  setPassword(request: SetPasswordRequest): Promise<SetPasswordResponse>;
 }
 
 /**
@@ -77,6 +85,10 @@ export class HttpAuthGateway implements AuthGateway {
 
   async login(request: LoginRequest): Promise<LoginResponse> {
     return this.post<LoginResponse>('/auth/login', request);
+  }
+
+  async setPassword(request: SetPasswordRequest): Promise<SetPasswordResponse> {
+    return this.post<SetPasswordResponse>('/auth/password', request);
   }
 
   private async post<T>(path: string, body: unknown): Promise<T> {

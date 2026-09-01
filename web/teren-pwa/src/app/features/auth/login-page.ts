@@ -181,19 +181,24 @@ export class LoginPage {
     this.touched.set(false);
     this.signedInAs.set(result.displayName ?? this.email().trim());
 
-    if (result.role === 'company_admin') {
-      // His office, or the deep link that sent him here. `safeReturnUrl` again at this hop: the
-      // parameter arrives from outside far more often than it arrives from the gate, and this is
-      // the read that actually navigates.
+    // His own surface, or the deep link that sent him here. `safeReturnUrl` again at this hop: the
+    // parameter arrives from outside far more often than it arrives from the gate, and this is the
+    // read that actually navigates.
+    //
+    // **Two roles, two destinations, and no fallthrough.** Until F7 a super admin was deliberately
+    // left standing still, because `/platform` did not exist and sending him there would have
+    // answered a valid sign-in with a 403. It exists now, so he goes to it — and the sentence that
+    // used to explain the standing still goes with it.
+    if (result.role === 'company_admin' || result.role === 'super_admin') {
+      const home = result.role === 'company_admin' ? '/company' : '/platform';
       const next = safeReturnUrl(this.route.snapshot.queryParamMap.get(RETURN_URL_PARAM));
-      void (next
-        ? this.router.navigateByUrl(next)
-        : this.router.navigate(['/company']));
+      void (next ? this.router.navigateByUrl(next) : this.router.navigate([home]));
       return;
     }
 
-    // A super admin. The credential is stored and good; `/platform` is F7, so the screen says
-    // that rather than sending him somewhere that would only answer 403.
+    // A role this build does not recognise. The credential is stored and good, and the screen says
+    // so rather than guessing at a screen to open — the same all-or-nothing rule `toAdminSession`
+    // applies to the session itself.
     this.awaitingSurface.set(true);
   }
 }

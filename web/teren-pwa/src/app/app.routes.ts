@@ -183,9 +183,39 @@ export const routes: Routes = [
      * so `'**' → redirectTo: ''` would send him to Home, whose guard would send him to Welcome,
      * and the app would answer a valid sign-in with a screen asking for a code he cannot have.
      */
+    /**
+     * Where an invite link lands (F7).
+     *
+     * **Unguarded, like `/activate`, and for a sharper reason:** the man opening this link has no
+     * credential at all — that is the entire point of it. `requiresNoDevice` would be wrong too,
+     * because the founder's own phone may hold a device session while he opens a link meant for
+     * somebody else.
+     *
+     * The backend has minted `{appUrl}/set-password?token=…` since D2 and **nothing served this
+     * path** until now: it fell through the wildcard to Home, whose gate sent an admin to
+     * `/welcome` — a foreman's join-by-code screen. The onboarding chain looked built and stopped
+     * dead in the middle.
+     */
+    path: 'set-password',
+    loadComponent: () =>
+      import('./features/auth/set-password-page').then((m) => m.SetPasswordPage),
+  },
+  {
     path: 'platform',
     canMatch: [requiresSuperAdmin],
     loadComponent: () => import('./features/platform/platform-page').then((m) => m.PlatformPage),
+  },
+  {
+    /**
+     * The customers. A route of its own rather than a tab inside `/platform`, for the reason the
+     * office split into two screens on 2026-09-01: a list of people and a list of companies answer
+     * different questions, and one screen trying to be both puts the heaviest action in the
+     * product — suspending a paying customer — beside a row about somebody's phone.
+     */
+    path: 'platform/companies',
+    canMatch: [requiresSuperAdmin],
+    loadComponent: () =>
+      import('./features/platform/companies-page').then((m) => m.CompaniesPage),
   },
   { path: '**', redirectTo: '' },
 ];

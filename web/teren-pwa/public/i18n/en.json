@@ -570,6 +570,46 @@
       "awaiting": {
         "body": "Welcome, {{name}}. The Teren staff screens are still being built, so there is nothing to open here yet."
       }
+    },
+    "setPassword": {
+      "title": "Choose a passphrase",
+      "lead": "You have been invited to Teren. Choose a passphrase and you can sign in.",
+      "aside": {
+        "title": "TWO THINGS WORTH KNOWING",
+        "once": "This link works once. If it stops working, ask whoever invited you for a new one.",
+        "length": "At least 12 characters. No rules about capitals, digits or symbols — length is what matters."
+      },
+      "field": {
+        "label": "PASSPHRASE",
+        "hint": "At least 12 characters."
+      },
+      "show": "Show the passphrase",
+      "hide": "Hide the passphrase",
+      "submit": "Save and continue",
+      "saving": "Saving…",
+      "tooShort": "That is shorter than 12 characters.",
+      "offline": {
+        "title": "No internet",
+        "body": "This needs a connection. Your link is unaffected — try again when you are back online."
+      },
+      "noToken": {
+        "title": "This link is not complete",
+        "body": "There is no token in the address. Open the link you were sent exactly as it arrived, or ask for a new one."
+      },
+      "done": {
+        "title": "Your passphrase is set",
+        "body": "Sign in with {{email}} and the passphrase you just chose.",
+        "signIn": "Sign in"
+      },
+      "error": {
+        "offline": "No internet. Nothing was sent, and your link is unaffected.",
+        "server": "The server is not responding right now. Your link is unaffected — try again shortly.",
+        "rejected": "This link no longer works. It may already have been used, replaced, or it may have expired. Ask whoever invited you for a new one.",
+        "notAvailable": "This server has no such page.",
+        "unreadable": "The server answered in a way this app could not read. Nothing was changed.",
+        "unknown": "That did not work, for a reason this app could not identify.",
+        "tooManyAttempts": "Too many attempts. Wait about five minutes and try again — your link is unaffected."
+      }
     }
   },
   "profile": {
@@ -776,7 +816,48 @@
       "body": "Every account in the product, and the customers they belong to. Teren staff can see which companies and accounts exist and what is failing — never a transcript, a photograph or a report."
     },
     "companies": {
-      "open": "Customers"
+      "open": "Customers",
+      "title": "Customers",
+      "subtitle": "Who Teren sells to",
+      "loading": "Loading customers…",
+      "caption": "Every customer",
+      "empty": "No customers yet.",
+      "name": "Customer",
+      "people": "People",
+      "since": "Since",
+      "actionColumn": "Action",
+      "suspend": "Suspend",
+      "resume": "Resume",
+      "suspended": "Suspended",
+      "working": "Working…",
+      "summary": {
+        "active": "ACTIVE",
+        "suspended": "SUSPENDED"
+      },
+      "about": {
+        "title": "What suspending does",
+        "body": "A suspended customer’s phones and sign-ins stop working on their next request — no waiting, no cache. His foremen can still record; nothing they captured gets through until you resume him."
+      },
+      "add": {
+        "open": "Add a customer",
+        "title": "Add a customer",
+        "body": "A name is all that is needed. Nothing else is created with it — you add his administrator afterwards.",
+        "submit": "Add",
+        "adding": "Adding…",
+        "failed": "Could not add this customer",
+        "name": {
+          "label": "NAME",
+          "placeholder": "Vodoinstal Petrović d.o.o."
+        }
+      },
+      "confirm": {
+        "suspend": "Suspend {{name}}? Every phone and sign-in of theirs stops working on the next request. His foremen keep recording, but nothing reaches the server until you resume him.",
+        "resume": "Resume {{name}}? His phones and sign-ins start working again, and whatever his foremen recorded meanwhile will be sent."
+      },
+      "action": {
+        "failed": "That did not go through"
+      },
+      "unconfirmed": "The server did not answer, so it is not known whether it took effect. Refresh before trying again."
     },
     "stale": {
       "title": "Not confirmed with the server"
@@ -796,7 +877,8 @@
       "person": "Person",
       "company": "Customer",
       "state": "State",
-      "empty": "No accounts yet."
+      "empty": "No accounts yet.",
+      "open": "People"
     },
     "person": {
       "disabled": "Removed",
@@ -835,7 +917,8 @@
       "company": {
         "label": "CUSTOMER",
         "choose": "Choose a customer…",
-        "none": "No customers yet. Add one first."
+        "none": "No customers yet. Add one first.",
+        "unreadable": "The customers could not be loaded, so this list is empty. Refresh and try again."
       },
       "link": {
         "label": "HIS LINK",

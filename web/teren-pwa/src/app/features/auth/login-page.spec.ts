@@ -176,10 +176,10 @@ describe('LoginPage', () => {
     expect(router.navigate).not.toHaveBeenCalled();
   });
 
-  it('leaves a super admin standing still, because his screen is not built yet', async () => {
-    // The one role F4 deliberately leaves in place. The credential is stored and good, but
-    // `/platform` is F7 — sending him there would answer a valid sign-in with a 403. The sentence
-    // on screen is the honest version, and it lasts exactly as long as the condition does.
+  it('takes a member of staff to the platform', async () => {
+    // This spec used to assert the opposite — that he was left standing still — because
+    // `/platform` did not exist and sending him there would have answered a valid sign-in with a
+    // 403. F7 built it, so the sentence that explained the standing still went with it.
     activation.login.mockResolvedValue({
       ok: true,
       failure: null,
@@ -187,6 +187,23 @@ describe('LoginPage', () => {
       displayName: 'Milovan',
     });
     type(field('login-email'), 'osnivac@teren.rs');
+    type(field('login-password'), 'lozinka');
+
+    await submit();
+
+    expect(router.navigate).toHaveBeenCalledWith(['/platform']);
+  });
+
+  it('still says so plainly for a role this build does not recognise', async () => {
+    // The all-or-nothing rule, at the last hop: a newer server naming a fourth role must not send
+    // him to a screen chosen by a guess. The credential is good and the screen says so.
+    activation.login.mockResolvedValue({
+      ok: true,
+      failure: null,
+      role: 'auditor',
+      displayName: 'Neko',
+    });
+    type(field('login-email'), 'neko@teren.rs');
     type(field('login-password'), 'lozinka');
 
     await submit();

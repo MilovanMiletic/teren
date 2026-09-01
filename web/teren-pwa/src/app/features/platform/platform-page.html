@@ -31,6 +31,15 @@
       <button
         type="button"
         class="btn-icon"
+        [attr.aria-label]="t('platform.companies.open')"
+        (click)="openCompanies()"
+      >
+        <app-icon name="phone-home" [size]="20" />
+      </button>
+
+      <button
+        type="button"
+        class="btn-icon"
         [attr.aria-label]="t('platform.add.open')"
         [attr.aria-expanded]="addOpen()"
         (click)="openAdd()"
@@ -318,9 +327,17 @@
                   }
                 </select>
                 @if (customerOptions().length === 0) {
-                  <!-- Nothing to put him in. Said here rather than left as an empty dropdown,
-                       because the remedy is on another screen. -->
-                  <span class="t-meta">{{ t('platform.add.company.none') }}</span>
+                  <!--
+                    Two sentences, never one. An empty dropdown because the product has no
+                    customers and an empty dropdown because the list could not be read look
+                    identical, and telling him to "add one first" when he already has several
+                    would send him to create a duplicate.
+                  -->
+                  <span class="t-meta">{{
+                    customersUnreadable()
+                      ? t('platform.add.company.unreadable')
+                      : t('platform.add.company.none')
+                  }}</span>
                 }
               </label>
             }

@@ -36,9 +36,18 @@ import {
  * company and a `super_admin` with one are both 400, and a worker cannot be created at all.
  */
 export class MockPlatformGateway implements PlatformGateway {
+  // The ids the fixture ships with, named so a spec never spells a UUID out twice and a change
+  // here reaches every spec that acts on one of these rows — the same reason `MockCompanyGateway`
+  // publishes its own.
+  static readonly VODOINSTAL_ID = '33333333-3333-3333-3333-333333333333';
+  static readonly ELEKTRO_ID = '44444444-4444-4444-4444-444444444444';
+  static readonly FOUNDER_ID = '11111111-1111-1111-1111-111111111111';
+  static readonly PETAR_ID = '22222222-2222-2222-2222-222222222222';
+  static readonly ZORAN_ID = '55555555-5555-5555-5555-555555555555';
+
   private companies: PlatformCompanyResponse[] = [
     {
-      id: '33333333-3333-3333-3333-333333333333',
+      id: MockPlatformGateway.VODOINSTAL_ID,
       name: 'Vodoinstal Petrović d.o.o.',
       created_at: '2026-08-01T09:00:00.000Z',
       suspended_at: null,
@@ -46,7 +55,7 @@ export class MockPlatformGateway implements PlatformGateway {
       active_user_count: 3,
     },
     {
-      id: '44444444-4444-4444-4444-444444444444',
+      id: MockPlatformGateway.ELEKTRO_ID,
       name: 'Elektro Nikolić d.o.o.',
       created_at: '2026-08-20T14:30:00.000Z',
       suspended_at: '2026-08-28T11:00:00.000Z',
@@ -57,7 +66,7 @@ export class MockPlatformGateway implements PlatformGateway {
 
   private users: PlatformUserResponse[] = [
     {
-      id: '11111111-1111-1111-1111-111111111111',
+      id: MockPlatformGateway.FOUNDER_ID,
       company_id: null,
       company_name: null,
       role: 'super_admin',
@@ -71,8 +80,8 @@ export class MockPlatformGateway implements PlatformGateway {
       password_pending: false,
     },
     {
-      id: '22222222-2222-2222-2222-222222222222',
-      company_id: '33333333-3333-3333-3333-333333333333',
+      id: MockPlatformGateway.PETAR_ID,
+      company_id: MockPlatformGateway.VODOINSTAL_ID,
       company_name: 'Vodoinstal Petrović d.o.o.',
       role: 'company_admin',
       username: null,
@@ -87,8 +96,8 @@ export class MockPlatformGateway implements PlatformGateway {
       password_pending: true,
     },
     {
-      id: '55555555-5555-5555-5555-555555555555',
-      company_id: '33333333-3333-3333-3333-333333333333',
+      id: MockPlatformGateway.ZORAN_ID,
+      company_id: MockPlatformGateway.VODOINSTAL_ID,
       company_name: 'Vodoinstal Petrović d.o.o.',
       role: 'worker',
       username: 'zoran.jovanovic',

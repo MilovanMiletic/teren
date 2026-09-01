@@ -16,6 +16,8 @@ import { routeUrlFor } from '../../testing/route-table';
 import { CompanyPage } from '../../features/company/company-page';
 import { WorkerPage } from '../../features/company/worker-page';
 import { PlatformPage } from '../../features/platform/platform-page';
+import { SetPasswordPage } from '../../features/auth/set-password-page';
+import { CompaniesPage } from '../../features/platform/companies-page';
 import {
   requiresCompanyAdmin,
   requiresDevice,
@@ -71,6 +73,8 @@ describe('the device gate', () => {
   let company: string;
   let worker: string;
   let platform: string;
+  let setPassword: string;
+  let platformCompanies: string;
   let deepLink: string;
 
   beforeAll(async () => {
@@ -84,6 +88,8 @@ describe('the device gate', () => {
     company = await routeUrlFor(CompanyPage);
     worker = await routeUrlFor(WorkerPage);
     platform = await routeUrlFor(PlatformPage);
+    setPassword = await routeUrlFor(SetPasswordPage);
+    platformCompanies = await routeUrlFor(CompaniesPage);
     deepLink = `${diary}?${ARCHIVE_ENTRY_PARAM}=${ENTRY_ID}`;
   });
 
@@ -329,7 +335,10 @@ describe('the device gate', () => {
         // The redirect target is guarded instead; the wildcard itself may not be, or a mistyped
         // URL would be refused rather than redirected.
         expect(route.canMatch ?? []).toEqual([]);
-      } else if (url === activate) {
+      } else if (url === activate || url === setPassword) {
+        // The two screens a man reaches holding no credential at all. `/set-password` is the
+        // sharper case: `requiresNoDevice` would be wrong for it too, because the founder's own
+        // phone may hold a device session while he opens a link meant for somebody else.
         expect(route.canMatch ?? []).toEqual([]);
       } else if (url === welcome || url === login) {
         expect(route.canMatch, url).toEqual([requiresNoDevice]);
@@ -342,7 +351,7 @@ describe('the device gate', () => {
         // happened when one man's page (`/company/worker/:workerId`) joined the table on
         // 2026-09-01 and this spec went red until it was said out loud.
         expect(route.canMatch, url).toEqual([requiresCompanyAdmin]);
-      } else if (url === platform) {
+      } else if (url === platform || url === platformCompanies) {
         // Teren's own surface, on a *third* credential. Named separately from the office branch
         // above rather than folded into "any admin screen", because that folding is precisely the
         // mistake: a super admin has no company, is refused by every evidence route on purpose,

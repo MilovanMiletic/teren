@@ -304,6 +304,41 @@ export class ActivationService {
       adminSession: session,
     };
   }
+
+  /**
+   * Set a password from an invite or reset link.
+   *
+   * **It signs nobody in, and that is deliberate.** `POST /auth/password` revokes every existing
+   * session for the account as part of setting the password — the reset path exists precisely for
+   * the case where somebody else may hold a credential — so adopting one here would be adopting a
+   * session the server has just withdrawn. He signs in afterwards, with the passphrase he chose,
+   * which is also the only proof that it is the one he meant to type.
+   *
+   * The address comes back so the login screen can be handed it. That is not a leak: the caller
+   * has just proved he holds a single-use token issued for that account.
+   */
+  async setPassword(token: string, password: string): Promise<SetPasswordResult> {
+    try {
+      const response = await this.gateway.setPassword({ token, password });
+      return { ok: true, failure: null, email: text(response?.email) };
+    } catch (error) {
+      return { ok: false, failure: classify(error), email: null };
+    }
+  }
+}
+
+/**
+ * How choosing a passphrase went.
+ *
+ * `rejected` covers a token that is unknown, already used, superseded or expired — the server
+ * answers all four identically, because which of them it was is an oracle about who has been
+ * invited. The screen says one sentence and offers the one remedy that exists: ask for a new link.
+ */
+export interface SetPasswordResult {
+  ok: boolean;
+  failure: AuthFailure | null;
+  /** His address, for the login form he is about to see. Null when the call failed. */
+  email: string | null;
 }
 
 /**

@@ -570,6 +570,46 @@
       "awaiting": {
         "body": "Dobrodošli, {{name}}. Ekrani za Teren se još prave, pa ovde za sada nema šta da se otvori."
       }
+    },
+    "setPassword": {
+      "title": "Izaberite lozinku",
+      "lead": "Pozvani ste u Teren. Izaberite lozinku i možete da se prijavite.",
+      "aside": {
+        "title": "DVE VAŽNE STVARI",
+        "once": "Ovaj link važi jednom. Ako prestane da radi, tražite novi od onoga ko vas je pozvao.",
+        "length": "Najmanje 12 karaktera. Nema pravila o velikim slovima, brojevima ili znakovima — dužina je ono što je važno."
+      },
+      "field": {
+        "label": "LOZINKA",
+        "hint": "Najmanje 12 karaktera."
+      },
+      "show": "Prikaži lozinku",
+      "hide": "Sakrij lozinku",
+      "submit": "Sačuvaj i nastavi",
+      "saving": "Čuvanje…",
+      "tooShort": "To je kraće od 12 karaktera.",
+      "offline": {
+        "title": "Nema interneta",
+        "body": "Za ovo je potrebna veza. Vaš link i dalje važi — pokušajte kada se vratite na mrežu."
+      },
+      "noToken": {
+        "title": "Link nije potpun",
+        "body": "U adresi nema tokena. Otvorite link tačno onako kako vam je stigao ili tražite novi."
+      },
+      "done": {
+        "title": "Lozinka je postavljena",
+        "body": "Prijavite se sa {{email}} i lozinkom koju ste upravo izabrali.",
+        "signIn": "Prijavi se"
+      },
+      "error": {
+        "offline": "Nema interneta. Ništa nije poslato i vaš link i dalje važi.",
+        "server": "Server trenutno ne odgovara. Vaš link i dalje važi — pokušajte uskoro.",
+        "rejected": "Ovaj link više ne radi. Možda je već iskorišćen, zamenjen ili je istekao. Tražite novi od onoga ko vas je pozvao.",
+        "notAvailable": "Ovaj server nema tu stranicu.",
+        "unreadable": "Server je odgovorio tako da aplikacija nije mogla da pročita. Ništa nije promenjeno.",
+        "unknown": "Nije uspelo, iz razloga koji aplikacija nije mogla da utvrdi.",
+        "tooManyAttempts": "Previše pokušaja. Sačekajte oko pet minuta pa probajte ponovo — vaš link i dalje važi."
+      }
     }
   },
   "profile": {
@@ -776,7 +816,48 @@
       "body": "Svi nalozi u aplikaciji i firme kojima pripadaju. Teren tim vidi koje firme i nalozi postoje i šta ne radi — nikada transkript, fotografiju ili izveštaj."
     },
     "companies": {
-      "open": "Firme"
+      "open": "Firme",
+      "title": "Firme",
+      "subtitle": "Kome Teren prodaje",
+      "loading": "Učitavanje firmi…",
+      "caption": "Sve firme",
+      "empty": "Još nema firmi.",
+      "name": "Firma",
+      "people": "Ljudi",
+      "since": "Od",
+      "actionColumn": "Radnja",
+      "suspend": "Suspenduj",
+      "resume": "Vrati",
+      "suspended": "Suspendovana",
+      "working": "U toku…",
+      "summary": {
+        "active": "AKTIVNE",
+        "suspended": "SUSPENDOVANE"
+      },
+      "about": {
+        "title": "Šta radi suspenzija",
+        "body": "Telefoni i prijave suspendovane firme prestaju da rade već na sledećem zahtevu — bez čekanja. Poslovođe i dalje mogu da snimaju; ništa snimljeno ne stiže do servera dok je ne vratite."
+      },
+      "add": {
+        "open": "Dodaj firmu",
+        "title": "Dodaj firmu",
+        "body": "Dovoljno je ime. Ništa drugo se ne pravi uz nju — administratora dodajete posle.",
+        "submit": "Dodaj",
+        "adding": "Dodavanje…",
+        "failed": "Firma nije mogla da se doda",
+        "name": {
+          "label": "IME",
+          "placeholder": "Vodoinstal Petrović d.o.o."
+        }
+      },
+      "confirm": {
+        "suspend": "Suspendovati {{name}}? Svi njihovi telefoni i prijave prestaju da rade na sledećem zahtevu. Poslovođe i dalje snimaju, ali ništa ne stiže do servera dok je ne vratite.",
+        "resume": "Vratiti {{name}}? Telefoni i prijave ponovo rade, a sve što su poslovođe u međuvremenu snimile biće poslato."
+      },
+      "action": {
+        "failed": "Radnja nije prošla"
+      },
+      "unconfirmed": "Server nije odgovorio, pa se ne zna da li je radnja izvršena. Osvežite pre nego što pokušate ponovo."
     },
     "stale": {
       "title": "Nije provereno na serveru"
@@ -796,7 +877,8 @@
       "person": "Osoba",
       "company": "Firma",
       "state": "Stanje",
-      "empty": "Još nema naloga."
+      "empty": "Još nema naloga.",
+      "open": "Ljudi"
     },
     "person": {
       "disabled": "Uklonjen",
@@ -835,7 +917,8 @@
       "company": {
         "label": "FIRMA",
         "choose": "Izaberite firmu…",
-        "none": "Još nema firmi. Prvo dodajte jednu."
+        "none": "Još nema firmi. Prvo dodajte jednu.",
+        "unreadable": "Firme nisu mogle da se učitaju, pa je lista prazna. Osvežite pa probajte ponovo."
       },
       "link": {
         "label": "NJEGOV LINK",

@@ -1,0 +1,263 @@
+<div class="screen" *transloco="let t">
+  <app-header [showProfile]="false" [showCompany]="false" />
+
+  <div class="column bar bar--compact">
+    <span class="bar__brand">{{ t('app.name') }}</span>
+    <div class="bar__controls">
+      <app-language-switcher />
+      <app-session-link />
+    </div>
+  </div>
+
+  <header class="column head band-top">
+    <div class="head__text">
+      <h1 class="t-h1 head__title">{{ t('platform.companies.title') }}</h1>
+      <p class="t-meta head__sub">{{ t('platform.companies.subtitle') }}</p>
+    </div>
+
+    <div class="head__actions">
+      <app-info-popover
+        [heading]="t('platform.companies.about.title')"
+        [body]="t('platform.companies.about.body')"
+      />
+
+      <!-- The way back to the people. Both directions exist, so neither screen is a dead end. -->
+      <button
+        type="button"
+        class="btn-icon"
+        [attr.aria-label]="t('platform.people.open')"
+        (click)="openPeople()"
+      >
+        <app-icon name="user" [size]="20" />
+      </button>
+
+      <button
+        type="button"
+        class="btn-icon"
+        [attr.aria-label]="t('platform.companies.add.open')"
+        [attr.aria-expanded]="addOpen()"
+        (click)="openAdd()"
+      >
+        <app-icon name="plus" [size]="20" />
+      </button>
+
+      <button
+        type="button"
+        class="btn-icon head__reload"
+        [attr.aria-label]="t('platform.reload')"
+        (click)="load()"
+      >
+        <app-icon name="refresh" [size]="20" />
+      </button>
+    </div>
+  </header>
+
+  <div class="column content">
+    @if (loading()) {
+      <p class="card state t-meta wide" role="status">{{ t('platform.companies.loading') }}</p>
+    } @else {
+      @if (unconfirmed() && reasonKey(); as reason) {
+        <div class="card notice notice--warn wide" role="status">
+          <app-icon name="wifi-off" [size]="20" class="notice__icon" />
+          <div class="notice__text">
+            <span class="notice__title">{{ t('platform.stale.title') }}</span>
+            <span class="t-meta">{{ t(reason) }}</span>
+          </div>
+        </div>
+      }
+
+      <dl class="card stats wide">
+        <div class="stats__cell">
+          <dt class="t-label">{{ t('platform.companies.summary.active') }}</dt>
+          <dd class="t-num stats__value">
+            {{ unconfirmed() ? t('platform.none') : activeCount() }}
+          </dd>
+        </div>
+        <div class="stats__cell">
+          <dt class="t-label">{{ t('platform.companies.summary.suspended') }}</dt>
+          <dd class="t-num stats__value">
+            {{ unconfirmed() ? t('platform.none') : suspendedCount() }}
+          </dd>
+        </div>
+      </dl>
+
+      <section class="card people wide" [attr.aria-label]="t('platform.companies.caption')">
+        @if (listed().length === 0) {
+          <p class="t-meta state">{{ t('platform.companies.empty') }}</p>
+        } @else if (viewport.atLeastMedium()) {
+          <div class="people__scroll">
+            <table class="people__table">
+              <caption class="visually-hidden">
+                {{ t('platform.companies.caption') }}
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">{{ t('platform.companies.name') }}</th>
+                  <th scope="col">{{ t('platform.companies.people') }}</th>
+                  <th scope="col">{{ t('platform.companies.since') }}</th>
+                  <th scope="col">
+                    <span class="visually-hidden">{{ t('platform.companies.actionColumn') }}</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (customer of listed(); track customer.id) {
+                  <tr class="person">
+                    <td>
+                      <span class="person__name">{{ customer.name }}</span>
+                      @if (customer.suspendedAt) {
+                        <span class="chip chip--err">{{ t('platform.companies.suspended') }}</span>
+                      }
+                    </td>
+                    <!--
+                      People, never work. `active/total` answers the one question a founder asks of
+                      a customer row — is this one set up, or stuck — without the platform learning
+                      anything about what they do on site.
+                    -->
+                    <td class="t-meta t-num">
+                      {{ customer.activeUserCount }} / {{ customer.userCount }}
+                    </td>
+                    <td class="t-meta">
+                      {{ customer.createdAt ? (customer.createdAt | date: 'd. M. y.') : t('platform.none') }}
+                    </td>
+                    <td class="row__action">
+                      <button
+                        type="button"
+                        class="btn btn--row btn--tertiary"
+                        (click)="ask(customer)"
+                      >
+                        {{
+                          customer.suspendedAt
+                            ? t('platform.companies.resume')
+                            : t('platform.companies.suspend')
+                        }}
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else {
+          <ul class="rows">
+            @for (customer of listed(); track customer.id) {
+              <li class="row">
+                <span class="person__name">{{ customer.name }}</span>
+                <span class="t-meta t-num"
+                  >{{ customer.activeUserCount }} / {{ customer.userCount }}
+                  {{ t('platform.companies.people') }}</span
+                >
+                @if (customer.suspendedAt) {
+                  <span class="chip chip--err">{{ t('platform.companies.suspended') }}</span>
+                }
+                <button type="button" class="btn btn--row btn--tertiary" (click)="ask(customer)">
+                  {{
+                    customer.suspendedAt
+                      ? t('platform.companies.resume')
+                      : t('platform.companies.suspend')
+                  }}
+                </button>
+              </li>
+            }
+          </ul>
+        }
+      </section>
+    }
+
+    @if (addOpen()) {
+      <app-modal-sheet [heading]="t('platform.companies.add.title')" (close)="cancelAdd()">
+        <form class="add__form" (submit)="onAdd($event)">
+          <p class="t-meta add__lead">{{ t('platform.companies.add.body') }}</p>
+
+          <label class="field">
+            <span class="t-label">{{ t('platform.companies.add.name.label') }}</span>
+            <input
+              id="company-add-name"
+              class="field__input"
+              type="text"
+              autocomplete="organization"
+              [placeholder]="t('platform.companies.add.name.placeholder')"
+              [value]="newName()"
+              (input)="newName.set($any($event.target).value)"
+            />
+          </label>
+
+          @if (addReasonKey(); as reason) {
+            <div class="notice notice--err" role="status">
+              <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
+              <div class="notice__text">
+                <span class="notice__title">{{ t('platform.companies.add.failed') }}</span>
+                <span class="t-meta">{{
+                  mustReload() ? t('platform.companies.unconfirmed') : t(reason)
+                }}</span>
+              </div>
+            </div>
+          }
+
+          <div class="add__actions">
+            <button type="button" class="btn btn--row btn--tertiary" (click)="cancelAdd()">
+              {{ t('platform.add.cancel') }}
+            </button>
+            <button type="submit" class="btn btn--row" [disabled]="!canAdd()">
+              {{ adding() ? t('platform.companies.add.adding') : t('platform.companies.add.submit') }}
+            </button>
+          </div>
+        </form>
+      </app-modal-sheet>
+    }
+
+    @if (confirming(); as customer) {
+      <!--
+        The confirmation, and it names the customer. Suspending joins `suspended_at` on every
+        request with no cache: the moment it lands, every phone in that company gets a 401 on next
+        contact. A mis-tap here is a contractor's afternoon, so the question says what will happen
+        rather than asking "are you sure?".
+      -->
+      <app-modal-sheet
+        [heading]="
+          customer.suspendedAt
+            ? t('platform.companies.resume')
+            : t('platform.companies.suspend')
+        "
+        (close)="cancelAsk()"
+      >
+        <div class="add__form">
+          <p class="t-meta">
+            {{
+              customer.suspendedAt
+                ? t('platform.companies.confirm.resume', { name: customer.name })
+                : t('platform.companies.confirm.suspend', { name: customer.name })
+            }}
+          </p>
+
+          @if (actionReasonKey(); as reason) {
+            <div class="notice notice--err" role="status">
+              <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
+              <div class="notice__text">
+                <span class="notice__title">{{ t('platform.companies.action.failed') }}</span>
+                <span class="t-meta">{{
+                  mustReload() ? t('platform.companies.unconfirmed') : t(reason)
+                }}</span>
+              </div>
+            </div>
+          }
+
+          <div class="add__actions">
+            <button type="button" class="btn btn--row btn--tertiary" (click)="cancelAsk()">
+              {{ t('platform.add.cancel') }}
+            </button>
+            <button type="button" class="btn btn--row" [disabled]="working()" (click)="confirm()">
+              {{
+                working()
+                  ? t('platform.companies.working')
+                  : customer.suspendedAt
+                    ? t('platform.companies.resume')
+                    : t('platform.companies.suspend')
+              }}
+            </button>
+          </div>
+        </div>
+      </app-modal-sheet>
+    }
+  </div>
+</div>

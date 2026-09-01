@@ -174,8 +174,12 @@ export class PlatformService {
       return { status: 'notSignedIn', customer: null };
     }
     try {
-      const response = await this.gateway.createCompany({ name: name.trim() });
-      return { status: 'ok', customer: toCustomer(response) };
+      const customer = toCustomer(await this.gateway.createCompany({ name: name.trim() }));
+      // A 200 whose body this build cannot read. **The customer may well exist**, so the honest
+      // answer is "we could not confirm", never "it worked": `serverAnswered` is false for
+      // `unavailable`, which is what makes the screen say *reload* instead of closing its dialog
+      // over a customer that may not be there. Same doctrine as `CompanyService.addWorker`.
+      return customer ? { status: 'ok', customer } : { status: 'unavailable', customer: null };
     } catch (error) {
       return { status: classify(error), customer: null };
     }
@@ -254,11 +258,18 @@ export class PlatformService {
 
     try {
       const response = await this.gateway.createAdmin(request);
-      return {
-        status: 'ok',
-        person: toPerson(response?.user ?? null),
-        invite: toInvite(response?.invite ?? null),
-      };
+      const person = toPerson(response?.user ?? null);
+      const invite = toInvite(response?.invite ?? null);
+      // The account **exists** — the server said 200 — and this build could not read it, or could
+      // not read the link minted with it. Reported as unconfirmed rather than as success, because
+      // the dialog's success view is the link: told "ok" with nothing to show, it would re-render
+      // its empty form over an account that was created, say nothing, and invite a second attempt
+      // that can only 409. After a reload the account is on the list and `invite` mints a fresh
+      // link, which is the recovery this status sends him to.
+      if (!person || !invite) {
+        return { status: 'unavailable', person: null, invite: null };
+      }
+      return { status: 'ok', person, invite };
     } catch (error) {
       return { status: classifyCreate(error), person: null, invite: null };
     }
@@ -277,7 +288,11 @@ export class PlatformService {
       return { status: 'notSignedIn', invite: null };
     }
     try {
-      return { status: 'ok', invite: toInvite(await this.gateway.invite(userId)) };
+      const invite = toInvite(await this.gateway.invite(userId));
+      // The same reading as {@link createAdmin}, and here it is sharper: this call **superseded a
+      // live link** whether or not the answer could be read. "ok" with nothing to show would have
+      // the founder press again and retire a second link, while the one already sent is dead.
+      return invite ? { status: 'ok', invite } : { status: 'unavailable', invite: null };
     } catch (error) {
       return { status: classify(error), invite: null };
     }

@@ -20,6 +20,20 @@ export function personState(person: Person): PersonState {
   if (person.disabled) {
     return 'removed';
   }
+
+  // **A worker is never `pending`, and this is the same rule `personChips` enforces.**
+  // `ck_app_user_worker_has_no_password` makes a foreman's password unstorable, so
+  // `passwordPending` is permanently true for every worker in the product. Reading that as
+  // "invited and never finished" would put every foreman on the platform into the bucket that
+  // means *this one needs you* — at the top of the state sort, for ever, with nothing anybody
+  // could do about it.
+  //
+  // This was wrong until the F7 review: the chips suppressed it and the sort did not, so the two
+  // halves of one screen disagreed about the same man.
+  if (person.role === 'worker') {
+    return 'active';
+  }
+
   return person.passwordPending ? 'pending' : 'active';
 }
 
