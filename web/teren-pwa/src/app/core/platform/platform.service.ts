@@ -5,7 +5,7 @@ import { AdminSessionService } from '../session/admin-session.service';
 import { PLATFORM_GATEWAY } from './platform-gateway';
 import {
   CreateAdminRequest,
-  InviteUserResponse,
+  InviteSentResponse,
   PlatformCompanyResponse,
   PlatformUserResponse,
 } from './platform-types';
@@ -95,16 +95,18 @@ export interface Person {
   passwordPending: boolean;
 }
 
-/** A set-password link, as the founder reads it down the phone. */
+/**
+ * How an invite went out.
+ *
+ * **It holds no credential, and that is the whole of the 2026-09-01 change.** This used to carry
+ * the plaintext set-password token so the founder could read the link down the phone. The token is
+ * minted on the server, inside the job that mails it, and never leaves the server again.
+ */
 export interface Invite {
-  /** `invite` — never had a password — or `reset`, which is the impersonation-shaped act (§13.6). */
-  purpose: string | null;
-  token: string;
-  /** The whole link, or null when `Auth:AppUrl` is unset; the token still works. */
-  url: string | null;
-  expiresAt: string | null;
-  /** Non-zero means a link already sent has just stopped working. Worth saying out loud. */
-  superseded: number;
+  /** Who it went to. Null when the server did not say. */
+  email: string | null;
+  /** **Queued, not delivered.** False means no relay was configured, so nothing was sent at all. */
+  emailed: boolean;
 }
 
 export interface CustomerListResult {
@@ -259,7 +261,11 @@ export class PlatformService {
     try {
       const response = await this.gateway.createAdmin(request);
       const person = toPerson(response?.user ?? null);
-      const invite = toInvite(response?.invite ?? null);
+      const invite = toInvite(
+        response === null || response === undefined
+          ? null
+          : { email: null, emailed: response.emailed },
+      );
       // The account **exists** — the server said 200 — and this build could not read it, or could
       // not read the link minted with it. Reported as unconfirmed rather than as success, because
       // the dialog's success view is the link: told "ok" with nothing to show, it would re-render
@@ -390,20 +396,18 @@ function toPerson(response: PlatformUserResponse | null): Person | null {
   };
 }
 
-function toInvite(response: InviteUserResponse | null): Invite | null {
-  const token = text(response?.token);
-  // The token is the whole point: a link with no token is not a link, and rendering one would
-  // hand the founder something to read aloud that cannot work.
-  if (!token) {
+/**
+ * Narrowed from the wire, and **`emailed` is required rather than defaulted**.
+ *
+ * A body this build cannot read resolves to null, so the screen says "it did not go through"
+ * instead of quietly claiming a mail is on its way. Defaulting a missing flag to false would look
+ * the same on screen today and would hide a contract change tomorrow.
+ */
+function toInvite(response: InviteSentResponse | null): Invite | null {
+  if (typeof response?.emailed !== 'boolean') {
     return null;
   }
-  return {
-    purpose: text(response?.purpose),
-    token,
-    url: text(response?.url),
-    expiresAt: text(response?.expires_at),
-    superseded: count(response?.superseded),
-  };
+  return { email: text(response.email), emailed: response.emailed };
 }
 
 function text(value: unknown): string | null {

@@ -91,43 +91,29 @@ public sealed record PlatformUserListResponse(
     string? NextCursor);
 
 /// <summary>
-/// The authenticated escape hatch of §9: a set-password link the super admin can read back over
-/// the phone.
+/// What came of asking for an invite: the address it went to, and whether it actually went.
+///
 /// <para>
-/// <b>The plaintext token is in this body on purpose, and it is the difference between a customer
-/// being unstuck at 9 p.m. and waiting for an SMTP relay nobody has chosen.</b> It is returned
-/// here and refused on `/auth/password-reset` because that route is unauthenticated: there, the
-/// token would also confirm whether the account exists, and a login surface must not be an
-/// account-enumeration oracle. Here the caller is already Teren staff.
+/// <b>No token and no URL, by founder decision on 2026-09-01.</b> Until then this carried the
+/// plaintext set-password token so staff could read the link down the phone — §9's escape hatch
+/// for a product that had no mail relay. The relay exists now, and a credential that passes
+/// through a response body, a screen, a clipboard and a chat message is in four more places than
+/// it needs to be. The link is minted inside <c>AdminInviteJob</c> and goes to exactly one
+/// address.
 /// </para>
 /// <para>
-/// <b>What this costs, stated plainly, because an earlier draft of this comment got it wrong.</b>
-/// It is NOT true that returning the token "reveals nothing to anyone who could not already act".
-/// A `reset` — a token for an account that already has a password — is a working impersonation
-/// path: `POST /auth/password` is unauthenticated and validates only the token, so whoever holds
-/// it can set that admin's password, sign in as him, and read everything his company has. Plan
-/// decision 2 says a super admin can never read entries, transcripts, photos or reports; the four
-/// layers of §6 make that true of *his own* principal, and this route lets him mint a different
-/// one. The capability predates this endpoint — `invite-admin` has done the same from a terminal
-/// since D2 — but it is reachable through the product now, and **§13 carries it as a named,
-/// founder-owned risk rather than as a comment nobody reads.** The forensic signal is
-/// `password_token_issued` with `{"source": "platform", "purpose": "reset"}`: staff minting a
-/// link for an account that already had a password is exactly the shape of the dangerous act.
+/// <b><see cref="Emailed"/> false is the honest half of this contract.</b> With no relay
+/// configured nothing was sent and the account has no way in; the screen must say so rather than
+/// imply an email is in flight. Standing policy is visible failure over silent invention.
 /// </para>
 /// </summary>
-public sealed record InviteUserResponse(
-    /// <summary>`invite` when the account has never had a password, `reset` when it has. Derived
-    /// from the row rather than requested, because it is a fact about the account and a flag would
-    /// only be a way to record it wrongly.</summary>
-    string Purpose,
-    string Token,
-    /// <summary>The whole link, when `Auth:AppUrl` is configured; null when it is not, in which
-    /// case the token above is still perfectly usable and the caller builds the URL himself.</summary>
-    string? Url,
-    DateTimeOffset ExpiresAt,
-    /// <summary>How many previously-live links this one retired. Non-zero means a link that was
-    /// already sent has just stopped working — worth saying out loud rather than discovering.</summary>
-    int Superseded);
+public sealed record InviteSentResponse(
+    /// <summary>Where it went. Staff already read this address in the directory, so echoing it is
+    /// not a disclosure — and it is the one thing that answers "why has he not had it?".</summary>
+    string? Email,
+    /// <summary>Queued, not delivered. SMTP returns nothing worth calling a receipt, and this
+    /// product never claims a person *received* anything.</summary>
+    bool Emailed);
 
 /// <summary>
 /// One administrative action, as recorded. The audit trail is the answer to "who took this phone
@@ -189,13 +175,19 @@ public sealed record CreateAdminRequest
 }
 
 /// <summary>
-/// The new administrator, and the link that lets him choose a password.
+/// The new administrator, and how he is being let in.
 /// <para>
-/// Both in one response on purpose: an account that exists but has no way in is an onboarding the
-/// founder has to notice is unfinished. Creating and inviting happen in one transaction for the
-/// same reason `CreateWorkerAsync` mints a code in the same transaction as the worker.
+/// An account that exists with no way in is an onboarding the founder has to notice is
+/// unfinished, so the response always says which of the two happened — never neither.
+/// </para>
+/// <para>
+/// <b>The link is not in this body and never will be</b> (founder, 2026-09-01): it is minted
+/// inside <c>AdminInviteJob</c> and emailed. <c>Emailed</c> false means no relay was configured,
+/// so the account exists with no way in — which the screen has to say out loud.
 /// </para>
 /// </summary>
 public sealed record PlatformCreateAdminResponse(
     PlatformUserResponse User,
-    InviteUserResponse Invite);
+    /// <summary>True when an invite mail was queued for his address. Queued, not delivered: SMTP
+    /// has nothing worth returning, and this product never claims a person *received* anything.</summary>
+    bool Emailed);

@@ -1,3 +1,4 @@
+using Teren.Api.Jobs;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Teren.Core.Ai;
@@ -96,6 +97,7 @@ public static class PipelineServiceCollectionExtensions
         if (!configuration.GetValue("Hangfire:Enabled", defaultValue: true))
         {
             services.AddSingleton<IPipelineQueue, DisabledPipelineQueue>();
+            services.AddSingleton<IInviteQueue, DisabledInviteQueue>();
             return services;
         }
 
@@ -116,6 +118,7 @@ public static class PipelineServiceCollectionExtensions
         });
 
         services.AddSingleton<IPipelineQueue, HangfirePipelineQueue>();
+        services.AddSingleton<IInviteQueue, HangfireInviteQueue>();
 
         return services;
     }

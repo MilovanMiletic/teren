@@ -8,7 +8,7 @@ import {
   CreateAdminRequest,
   CreateAdminResponse,
   CreateCompanyRequest,
-  InviteUserResponse,
+  InviteSentResponse,
   PlatformCompanyListResponse,
   PlatformCompanyResponse,
   PlatformUserListResponse,
@@ -52,7 +52,7 @@ export interface PlatformGateway {
   /** Create a company admin or another member of staff, with his first set-password link. */
   createAdmin(request: CreateAdminRequest): Promise<CreateAdminResponse>;
   /** Mint a fresh link. **Supersedes any live one**, so a link already sent stops working. */
-  invite(userId: string): Promise<InviteUserResponse>;
+  invite(userId: string): Promise<InviteSentResponse>;
   disableUser(userId: string): Promise<PlatformUserResponse>;
   enableUser(userId: string): Promise<PlatformUserResponse>;
 }
@@ -110,8 +110,8 @@ export class HttpPlatformGateway implements PlatformGateway {
     return this.send<CreateAdminResponse>('POST', '/api/platform/users', request);
   }
 
-  invite(userId: string): Promise<InviteUserResponse> {
-    return this.send<InviteUserResponse>(
+  invite(userId: string): Promise<InviteSentResponse> {
+    return this.send<InviteSentResponse>(
       'POST',
       `/api/platform/users/${encodeURIComponent(userId)}/invite`,
     );

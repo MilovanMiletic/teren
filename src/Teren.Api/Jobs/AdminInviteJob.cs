@@ -1,0 +1,153 @@
+using Hangfire;
+using Microsoft.EntityFrameworkCore;
+using Teren.Api.Auth;
+using Teren.Api.Endpoints;
+using Teren.Core.Entities;
+using Teren.Core.Mail;
+using Teren.Infrastructure.Persistence;
+
+namespace Teren.Api.Jobs;
+
+/// <summary>
+/// Emails a company admin the link that lets him choose a password.
+///
+/// <para>
+/// <b>The job mints the token; the request does not.</b> That is the one design decision in this
+/// file and it is what keeps a live credential out of Hangfire's own database. A set-password
+/// token is only ever plaintext for the instant it is created — the row stores a SHA-256 — so a
+/// job that emailed a token minted by the request would have to take it as an argument, and
+/// Hangfire serialises arguments into its storage and keeps them in job history. The plan refuses
+/// exactly that trade for activation codes (§5) and the reasoning is identical here. Minting
+/// inside the job means the plaintext exists in one process, for one method call, and reaches
+/// nothing but the relay.
+/// </para>
+///
+/// <para>
+/// <b>What the founder therefore does not see.</b> When a relay is configured, adding an
+/// administrator no longer puts a link on his screen — there is nothing to put there, and the
+/// person is being emailed. §9's escape hatch is unchanged and lives where it always did:
+/// <c>POST /api/platform/users/{id}/invite</c>, the button on <c>/platform/user/:userId</c>, which
+/// mints inline and hands the link back to be read down the phone. Two verbs, two behaviours,
+/// both honest.
+/// </para>
+///
+/// <para>
+/// <b><c>[AutomaticRetry(Attempts = 0)]</c>, like every other job in this product.</b> Hangfire's
+/// default is ten tries over half an hour, and each one here would <i>mint a new token and
+/// supersede the last</i> — so a flapping relay would send a man a stack of links of which only
+/// the final one works. Failing once and visibly is the better answer: the founder re-issues from
+/// the person page, which is a button he already has.
+/// </para>
+/// </summary>
+[AutomaticRetry(Attempts = 0)]
+public sealed class AdminInviteJob(
+    TerenIdentityDbContext db,
+    IMailSender mail,
+    Microsoft.Extensions.Options.IOptions<AuthOptions> authOptions,
+    Microsoft.Extensions.Logging.ILogger<AdminInviteJob> logger)
+{
+    /// <summary>How long the emailed link lives. The same 48 hours the platform route mints.</summary>
+    public static readonly TimeSpan Lifetime = TimeSpan.FromHours(48);
+
+    public async Task RunAsync(Guid userId, Guid actorUserId, CancellationToken ct)
+    {
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+
+        if (user is null || user.Email is null || user.Role == AppUserRole.Worker)
+        {
+            // A worker can never have a password (ck_app_user_worker_has_no_password), and an
+            // account deleted between the request and this job is not an error worth a retry.
+            logger.LogWarning(
+                "Invite mail skipped for {UserId}: no such account, no address, or a worker.",
+                userId);
+            return;
+        }
+
+        if (!mail.IsConfigured)
+        {
+            // Should not happen — the caller checks before enqueuing — but a relay can be
+            // unconfigured between the two. Loud, and no token is minted for a mail nobody sends.
+            logger.LogWarning(
+                "Invite mail skipped for {UserId}: no relay is configured. Re-issue the link from "
+                + "the person page and read it out instead.",
+                userId);
+            return;
+        }
+
+        var companyName = user.CompanyId is Guid companyId
+            ? await db.Companies.Where(c => c.Id == companyId).Select(c => c.Name)
+                .FirstOrDefaultAsync(ct)
+            : null;
+
+        var issued = await PasswordTokens.IssueAsync(
+            db, user, actorUserId, "invite_mail", Lifetime, ct);
+        await db.SaveChangesAsync(ct);
+
+        var link = PasswordTokens.LinkFor(authOptions.Value.AppUrl, issued.Token);
+        if (link is null)
+        {
+            // Auth:AppUrl is not set, so there is no address to send him to. Saying so beats
+            // mailing a bare token nobody can use, and the token just expires unused.
+            logger.LogWarning(
+                "Invite mail skipped for {UserId}: Auth:AppUrl is not configured, so there is no "
+                + "link to send.",
+                userId);
+            return;
+        }
+
+        // His language, not the company's and not the project's: a report speaks the project's
+        // language because the client reads it; an invite speaks the recipient's, because he does.
+        var strings = InviteStrings.For(user.Language);
+        var product = "Teren";
+        var hours = ((int)Lifetime.TotalHours).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        await mail.SendAsync(
+            new Core.Mail.MailMessage
+            {
+                ToAddress = user.Email,
+                ToName = user.DisplayName,
+                Subject = string.Format(System.Globalization.CultureInfo.InvariantCulture, strings.Subject, product),
+                TextBody = InviteMailBody.Text(strings, companyName ?? product, link, hours),
+                HtmlBody = InviteMailBody.Html(strings, companyName ?? product, link, hours),
+            },
+            ct);
+
+        // The id and nothing else. Never the address, never the token, never the link.
+        logger.LogInformation("Invite mail sent for {UserId}.", userId);
+    }
+}
+
+/// <summary>
+/// The two bodies. Separated from the job so the copy can be read, and asserted, without a relay.
+/// </summary>
+public static class InviteMailBody
+{
+    public static string Text(InviteStrings s, string companyName, string link, string hours) =>
+        string.Join(
+            "\n\n",
+            s.Greeting,
+            string.Format(System.Globalization.CultureInfo.InvariantCulture, s.Lead, companyName),
+            link,
+            string.Format(System.Globalization.CultureInfo.InvariantCulture, s.Expiry, hours),
+            s.Unexpected);
+
+    public static string Html(InviteStrings s, string companyName, string link, string hours) =>
+        $"""
+        <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1a1a1a">
+          <p>{Escape(s.Greeting)}</p>
+          <p>{Escape(string.Format(System.Globalization.CultureInfo.InvariantCulture, s.Lead, companyName))}</p>
+          <p><a href="{Escape(link)}" style="display:inline-block;padding:12px 20px;border-radius:999px;background:#c2410c;color:#ffffff;text-decoration:none;font-weight:600">{Escape(s.Action)}</a></p>
+          <p style="color:#57534e">{Escape(string.Format(System.Globalization.CultureInfo.InvariantCulture, s.Expiry, hours))}</p>
+          <p style="color:#57534e">{Escape(s.Fallback)}<br><span style="word-break:break-all">{Escape(link)}</span></p>
+          <p style="color:#57534e">{Escape(s.Unexpected)}</p>
+        </div>
+        """;
+
+    /// <summary>A display name goes into this HTML, so it is escaped. Same rule the report body
+    /// follows — a customer's own name is the one piece of caller text in the document.</summary>
+    private static string Escape(string value) =>
+        value.Replace("&", "&amp;", StringComparison.Ordinal)
+            .Replace("<", "&lt;", StringComparison.Ordinal)
+            .Replace(">", "&gt;", StringComparison.Ordinal)
+            .Replace("\"", "&quot;", StringComparison.Ordinal);
+}

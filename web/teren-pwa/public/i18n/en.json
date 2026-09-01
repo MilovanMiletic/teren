@@ -897,17 +897,16 @@
       "actions": "What you can do",
       "working": "Working…",
       "invite": {
-        "hint": "He has never set a password. This makes him a link that lets him choose one.",
-        "action": "Make a link"
+        "hint": "He has no password yet. We will email him a link to choose one.",
+        "action": "Email the invite"
       },
       "reset": {
-        "hint": "He already has a password. A new link lets whoever opens it choose a new one and sign in as him — so send it to him and nobody else.",
-        "action": "Make a reset link"
+        "hint": "He already has a password. A new link lets whoever opens it choose another and sign in as him — so it goes only to his own address.",
+        "action": "Email a reset link"
       },
       "worker": {
         "hint": "A foreman never has a password. He joins a phone with his username and a code from his own company’s admin."
       },
-      "superseded": "Any link he had before has just stopped working.",
       "enable": "Put back in service",
       "disable": "Take out of service",
       "action": {
@@ -917,12 +916,16 @@
       "missing": {
         "title": "No such account",
         "body": "It may have been removed, or the address you followed may be wrong."
+      },
+      "sent": {
+        "title": "Invite sent",
+        "failed": "Nothing was sent"
       }
     },
     "add": {
       "open": "Add a person",
       "title": "Add a person",
-      "submit": "Add and make a link",
+      "submit": "Add and send the invite",
       "adding": "Adding…",
       "cancel": "Cancel",
       "done": "Done",
@@ -952,12 +955,8 @@
         "none": "No customers yet. Add one first.",
         "unreadable": "The customers could not be loaded, so this list is empty. Refresh and try again."
       },
-      "link": {
-        "label": "HIS LINK",
-        "copy": "Copy the link",
-        "copied": "Copied",
-        "hint": "Send it to him. It works once, for 48 hours, and there is no email yet — so read it out or paste it into a chat."
-      }
+      "emailed": "We sent the link that lets him choose a password to {{email}}.",
+      "notEmailed": "No mail relay is configured, so nothing was sent. The account exists and cannot be used until an invite reaches him."
     },
     "reason": {
       "offline": "No internet. Nothing reached the server.",

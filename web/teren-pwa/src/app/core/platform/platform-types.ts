@@ -80,24 +80,22 @@ export interface CreateAdminRequest {
 }
 
 /**
- * A set-password link.
+ * What came of asking for an invite.
  *
- * The plaintext token is in the body on purpose: with no SMTP relay it is the only way an invited
- * admin gets in, and the founder reads the link down the phone. `url` is null when `Auth:AppUrl`
- * is unset, in which case the token is still perfectly usable.
+ * **No token and no URL** (founder, 2026-09-01). The set-password link used to come back here so
+ * it could be read down the phone; it is now minted inside the server's invite job and emailed to
+ * exactly one address, so there is nothing in this body a credential could hide in.
+ *
+ * `emailed: false` is the honest half: with no relay configured nothing was sent and the account
+ * has no way in, which the screen has to say rather than imply a mail is in flight.
  */
-export interface InviteUserResponse {
-  /** `invite` when the account never had a password, `reset` when it had one. */
-  purpose?: string | null;
-  token?: string | null;
-  url?: string | null;
-  expires_at?: string | null;
-  /** How many live links this one retired. Non-zero means one already sent has stopped working. */
-  superseded?: number | null;
+export interface InviteSentResponse {
+  email?: string | null;
+  emailed?: boolean | null;
 }
 
-/** `POST /api/platform/users` — the account, and the link that lets him in, in one answer. */
+/** `POST /api/platform/users` — the account, and whether his invite went out. */
 export interface CreateAdminResponse {
   user?: PlatformUserResponse | null;
-  invite?: InviteUserResponse | null;
+  emailed?: boolean | null;
 }

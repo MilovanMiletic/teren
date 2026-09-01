@@ -6,7 +6,7 @@ import {
   CreateAdminRequest,
   CreateAdminResponse,
   CreateCompanyRequest,
-  InviteUserResponse,
+  InviteSentResponse,
   PlatformCompanyListResponse,
   PlatformCompanyResponse,
   PlatformUserListResponse,
@@ -71,6 +71,15 @@ export class KnobbedPlatformGateway implements PlatformGateway {
   resumeError: unknown = null;
   usersError: unknown = null;
   createAdminError: unknown = null;
+
+  /**
+   * Whether the server has a mail relay to invite anybody with.
+   *
+   * False is the case worth having a knob for: the account is created and **no invite is sent**,
+   * so the screen has to say so rather than imply a mail is on its way. Nothing else on the
+   * surface behaves differently, which is exactly why it would go untested without this.
+   */
+  emailed = true;
   inviteError: unknown = null;
   disableError: unknown = null;
   enableError: unknown = null;
@@ -131,13 +140,13 @@ export class KnobbedPlatformGateway implements PlatformGateway {
     await this.createAdminGate?.promise;
     this.refuse(this.createAdminError);
     this.createdAdmins.push(request);
-    return this.real.createAdmin(request);
+    return { ...(await this.real.createAdmin(request)), emailed: this.emailed };
   }
 
-  async invite(userId: string): Promise<InviteUserResponse> {
+  async invite(userId: string): Promise<InviteSentResponse> {
     this.refuse(this.inviteError);
     this.invited.push(userId);
-    return this.real.invite(userId);
+    return { ...(await this.real.invite(userId)), emailed: this.emailed };
   }
 
   async disableUser(userId: string): Promise<PlatformUserResponse> {

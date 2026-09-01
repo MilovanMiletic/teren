@@ -359,7 +359,7 @@ describe('PlatformService', () => {
   });
 
   describe('createAdmin', () => {
-    it('creates a company admin with his company, and mints his first link', async () => {
+    it('creates a company admin with his company, and says his invite was emailed', async () => {
       const service = configure();
 
       const result = await service.createAdmin({
@@ -378,11 +378,10 @@ describe('PlatformService', () => {
         companyName: 'Vodoinstal Petrović d.o.o.',
         passwordPending: true,
       });
-      // The link is the whole onboarding: there is no relay, so it is read down the phone.
-      expect(result.invite?.token).toMatch(/^trn_p_/);
-      expect(result.invite?.url).toContain(result.invite?.token ?? 'nothing');
-      expect(result.invite?.purpose).toBe('invite');
-      expect(result.invite?.superseded).toBe(0);
+      // **No token and no URL.** The link is minted on the server, inside the job that mails it,
+      // and never reaches a response body — so there is nothing here to read down a phone, put on
+      // a clipboard, or leak into a screenshot. What the screen gets is whether it went.
+      expect(result.invite).toEqual({ email: null, emailed: true });
     });
 
     /**
@@ -532,15 +531,19 @@ describe('PlatformService', () => {
       expect(result.person).toBeNull();
     });
 
-    /** `Auth:AppUrl` unset means no whole link, and the token alone is still perfectly usable. */
-    it('keeps a link whose url the server could not build', async () => {
+    /**
+     * A body that says an account was made but not whether the invite went.
+     *
+     * The screen must not fill that in. `emailed` is required rather than defaulted, so an answer
+     * this build cannot read resolves to null and the dialog says "it could not be confirmed"
+     * instead of "we emailed him" — which is the sentence that would leave a customer waiting for
+     * a mail nobody sent.
+     */
+    it('will not assume an invite went out when the answer did not say', async () => {
       const service = configure(
         answering({
           createAdmin: () =>
-            Promise.resolve({
-              user: { id: 'x', role: 'super_admin', display_name: 'X' },
-              invite: { purpose: 'invite', token: 'trn_p_abc', url: null, superseded: 2 },
-            }),
+            Promise.resolve({ user: { id: 'x', role: 'super_admin', display_name: 'X' } }),
         }),
       );
 
@@ -550,7 +553,8 @@ describe('PlatformService', () => {
         email: 'x@teren.rs',
       });
 
-      expect(result.invite).toMatchObject({ token: 'trn_p_abc', url: null, superseded: 2 });
+      expect(result.status).toBe('unavailable');
+      expect(result.invite).toBeNull();
     });
   });
 
@@ -596,24 +600,44 @@ describe('PlatformService', () => {
   });
 
   describe('invite', () => {
-    it('mints a fresh link for an account that can hold a password', async () => {
+    it('emails a fresh link to an account that can hold a password', async () => {
       const service = configure();
 
       const result = await service.invite(MockPlatformGateway.PETAR_ID);
 
       expect(result.status).toBe('ok');
-      expect(result.invite?.token).toMatch(/^trn_p_/);
-      expect(result.invite?.purpose).toBe('invite');
+      expect(result.invite?.emailed).toBe(true);
+      // The address, because it is the one thing that answers "why has he not had it?" — and the
+      // founder already reads it in the directory, so echoing it discloses nothing new.
+      expect(result.invite?.email).toBe('petar.petrovic@vodoinstal-petrovic.example.com');
+    });
+
+    /**
+     * **Nothing on this screen may carry a credential**, which is the whole of the 2026-09-01
+     * change. A future contract that put a token back in the body would sail through every other
+     * assertion here, because they all read named fields; this one reads the shape.
+     */
+    it('has no field anywhere on it that could hold a token', async () => {
+      const service = configure();
+
+      const result = await service.invite(MockPlatformGateway.PETAR_ID);
+
+      expect(Object.keys(result.invite ?? {}).sort()).toEqual(['email', 'emailed']);
+      expect(JSON.stringify(result)).not.toContain('trn_p_');
     });
 
     /**
      * **This call supersedes a live link whether or not its answer could be read**, so a body this
      * build cannot parse is the one case where "it worked" is the dangerous sentence: the founder
      * presses again, retires a second link, and the one already sent to somebody stays dead.
+     *
+     * The flag is required rather than defaulted for exactly that reason — a missing `emailed`
+     * treated as false would look identical on screen today and would hide a contract change
+     * tomorrow.
      */
-    it('says it could not be confirmed when the answer carried no token', async () => {
+    it('says it could not be confirmed when the answer did not say whether it went', async () => {
       const service = configure(
-        answering({ invite: () => Promise.resolve({ purpose: 'invite', token: null }) }),
+        answering({ invite: () => Promise.resolve({ email: 'petar@firma.rs' }) }),
       );
 
       const result = await service.invite(MockPlatformGateway.PETAR_ID);

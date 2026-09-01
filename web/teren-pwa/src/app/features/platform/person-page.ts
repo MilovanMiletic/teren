@@ -84,7 +84,6 @@ export class PersonPage {
 
   protected readonly working = signal(false);
   protected readonly actionStatus = signal<PlatformStatus | null>(null);
-  protected readonly copied = signal(false);
 
   private readonly issuedState = signal<IssuedLink | null>(null);
 
@@ -150,7 +149,6 @@ export class PersonPage {
     this.issuedState.set(null);
     this.actionStatus.set(null);
     this.working.set(false);
-    this.copied.set(false);
   }
 
   /**
@@ -196,7 +194,6 @@ export class PersonPage {
 
     this.working.set(true);
     this.actionStatus.set(null);
-    this.copied.set(false);
 
     const result = await this.platform.invite(id);
 
@@ -241,21 +238,9 @@ export class PersonPage {
     void this.load(id);
   }
 
-  protected async copyLink(): Promise<void> {
-    const invite = this.issued();
-    const value = invite?.url ?? invite?.token;
-    if (!value) {
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(value);
-      this.copied.set(true);
-    } catch {
-      // A clipboard the browser refused. The link is on screen and selectable, so he is not stuck,
-      // and claiming a copy that did not happen is worse than saying nothing.
-      this.copied.set(false);
-    }
-  }
+  // There was a copyLink() here. It is gone with the link it copied: the set-password token is
+  // minted on the server, inside the job that mails it, and never reaches a response body — so it
+  // can never reach a clipboard either.
 
   protected back(): void {
     void this.router.navigate(['/platform']);

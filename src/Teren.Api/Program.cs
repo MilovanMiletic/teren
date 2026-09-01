@@ -10,6 +10,7 @@ using Hangfire;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Teren.Api.Hangfire;
+using Teren.Core.Mail;
 using Teren.Core.Ai;
 using Teren.Core.Reporting;
 using Teren.Infrastructure.Processing;
@@ -20,11 +21,13 @@ using Microsoft.EntityFrameworkCore;
 using Teren.Api.Auth;
 using Teren.Api.Platform;
 using Teren.Api.Endpoints;
+using Teren.Api.Jobs;
 using Teren.Api.Maintenance;
 using Teren.Api.Errors;
 using Teren.Api.Validation;
 using Teren.Core.Storage;
 using Teren.Core.Tenancy;
+using Teren.Infrastructure.Mail;
 using Teren.Infrastructure.Persistence;
 using Teren.Infrastructure.Seeding;
 using Teren.Infrastructure.Storage;
@@ -109,6 +112,12 @@ builder.Services
     .ValidateOnStart();
 builder.Services.AddScoped<ICredentialAuthenticator, DbCredentialAuthenticator>();
 builder.Services.AddScoped<PlatformDirectory>();
+
+// Ordinary transactional mail — invites, and whatever follows. Deliberately a separate seam from
+// IReportDelivery, whose custody semantics exist to stop a client getting two copies of his diary
+// and mean nothing for an invite (see SmtpMailSender for why the two are not merged).
+builder.Services.AddSingleton<IMailSender, SmtpMailSender>();
+builder.Services.AddScoped<AdminInviteJob>();
 
 // Session lifetimes, credential TTLs and the rate-limit window. Bound from the same Auth section;
 // every value in it is a security parameter and every one is pinned by a test.

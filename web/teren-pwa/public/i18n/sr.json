@@ -897,17 +897,16 @@
       "actions": "Šta možete da uradite",
       "working": "U toku…",
       "invite": {
-        "hint": "Još nije postavio lozinku. Ovim mu pravite link da je izabere.",
-        "action": "Napravi link"
+        "hint": "Još nije postavio lozinku. Poslaćemo mu imejlom link da je izabere.",
+        "action": "Pošalji poziv imejlom"
       },
       "reset": {
-        "hint": "Već ima lozinku. Novi link omogućava onome ko ga otvori da izabere novu i prijavi se kao on — zato ga pošaljite samo njemu.",
-        "action": "Napravi link za resetovanje"
+        "hint": "Već ima lozinku. Novi link omogućava onome ko ga otvori da izabere novu i prijavi se kao on — zato ide samo na njegovu adresu.",
+        "action": "Pošalji link za resetovanje"
       },
       "worker": {
         "hint": "Poslovođa nikada nema lozinku. Telefon pridružuje svojim korisničkim imenom i kodom od admina svoje firme."
       },
-      "superseded": "Svaki link koji je ranije imao upravo je prestao da radi.",
       "enable": "Vrati u službu",
       "disable": "Ukloni iz službe",
       "action": {
@@ -917,12 +916,16 @@
       "missing": {
         "title": "Nema takvog naloga",
         "body": "Možda je uklonjen ili je adresa koju ste otvorili pogrešna."
+      },
+      "sent": {
+        "title": "Poziv je poslat",
+        "failed": "Ništa nije poslato"
       }
     },
     "add": {
       "open": "Dodaj osobu",
       "title": "Dodaj osobu",
-      "submit": "Dodaj i napravi link",
+      "submit": "Dodaj i pošalji poziv",
       "adding": "Dodavanje…",
       "cancel": "Odustani",
       "done": "Gotovo",
@@ -952,12 +955,8 @@
         "none": "Još nema firmi. Prvo dodajte jednu.",
         "unreadable": "Firme nisu mogle da se učitaju, pa je lista prazna. Osvežite pa probajte ponovo."
       },
-      "link": {
-        "label": "NJEGOV LINK",
-        "copy": "Kopiraj link",
-        "copied": "Kopirano",
-        "hint": "Pošaljite mu ga. Važi jednom, 48 sati, a imejl još ne postoji — pročitajte mu ga ili nalepite u poruku."
-      }
+      "emailed": "Poslali smo na {{email}} link za postavljanje lozinke.",
+      "notEmailed": "Slanje pošte nije podešeno, pa ništa nije poslato. Nalog postoji, ali se ne može koristiti dok mu poziv ne stigne."
     },
     "reason": {
       "offline": "Nema interneta. Ništa nije stiglo do servera.",

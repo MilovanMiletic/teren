@@ -1,9 +1,9 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
-using Teren.Api.Auth;
 using Teren.Api.Contracts;
 using Teren.Api.Endpoints;
+using Teren.Api.Jobs;
 using Teren.Core.Entities;
+using Teren.Core.Mail;
 using Teren.Infrastructure.Persistence;
 
 namespace Teren.Api.Platform;
@@ -44,11 +44,11 @@ namespace Teren.Api.Platform;
 /// </summary>
 public sealed class PlatformDirectory(
     TerenIdentityDbContext db,
-    IOptions<AuthOptions> authOptions)
+    IMailSender mail,
+    IInviteQueue invites)
 {
-    /// <summary>How long a set-password link lives. Matches the console command's default; §5's
-    /// table says 48 h, single use.</summary>
-    public static readonly TimeSpan PasswordTokenLifetime = TimeSpan.FromHours(48);
+    // The link's lifetime moved to AdminInviteJob with the minting. This class no longer builds
+    // a URL or holds a token, so it needs neither Auth:AppUrl nor a TimeSpan.
 
     // ------------------------------------------------------------------------------ companies
 
@@ -326,57 +326,44 @@ public sealed class PlatformDirectory(
     }
 
     /// <summary>
-    /// Mint a set-password link for an account, or null when there is no such user.
+    /// Send the invite mail again, or null when there is no such user.
     ///
     /// <para>
-    /// <b>This is §9's authenticated escape hatch, and it is why a locked-out customer is not
-    /// stuck until an SMTP relay exists.</b> The plaintext token comes back in the response so the
-    /// founder can read the link down the phone. The unauthenticated
-    /// <c>/auth/password-reset</c> must never do the same, because there the token would also
-    /// confirm whether the account exists.
+    /// <b>It returns no token and no link, and that is the change of 2026-09-01</b> (founder:
+    /// *"remove that link send that is implemented now, bad behavior, i don't like that"*). This
+    /// route used to hand the plaintext back so a founder could read a set-password URL down the
+    /// phone — §9's escape hatch for a product with no mail relay. A relay exists now, so the
+    /// escape hatch is the thing it was a substitute for, and a credential that travels through a
+    /// screen, a clipboard and a chat message is a credential in more places than it needs to be.
     /// </para>
     /// <para>
-    /// <b>It is not free, and the cost belongs here rather than in a risk register nobody opens.</b>
-    /// A <c>reset</c> — a token for an account that already has a password — is a working
-    /// impersonation path: <c>POST /auth/password</c> is unauthenticated and checks only the token,
-    /// so whoever holds it can take that admin's account and read his company's diaries. That
-    /// contradicts plan decision 2 as literally worded, and it is carried as a named founder risk
-    /// in §13. The capability is older than this route (<c>invite-admin</c> has done it from a
-    /// terminal since D2); what changed is that it is now reachable through the product.
-    /// **Do not "fix" it by deleting this method** — a locked-out admin with no relay has no other
-    /// way back, which is the entire reason §9 specifies it. Narrowing it to <c>invite</c> only
-    /// would close the impersonation path and take the support case with it; that trade is the
-    /// founder's to make.
+    /// <b>The token is minted inside <c>AdminInviteJob</c>, not here.</b> Nothing in this process
+    /// ever holds the plaintext, so there is nothing to leak into a response body, a log line or a
+    /// Hangfire argument. Each send supersedes the last, so a second press retires the first link
+    /// wherever it landed.
     /// </para>
     /// <para>
     /// Refused for a worker: <c>ck_app_user_worker_has_no_password</c> makes a worker's password
     /// hash impossible, so a link that could only ever fail a CHECK is worse than an honest
     /// refusal. His way back is a fresh activation code.
     /// </para>
+    /// <para>
+    /// <b>What this costs, and it is a real cost.</b> With no relay reachable, an admin locked out
+    /// of his account now has no path back through the product at all — where before, staff could
+    /// read him a link. The console command <c>invite-admin</c> remains as the terminal-only
+    /// bootstrap, which is also how the first super admin gets in. Configure the relay.
+    /// </para>
     /// </summary>
-    public async Task<InviteUserResponse?> InviteAsync(
+    public async Task<InviteSentResponse?> InviteAsync(
         Guid userId, Guid actorUserId, CancellationToken ct)
     {
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+        var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct);
         if (user is null || user.Role == AppUserRole.Worker)
         {
             return null;
         }
 
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
-
-        var issued = await PasswordTokens.IssueAsync(
-            db, user, actorUserId, "platform", PasswordTokenLifetime, ct);
-
-        await db.SaveChangesAsync(ct);
-        await transaction.CommitAsync(ct);
-
-        return new InviteUserResponse(
-            PasswordTokenPurposeNames.ToWire(issued.Purpose),
-            issued.Token,
-            PasswordTokens.LinkFor(authOptions.Value.AppUrl, issued.Token),
-            Utc(issued.ExpiresAt),
-            issued.Superseded);
+        return new InviteSentResponse(user.Email, Invite(user.Id, actorUserId));
     }
 
     /// <summary>
@@ -501,9 +488,9 @@ public sealed class PlatformDirectory(
         db.AdminAudits.Add(Audit(
             actorUserId, AdminAuditActions.AdminCreated, "app_user", user.Id, companyId, now));
 
-        var issued = await PasswordTokens.IssueAsync(
-            db, user, actorUserId, "platform", PasswordTokenLifetime, ct);
-
+        // **Nothing is minted here.** The invite goes out by email and only by email (founder,
+        // 2026-09-01), so the token is minted inside `AdminInviteJob` — which is also what keeps a
+        // live credential out of Hangfire's arguments and out of its job history.
         try
         {
             await db.SaveChangesAsync(ct);
@@ -518,6 +505,12 @@ public sealed class PlatformDirectory(
         }
 
         await transaction.CommitAsync(ct);
+
+        // **After the commit, never inside it.** The job runs in its own scope and would otherwise
+        // race the transaction that created the account — Hangfire can start a worker before this
+        // one commits, and the job would find no such user and log a warning about an account that
+        // exists. Principle 4 in the other direction: the request does not wait for the relay.
+        var emailed = Invite(user.Id, actorUserId);
 
         return new CreateAdminResult(
             CreateAdminOutcome.Created,
@@ -535,12 +528,27 @@ public sealed class PlatformDirectory(
                     null,
                     null,
                     true),
-                new InviteUserResponse(
-                    PasswordTokenPurposeNames.ToWire(issued.Purpose),
-                    issued.Token,
-                    PasswordTokens.LinkFor(authOptions.Value.AppUrl, issued.Token),
-                    Utc(issued.ExpiresAt),
-                    issued.Superseded)));
+                emailed));
+    }
+
+    /// <summary>
+    /// Queue the invite mail, and say whether there was anywhere to queue it to.
+    ///
+    /// <para>
+    /// <b>False is not an error and must not be swallowed.</b> With no relay the account exists and
+    /// nobody can get into it — the screen has to say so, because the alternative is an
+    /// administrator who believes an email is on its way and a customer who waits for it. Standing
+    /// policy: visible failure, never silent invention.
+    /// </para>
+    /// </summary>
+    private bool Invite(Guid userId, Guid actorUserId)
+    {
+        if (!mail.IsConfigured)
+        {
+            return false;
+        }
+
+        return invites.EnqueueInvite(userId, actorUserId);
     }
 
     private static bool IsUniqueViolation(DbUpdateException ex, string constraintName) =>

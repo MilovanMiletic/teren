@@ -120,7 +120,7 @@
               [disabled]="working()"
               (click)="invite()"
             >
-              <app-icon name="copy" [size]="18" />
+              <app-icon name="mail" [size]="18" />
               {{
                 working()
                   ? t('platform.person.working')
@@ -136,18 +136,38 @@
           }
 
           @if (issued(); as invite) {
-            <div class="issued">
-              <p class="t-label">{{ t('platform.add.link.label') }}</p>
-              <code class="issued__link">{{ invite.url ?? invite.token }}</code>
-              @if (invite.superseded > 0) {
-                <!-- A link already sent has just stopped working. Worth saying out loud rather
-                     than discovering when somebody reports that his link is dead. -->
-                <p class="t-meta">{{ t('platform.person.superseded') }}</p>
-              }
-              <p class="t-meta">{{ t('platform.add.link.hint') }}</p>
-              <button type="button" class="btn btn--row btn--tertiary" (click)="copyLink()">
-                {{ copied() ? t('platform.add.link.copied') : t('platform.add.link.copy') }}
-              </button>
+            <!--
+              What happened, not what to copy. The link is minted on the server and mailed; the
+              only thing this screen can honestly report is the address it went to — and, when no
+              relay is configured, that nothing went at all.
+            -->
+            <div
+              class="notice"
+              [class.notice--ok]="invite.emailed"
+              [class.notice--warn]="!invite.emailed"
+              role="status"
+            >
+              <app-icon
+                [name]="invite.emailed ? 'mail' : 'alert-triangle'"
+                [size]="20"
+                class="notice__icon"
+              />
+              <div class="notice__text">
+                <span class="notice__title">
+                  {{
+                    invite.emailed
+                      ? t('platform.person.sent.title')
+                      : t('platform.person.sent.failed')
+                  }}
+                </span>
+                <span class="t-meta">
+                  {{
+                    invite.emailed
+                      ? t('platform.add.emailed', { email: invite.email ?? who.email ?? '' })
+                      : t('platform.add.notEmailed')
+                  }}
+                </span>
+              </div>
             </div>
           }
 

@@ -253,25 +253,38 @@
       <app-modal-sheet [heading]="t('platform.add.title')" (close)="cancelAdd()">
         @if (issued(); as invite) {
           <!--
-            Success, and the dialog deliberately stays open. There is no SMTP relay, so this link
-            is the entire onboarding: it is read down the phone or pasted into a chat. Closing on
-            success would destroy the one value this dialog exists to produce.
+            Success, and the dialog stays open so the sentence is read rather than glimpsed.
+            There is no link here any more (founder, 2026-09-01): it is minted on the server inside
+            the job that mails it, and goes to one address. What this has to say is therefore
+            whether it *went* — and when it did not, say that instead of implying it did.
           -->
           <div class="issued">
-            <p class="t-meta">
-              {{ t('platform.add.created', { name: issuedFor()?.displayName ?? '' }) }}
-            </p>
-
-            <p class="t-label">{{ t('platform.add.link.label') }}</p>
-            <code class="issued__link">{{ invite.url ?? invite.token }}</code>
-
-            <p class="t-meta">{{ t('platform.add.link.hint') }}</p>
+            <div
+              class="notice"
+              [class.notice--ok]="invite.emailed"
+              [class.notice--warn]="!invite.emailed"
+              role="status"
+            >
+              <app-icon
+                [name]="invite.emailed ? 'mail' : 'alert-triangle'"
+                [size]="20"
+                class="notice__icon"
+              />
+              <div class="notice__text">
+                <span class="notice__title">
+                  {{ t('platform.add.created', { name: issuedFor()?.displayName ?? '' }) }}
+                </span>
+                <span class="t-meta">
+                  {{
+                    invite.emailed
+                      ? t('platform.add.emailed', { email: issuedFor()?.email ?? '' })
+                      : t('platform.add.notEmailed')
+                  }}
+                </span>
+              </div>
+            </div>
 
             <div class="issued__actions">
-              <button type="button" class="btn btn--row btn--tertiary" (click)="copyLink()">
-                <app-icon name="copy" [size]="18" />
-                {{ copied() ? t('platform.add.link.copied') : t('platform.add.link.copy') }}
-              </button>
               <button type="button" class="btn btn--row" (click)="cancelAdd()">
                 {{ t('platform.add.done') }}
               </button>

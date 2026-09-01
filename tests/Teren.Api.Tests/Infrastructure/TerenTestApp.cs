@@ -7,6 +7,9 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
+using Teren.Api.Auth;
+using Teren.Api.Jobs;
+using Teren.Core.Mail;
 using Teren.Core.Entities;
 using Teren.Core.Identity;
 using Teren.Core.Ai;
@@ -291,6 +294,45 @@ public sealed class TerenTestApp : IAsyncLifetime
             .Options;
 
         return new TerenIdentityDbContext(options);
+    }
+
+    /// <summary>
+    /// Run the invite job by hand and hand back the message it produced, or null if it sent none.
+    ///
+    /// <para>
+    /// <b>Called directly rather than through the queue, and that is the point.</b> The test host
+    /// runs with <c>Hangfire__Enabled=false</c>, so the route only ever reaches
+    /// <c>DisabledInviteQueue</c> and nothing is sent — which is itself asserted, in
+    /// <c>PlatformSurfaceTests</c>. What the *job* does is a separate question with separate
+    /// tests, and this is the seam that lets them ask it: a real identity context, a real token
+    /// mint, a real body, and a sender that keeps what it was handed instead of dialling a relay.
+    /// </para>
+    /// <para>
+    /// <paramref name="appUrl"/> defaults to a real-looking origin because a missing one is a
+    /// *tested* branch: with no <c>Auth:AppUrl</c> there is no address to send anyone to, and the
+    /// job refuses to post a bare token nobody can use.
+    /// </para>
+    /// </summary>
+    public async Task<Core.Mail.MailMessage?> RunInviteJobAsync(
+        Guid userId,
+        Guid actorUserId,
+        CancellationToken ct,
+        IMailSender? sender = null,
+        string appUrl = "https://app.teren.test")
+    {
+        var mail = sender ?? new CapturingMailSender();
+
+        await using var identity = CreateIdentityDbContext();
+
+        var job = new AdminInviteJob(
+            identity,
+            mail,
+            Options.Create(new AuthOptions { AppUrl = appUrl }),
+            NullLogger<AdminInviteJob>.Instance);
+
+        await job.RunAsync(userId, actorUserId, ct);
+
+        return (mail as CapturingMailSender)?.Last;
     }
 
     /// <summary>

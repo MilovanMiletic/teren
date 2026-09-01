@@ -79,8 +79,8 @@ public static class PlatformEndpoints
 
         group.MapPost("/users/{id}/invite", InviteUserAsync)
             .WithName("InvitePlatformUser")
-            .WithSummary("Mint a set-password link and return it, so it can be read down the phone.")
-            .Produces<InviteUserResponse>()
+            .WithSummary("Email the set-password link again. The link never enters the response.")
+            .Produces<InviteSentResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/users/{id}/disable", DisableUserAsync)

@@ -511,7 +511,7 @@ describe('PlatformPage', () => {
       await pressIn('Teren tim');
       await type('#platform-add-name', 'Nova Kolegica');
       await type('#platform-add-email', 'nova@teren.rs');
-      await pressIn('Dodaj i napravi link');
+      await pressIn('Dodaj i pošalji poziv');
 
       expect(gateway.createdAdmins).toEqual([
         { role: 'super_admin', display_name: 'Nova Kolegica', email: 'nova@teren.rs' },
@@ -536,7 +536,7 @@ describe('PlatformPage', () => {
       // And with no company the form cannot fire at all — the 400 arrives as a disabled button.
       await type('#platform-add-name', 'Jovan Jovanović');
       await type('#platform-add-email', 'jovan@firma.rs');
-      expect(inDialog('Dodaj i napravi link').disabled).toBe(true);
+      expect(inDialog('Dodaj i pošalji poziv').disabled).toBe(true);
 
       element.querySelector('form')?.dispatchEvent(new Event('submit'));
       await settle();
@@ -548,35 +548,40 @@ describe('PlatformPage', () => {
       await openAdd();
       await chooseCustomer('Vodoinstal Petrović d.o.o.');
 
-      expect(inDialog('Dodaj i napravi link').disabled).toBe(true);
+      expect(inDialog('Dodaj i pošalji poziv').disabled).toBe(true);
 
       await type('#platform-add-name', 'Jovan Jovanović');
-      expect(inDialog('Dodaj i napravi link').disabled).toBe(true);
+      expect(inDialog('Dodaj i pošalji poziv').disabled).toBe(true);
 
       await type('#platform-add-email', 'jovan@firma.rs');
-      expect(inDialog('Dodaj i napravi link').disabled).toBe(false);
+      expect(inDialog('Dodaj i pošalji poziv').disabled).toBe(false);
     });
 
     /**
-     * **The dialog stays open on success, showing the link.** There is no SMTP relay: this link is
-     * the entire onboarding, read down the phone or pasted into a chat. A dialog that closed with a
-     * cheerful toast would destroy the one value it exists to produce.
+     * **The dialog stays open on success and says what happened.** It used to show the
+     * set-password link, which was the entire onboarding when there was no relay. There is one
+     * now, the link is minted on the server inside the job that mails it, and the only honest
+     * thing this screen can report is the address it went to.
      */
-    it('keeps the link on screen instead of closing over it', async () => {
+    it('says the invite was emailed, and shows no credential at all', async () => {
       await render();
       await openAdd();
       await chooseCustomer('Vodoinstal Petrović d.o.o.');
       await type('#platform-add-name', 'Jovan Jovanović');
       await type('#platform-add-email', 'jovan@firma.rs');
 
-      await pressIn('Dodaj i napravi link');
+      await pressIn('Dodaj i pošalji poziv');
 
       expect(dialog()).not.toBeNull();
       expect(text()).toContain('Jovan Jovanović je dodat.');
-      expect(text()).toContain('NJEGOV LINK');
-      expect(element.querySelector('.issued__link')?.textContent).toContain('trn_p_');
-      expect(text()).toContain('Važi jednom, 48 sati');
-      // The form is gone: there is nothing left to fill in, and the link is what he came for.
+      expect(text()).toContain('jovan@firma.rs');
+
+      // The assertion that matters, and it is written against the rendered screen rather than a
+      // named element: nothing token-shaped may appear anywhere on it.
+      expect(text()).not.toContain('trn_p_');
+      expect(element.querySelector('.issued__link')).toBeNull();
+
+      // The form is gone: there is nothing left to fill in.
       expect(element.querySelector('#platform-add-name')).toBeNull();
     });
 
@@ -587,40 +592,30 @@ describe('PlatformPage', () => {
       await type('#platform-add-name', 'Jovan Jovanović');
       await type('#platform-add-email', 'jovan@firma.rs');
 
-      await pressIn('Dodaj i napravi link');
+      await pressIn('Dodaj i pošalji poziv');
 
       expect(gateway.userListings).toBe(2);
       // On the directory itself, not merely in the dialog that created him.
       expect(row('Jovan Jovanović')).toContain('jovan@firma.rs');
     });
 
-    it('copies the link, and never claims a copy the browser refused', async () => {
+    /**
+     * With no relay the account exists and nobody can get into it, so the dialog says so. The
+     * failure mode this prevents is the quiet one: a founder who believes a mail is on its way and
+     * a customer who waits for it.
+     */
+    it('says plainly when nothing was sent', async () => {
+      gateway.emailed = false;
       await render();
       await openAdd();
       await chooseCustomer('Vodoinstal Petrović d.o.o.');
       await type('#platform-add-name', 'Jovan Jovanović');
       await type('#platform-add-email', 'jovan@firma.rs');
-      await pressIn('Dodaj i napravi link');
 
-      await pressIn('Kopiraj link');
+      await pressIn('Dodaj i pošalji poziv');
 
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining('trn_p_'));
-      expect(text()).toContain('Kopirano');
-    });
-
-    it('leaves the link readable when there is no clipboard at all', async () => {
-      Reflect.deleteProperty(navigator, 'clipboard');
-      await render();
-      await openAdd();
-      await chooseCustomer('Vodoinstal Petrović d.o.o.');
-      await type('#platform-add-name', 'Jovan Jovanović');
-      await type('#platform-add-email', 'jovan@firma.rs');
-      await pressIn('Dodaj i napravi link');
-
-      await pressIn('Kopiraj link');
-
-      expect(text()).not.toContain('Kopirano');
-      expect(element.querySelector('.issued__link')?.textContent).toContain('trn_p_');
+      expect(text()).toContain('nije podešeno');
+      expect(text()).not.toContain('Poslali smo');
     });
 
     it('starts clean every time it is opened, so no link outlives its dialog', async () => {
@@ -629,7 +624,7 @@ describe('PlatformPage', () => {
       await chooseCustomer('Vodoinstal Petrović d.o.o.');
       await type('#platform-add-name', 'Jovan Jovanović');
       await type('#platform-add-email', 'jovan@firma.rs');
-      await pressIn('Dodaj i napravi link');
+      await pressIn('Dodaj i pošalji poziv');
       await pressIn('Gotovo');
 
       await openAdd();
@@ -649,7 +644,7 @@ describe('PlatformPage', () => {
       await pressIn('Teren tim');
       await type('#platform-add-name', 'Nova Kolegica');
       await type('#platform-add-email', 'nova@teren.rs');
-      await pressIn('Dodaj i napravi link');
+      await pressIn('Dodaj i pošalji poziv');
     }
 
     /**

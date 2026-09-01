@@ -244,8 +244,25 @@ public sealed class PlatformSurfaceTests(TerenTestApp app) : ApiTestBase(app)
 
     // --------------------------------------------------------------------------------- invite
 
+    /// <summary>
+    /// The route queues a mail and hands back nothing a credential could hide in.
+    ///
+    /// <para>
+    /// <b>It used to return the plaintext token</b> so staff could read a set-password URL down
+    /// the phone — §9's escape hatch for a product with no relay. The founder removed it on
+    /// 2026-09-01: the link is minted inside <c>AdminInviteJob</c> and goes to exactly one address.
+    /// The mint-and-supersede behaviour this test used to cover now lives in
+    /// <c>AdminInviteJobTests</c>, which is where it can also assert the copy.
+    /// </para>
+    /// <para>
+    /// <c>emailed</c> is <b>false</b> here, and that is the assertion worth having: the test host
+    /// runs with <c>Hangfire__Enabled=false</c>, so nothing was queued, and the response says so
+    /// instead of claiming a mail is in flight. A route that answered true regardless would be the
+    /// exact dishonesty this field exists to prevent.
+    /// </para>
+    /// </summary>
     [Fact]
-    public async Task Inviting_an_admin_returns_a_link_that_can_be_read_down_the_phone()
+    public async Task Inviting_an_admin_queues_a_mail_and_returns_no_credential()
     {
         var admin = await GivenCompanyAdminAsync(withPassword: false);
         using var staff = await GivenSuperAdminClientAsync();
@@ -254,40 +271,16 @@ public sealed class PlatformSurfaceTests(TerenTestApp app) : ApiTestBase(app)
         response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.TextAsync());
 
         var body = await response.JsonAsync();
-        // `invite`, not `reset`: this account has never had a password. Derived from the row, so
-        // it cannot be recorded wrongly.
-        body.GetText("purpose").ShouldBe("invite");
-        body.GetText("token").ShouldStartWith("trn_p_");
-        body.GetProperty("superseded").GetInt32().ShouldBe(0);
+        body.GetText("email").ShouldBe(admin.Email);
+        body.GetProperty("emailed").GetBoolean().ShouldBeFalse();
 
+        var raw = await response.TextAsync();
+        raw.ShouldNotContain("trn_p_");
+        raw.ShouldNotContain("set-password");
+
+        // And nothing was minted: the job does that, and no job ran.
         await using var identity = App.CreateIdentityDbContext();
-        (await identity.PasswordTokens.CountAsync(
-            t => t.UserId == admin.Id && t.ConsumedAt == null && t.SupersededAt == null, Ct))
-            .ShouldBe(1);
-    }
-
-    /// <summary>
-    /// Nothing in the database compels the supersede — there is no <c>ux_password_token_live</c> —
-    /// so re-inviting must retire the link it replaces or a founder who re-issues because "the
-    /// first one never arrived" leaves it valid for another 48 hours, in whatever inbox it did in
-    /// fact arrive in.
-    /// </summary>
-    [Fact]
-    public async Task Re_inviting_retires_the_link_it_replaces_and_says_so()
-    {
-        var admin = await GivenCompanyAdminAsync(withPassword: false);
-        using var staff = await GivenSuperAdminClientAsync();
-
-        await staff.PostNothing($"/api/platform/users/{admin.Id}/invite");
-        var second = await (await staff.PostNothing(
-            $"/api/platform/users/{admin.Id}/invite")).JsonAsync();
-
-        second.GetProperty("superseded").GetInt32().ShouldBe(1);
-
-        await using var identity = App.CreateIdentityDbContext();
-        (await identity.PasswordTokens.CountAsync(
-            t => t.UserId == admin.Id && t.ConsumedAt == null && t.SupersededAt == null, Ct))
-            .ShouldBe(1);
+        (await identity.PasswordTokens.CountAsync(t => t.UserId == admin.Id, Ct)).ShouldBe(0);
     }
 
     [Fact]
@@ -461,7 +454,7 @@ public sealed class PlatformSurfaceTests(TerenTestApp app) : ApiTestBase(app)
     /// administrator could only be conjured at a console or by hand in psql.
     /// </summary>
     [Fact]
-    public async Task Creating_a_company_admin_returns_him_and_the_link_that_lets_him_in()
+    public async Task Creating_a_company_admin_returns_him_and_says_the_invite_was_not_sent()
     {
         using var staff = await GivenSuperAdminClientAsync();
 
@@ -479,17 +472,20 @@ public sealed class PlatformSurfaceTests(TerenTestApp app) : ApiTestBase(app)
         user.GetProperty("password_pending").GetBoolean().ShouldBeTrue();
         user.IsNull("username").ShouldBeTrue();
 
-        var invite = body.GetProperty("invite");
-        invite.GetText("purpose").ShouldBe("invite");
-        invite.GetText("token").ShouldStartWith("trn_p_");
+        // No token and no URL: nothing a credential could hide in. The founder removed the
+        // read-it-down-the-phone link on 2026-09-01, so the only channel is the mail.
+        //
+        // "emailed" is false because the test host runs with Hangfire off, and the response
+        // says so rather than implying a mail is in flight. A route that answered true
+        // regardless would be the exact dishonesty that field exists to prevent.
+        body.GetProperty("emailed").GetBoolean().ShouldBeFalse();
+        (await response.TextAsync()).ShouldNotContain("trn_p_");
 
-        // Account and link in one transaction: an admin who exists with no way in is an
-        // onboarding the founder would have to notice was unfinished.
         await using var identity = App.CreateIdentityDbContext();
         var created = await identity.Users.FirstAsync(u => u.Email == "nikola@gradnja.rs", Ct);
-        (await identity.PasswordTokens.CountAsync(
-            t => t.UserId == created.Id && t.ConsumedAt == null && t.SupersededAt == null, Ct))
-            .ShouldBe(1);
+        // Minting moved into AdminInviteJob, so a live credential is never a Hangfire argument.
+        // No job ran, so there is nothing to find here.
+        (await identity.PasswordTokens.CountAsync(t => t.UserId == created.Id, Ct)).ShouldBe(0);
 
         (await LoadAuditAsync())
             .ShouldContain(a => a.Action == AdminAuditActions.AdminCreated && a.SubjectId == created.Id);
@@ -574,11 +570,20 @@ public sealed class PlatformSurfaceTests(TerenTestApp app) : ApiTestBase(app)
         (await identity.Users.AnyAsync(u => u.Email == "nigde@gradnja.rs", Ct)).ShouldBeFalse();
     }
 
+    /// <summary>
+    /// The whole point, proven end to end **through the mail** rather than through a response body.
+    ///
+    /// <para>
+    /// Create the account, run the invite job with a sender that keeps what it was handed, pull
+    /// the link out of the message a human would actually receive, follow it, and sign in.
+    /// Stronger than the version it replaces: that one read a token out of JSON, so it could not
+    /// have noticed a mail that never mentioned the link, went to the wrong address, or carried a
+    /// URL this app does not serve.
+    /// </para>
+    /// </summary>
     [Fact]
-    public async Task The_new_admin_can_actually_set_a_password_and_sign_in_with_it()
+    public async Task The_link_in_the_invite_mail_sets_a_password_and_signs_him_in()
     {
-        // The whole point, proven end to end rather than by inspecting rows: create → set password
-        // with the returned token → sign in → reach the company surface.
         using var staff = await GivenSuperAdminClientAsync();
 
         var created = await (await staff.PostJson(
@@ -586,7 +591,14 @@ public sealed class PlatformSurfaceTests(TerenTestApp app) : ApiTestBase(app)
             NewAdmin(AppUserRoleNames.CompanyAdmin, "novi@gradnja.rs", TestIds.CompanyA)))
             .JsonAsync();
 
-        var token = created.GetProperty("invite").GetText("token");
+        var userId = created.GetProperty("user").GetGuid("id");
+        var mail = await App.RunInviteJobAsync(userId, userId, Ct);
+
+        mail.ShouldNotBeNull();
+        mail!.ToAddress.ShouldBe("novi@gradnja.rs");
+
+        var token = InviteMail.TokenIn(mail.TextBody);
+        token.ShouldStartWith("trn_p_");
 
         using var anonymous = App.CreateAnonymousClient();
         var set = await anonymous.PostJson(

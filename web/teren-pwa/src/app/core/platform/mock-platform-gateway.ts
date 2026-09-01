@@ -5,7 +5,7 @@ import {
   CreateAdminRequest,
   CreateAdminResponse,
   CreateCompanyRequest,
-  InviteUserResponse,
+  InviteSentResponse,
   PlatformCompanyListResponse,
   PlatformCompanyResponse,
   PlatformUserListResponse,
@@ -209,15 +209,15 @@ export class MockPlatformGateway implements PlatformGateway {
     };
     this.users = [user, ...this.users];
 
-    return { user, invite: this.mintInvite('invite', 0) };
+    return { user, emailed: true };
   }
 
-  async invite(userId: string): Promise<InviteUserResponse> {
+  async invite(userId: string): Promise<InviteSentResponse> {
     const user = this.users.find((candidate) => candidate.id === userId);
     if (!user || user.role === 'worker') {
       throw notFound('No account that can hold a password was found.');
     }
-    return this.mintInvite(user.password_pending ? 'invite' : 'reset', 0);
+    return { email: user.email ?? null, emailed: true };
   }
 
   async disableUser(userId: string): Promise<PlatformUserResponse> {
@@ -226,17 +226,6 @@ export class MockPlatformGateway implements PlatformGateway {
 
   async enableUser(userId: string): Promise<PlatformUserResponse> {
     return this.setDisabled(userId, null);
-  }
-
-  private mintInvite(purpose: string, superseded: number): InviteUserResponse {
-    const token = `trn_p_${crypto.randomUUID().replace(/-/g, '')}`;
-    return {
-      purpose,
-      token,
-      url: `https://teren.example/set-password?token=${token}`,
-      expires_at: new Date(Date.now() + 48 * 3600_000).toISOString(),
-      superseded,
-    };
   }
 
   private setSuspended(companyId: string, at: string | null): PlatformCompanyResponse {

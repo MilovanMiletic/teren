@@ -184,7 +184,6 @@ export class PlatformPage {
   /** The link the founder reads down the phone. Present only after a successful create. */
   protected readonly issued = signal<Invite | null>(null);
   protected readonly issuedFor = signal<Person | null>(null);
-  protected readonly copied = signal(false);
 
   /**
    * How the customers list went, kept apart from the directory's own status.
@@ -332,21 +331,9 @@ export class PlatformPage {
     return status !== null && !serverAnswered(status);
   }
 
-  protected async copyLink(): Promise<void> {
-    const invite = this.issued();
-    const value = invite?.url ?? invite?.token;
-    if (!value) {
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(value);
-      this.copied.set(true);
-    } catch {
-      // A clipboard the browser refused. The link is on screen and selectable, so the founder is
-      // not stuck — and claiming a copy that did not happen is worse than saying nothing.
-      this.copied.set(false);
-    }
-  }
+  // There was a copyLink() here, and its removal is the point of the change: there is no link on
+  // this screen to copy any more. The set-password token is minted on the server, inside the job
+  // that mails it, and never reaches a response body — so it never reaches a clipboard either.
 
   private resetAdd(): void {
     this.tab.set('company_admin');
@@ -357,6 +344,5 @@ export class PlatformPage {
     this.adding.set(false);
     this.issued.set(null);
     this.issuedFor.set(null);
-    this.copied.set(false);
   }
 }
