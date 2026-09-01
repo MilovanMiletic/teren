@@ -3,8 +3,15 @@
  * in `auth-form.css`, which is itself taken from `design/Login.dc.html`.
  */
 
-/* Same reasoning as the activation screen: on a phone the keyboard owns this space. */
-.login__mark {
+/*
+ * Same reasoning as the activation screen: on a phone the keyboard owns this space.
+ *
+ * The wordmark keeps the motif's company. It is the brand panel's anchor and the panel exists
+ * only from 1024 up, so below that it would be a large word added to a compact layout the founder
+ * has already approved — a change nobody asked for, arriving as a side effect of a desktop fix.
+ */
+.login__mark,
+.login__word {
   display: none;
 }
 
@@ -14,7 +21,8 @@
 }
 
 @media (min-width: 1024px) {
-  .login__mark {
+  .login__mark,
+  .login__word {
     display: block;
   }
 

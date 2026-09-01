@@ -10,7 +10,11 @@
  * anything decorative above the card is height the two fields need. From 1024 up it anchors the
  * left column, where there is nothing else to look at.
  */
-.activate__mark {
+/* The wordmark keeps the motif's company, for `login-page.css`'s reason: the panel it anchors
+   exists only from 1024 up, and below that it would be a large word added to an approved
+   compact layout as a side effect of a desktop fix. */
+.activate__mark,
+.activate__word {
   display: none;
 }
 
@@ -20,7 +24,8 @@
 }
 
 @media (min-width: 1024px) {
-  .activate__mark {
+  .activate__mark,
+  .activate__word {
     display: block;
   }
 

@@ -10,7 +10,19 @@
 
     <div class="auth__body auth__body--form">
       <section class="auth__brand login__intro">
-        <app-auth-mark [scale]="0.75" class="login__mark" />
+        <!--
+          Full size, not 0.75. The motif is only ever rendered from 1024 up on this screen
+          (`login__mark` is `display: none` below it), and at three-quarters it read as a
+          decoration that had been shrunk to get out of the way of a form it does not share a
+          column with.
+        -->
+        <app-auth-mark class="login__mark" />
+
+        <!--
+          `<p>`, not `<h1>`: the top row's "Prijava" is this document's heading, and a second h1
+          would be two of them. The wordmark is the panel's anchor, which is a visual job.
+        -->
+        <p class="auth__word login__word">{{ t('app.name') }}</p>
         <p class="auth__lead">{{ t('auth.login.lead') }}</p>
 
         <div class="auth__aside">

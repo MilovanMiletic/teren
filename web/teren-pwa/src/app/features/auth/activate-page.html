@@ -10,7 +10,10 @@
 
     <div class="auth__body auth__body--form">
       <section class="auth__brand activate__intro">
-        <app-auth-mark [scale]="0.75" class="activate__mark" />
+        <!-- Full size and the wordmark beneath it, for `login-page.html`'s two reasons. -->
+        <app-auth-mark class="activate__mark" />
+
+        <p class="auth__word activate__word">{{ t('app.name') }}</p>
         <p class="auth__lead">{{ t('auth.code.lead') }}</p>
 
         <div class="auth__aside">

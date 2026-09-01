@@ -12,9 +12,20 @@
  *   primary matter at the bottom under the thumb.
  * - **medium (768–1023)** — the same column, proportioned rather than stretched: `.column` caps
  *   at 640, the motif grows, and the actions stop being full-bleed banners.
- * - **expanded (≥1024)** — a real two-column layout. The left column carries the brand and the
- *   explanation, the right carries the one thing to do. A centred phone column on a 1920 screen
- *   is not a desktop design (CLAUDE.md, founder rule).
+ * - **expanded (≥1024)** — a split screen. The left half is a tinted panel that runs to the edge
+ *   of the window and the full height of it, carrying the brand and the explanation; the right
+ *   half is canvas, carrying the one thing to do. A centred phone column on a 1920 screen is not
+ *   a desktop design (CLAUDE.md, founder rule).
+ *
+ * ## Why the left half is painted, which is the whole of the 2026-09-01 change
+ *
+ * It was already a two-column grid and it already put the brand on the left. What it did not do
+ * was give that half a **surface** — so on a 1920 screen a small motif and four lines of text
+ * floated in a great deal of nothing, and the page read as a phone layout that had been pulled
+ * wide (founder: *"for computer I think we should use this space a little bit better"*). The
+ * alternative was to grow the text until it filled the hole, which is writing copy to serve a
+ * layout. Painting the half is the structural answer: emptiness inside a panel is composition,
+ * emptiness on bare canvas is a gap.
  *
  * There is deliberately **no `app-header`** on these screens. The header carries the current site
  * and the back affordance for a phone that is already inside the app; a man on the welcome screen
@@ -26,6 +37,42 @@
   display: flex;
   flex-direction: column;
   flex-grow: 1;
+}
+
+/*
+ * The panel, painted on `.screen` rather than on any column.
+ *
+ * **An absolutely positioned pseudo-element on the full-width shell, never `100vw`.** The usual
+ * full-bleed trick — `width: 100vw; margin-inline: calc(50% - 50vw)` — measures the viewport
+ * *including* the scrollbar, so it overhangs by 15-17 px on every desktop browser that shows one;
+ * `styles.css` sets `overflow-x: hidden` on the body, which means the overhang would not scroll
+ * and would therefore never be noticed, only mis-aligned. `.screen` is already the full-width
+ * block, so `inset: 0 50% 0 0` on its pseudo-element is exact, needs no viewport unit, and cannot
+ * be off by a scrollbar.
+ *
+ * **The seam lands in the grid's gap, and that is arithmetic rather than luck.** `.column` is
+ * centred with equal gutters, so its content box shares the window's midpoint; a `1fr 1fr` grid
+ * inside it therefore splits at exactly 50% of the window, which is where this edge is. Change
+ * the grid to anything but equal fractions and the paint stops agreeing with the columns.
+ */
+@media (min-width: 1024px) {
+  .screen {
+    position: relative;
+  }
+
+  .screen::before {
+    content: '';
+    position: absolute;
+    inset: 0 50% 0 0;
+    z-index: 0;
+    background: var(--color-accent-tint-1);
+  }
+
+  /* Positioned, so the content paints over the panel instead of under it. */
+  .auth {
+    position: relative;
+    z-index: 1;
+  }
 }
 
 /* ---- Top row ------------------------------------------------------------------------------ */
@@ -91,11 +138,13 @@
   .auth__body {
     display: grid;
     /*
-     * The explanation is allowed to be wider than the form. A 50/50 split leaves a 500 px field
-     * card with nothing in it but three rows, which is how a desktop layout ends up looking like
-     * a phone layout that was stretched.
+     * **Equal fractions, and they have to be.** This was `7fr 5fr` — the explanation allowed to
+     * be wider than the form — which was right while both halves stood on the same canvas and is
+     * wrong now that one of them is painted: the seam is at 50% of the window and the columns
+     * have to meet it. The form does not suffer, because `.auth__panel` caps its own width and
+     * sits at the start of its column rather than stretching across it.
      */
-    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: var(--space-8);
     align-items: center;
     padding-top: var(--space-8);
@@ -142,6 +191,8 @@
     align-items: flex-start;
     text-align: left;
     gap: var(--space-4);
+    /* Air before the seam, so no line of the explanation ends flush against the paint. */
+    padding-right: var(--space-6);
   }
 
   .auth__word {
@@ -150,6 +201,17 @@
 
   .auth__tagline {
     font-size: 24px;
+  }
+
+  /*
+   * On the tint, the muted ink used on canvas goes soft — #6b6a66 on #f7e7df is a weaker
+   * relationship than the same ink on #efede8, and this is the panel's body copy rather than a
+   * caption. It steps up one level; the point bodies below keep the muted tone, which is what
+   * keeps a hierarchy inside the panel at all.
+   */
+  .auth__lead {
+    color: var(--color-ink);
+    font-size: var(--text-h2);
   }
 }
 
@@ -218,8 +280,16 @@
 }
 
 @media (min-width: 1024px) {
+  /*
+   * Still capped, and no longer centred in its half.
+   *
+   * `max-width: none` was right against a 5fr column; against half of a 1920 window it would give
+   * a sign-in form a 560 px card, and a field that wide reads as a search bar. Kept at the start
+   * of the column so it sits just past the seam rather than drifting toward the window's edge —
+   * the two halves should read as one composition, not as two posters.
+   */
   .auth__panel {
-    max-width: none;
+    max-width: 440px;
     margin: 0;
     padding-bottom: 0;
   }
