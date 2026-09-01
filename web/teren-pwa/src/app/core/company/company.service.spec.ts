@@ -147,6 +147,84 @@ describe('CompanyService', () => {
     });
   });
 
+  /**
+   * One foreman by id, and **there is no endpoint for it**.
+   *
+   * `WorkerEndpoints.cs` exposes the list, the code, the share text and a PATCH; a per-worker read
+   * was left out of scope for a frontend-only increment, so the man's page reads him out of the
+   * company's own list. These specs pin the two properties that makes acceptable — tenancy still
+   * decides what can be found, and a failed read is never reported as a man who does not exist.
+   */
+  describe('getWorker', () => {
+    it('finds one man in the company list', async () => {
+      const service = configure();
+
+      const result = await service.getWorker(MockCompanyGateway.ZORAN_ID);
+
+      expect(result.status).toBe('ok');
+      expect(result.missing).toBe(false);
+      expect(result.worker).toMatchObject({
+        id: MockCompanyGateway.ZORAN_ID,
+        displayName: 'Zoran Jovanović',
+        username: 'zoran.jovanovic',
+      });
+    });
+
+    /**
+     * The list is scoped to his company server-side, so another company's worker is simply not in
+     * it — and comes back as `missing`, exactly as one that does not exist does. That is the
+     * server's own doctrine (a foreign id is a 404) and the client must not invent a distinction
+     * the API refuses to make.
+     */
+    it('answers "not in this company" for an id that is not in the list', async () => {
+      const service = configure();
+
+      const result = await service.getWorker('d3a0c1f0-5b8e-4f1a-9c62-00000000ffff');
+
+      expect(result).toEqual({ status: 'ok', worker: null, missing: true });
+    });
+
+    /**
+     * **A read that did not answer is not a man who does not exist.** On the screen that hands out
+     * credentials, announcing that a foreman is not in the company because the wifi blipped would
+     * be the worst thing it could say — so `missing` stays false and the status carries the reason.
+     */
+    it('never reports a failed read as a missing man', async () => {
+      for (const [error, expected] of [
+        [httpError(0), 'offline'],
+        [httpError(401), 'signedOut'],
+        [httpError(403), 'forbidden'],
+        [httpError(500), 'unavailable'],
+      ] as [unknown, CompanyStatus][]) {
+        const service = configure(failingWith(error));
+
+        const result = await service.getWorker(MockCompanyGateway.ZORAN_ID);
+
+        expect(result).toEqual({ status: expected, worker: null, missing: false });
+      }
+    });
+
+    it('never sends a request when this browser holds no admin credential', async () => {
+      const service = configure(gateway, false);
+
+      await expect(service.getWorker(MockCompanyGateway.ZORAN_ID)).resolves.toEqual({
+        status: 'notSignedIn',
+        worker: null,
+        missing: false,
+      });
+    });
+
+    /** Reading a man's page must never touch his code. It is one GET of a list. */
+    it('spends nothing', async () => {
+      const service = configure();
+
+      await service.getWorker(MockCompanyGateway.ZORAN_ID);
+
+      expect(gateway.reads).toEqual([]);
+      expect(gateway.issues).toEqual([]);
+    });
+  });
+
   describe('listDevices', () => {
     it('returns the revoked phones alongside the live ones', async () => {
       const service = configure();
@@ -491,6 +569,7 @@ describe('CompanyService', () => {
    */
   const CALLS: [string, (service: CompanyService) => Promise<{ status: CompanyStatus }>][] = [
     ['listWorkers', (service) => service.listWorkers()],
+    ['getWorker', (service) => service.getWorker(MockCompanyGateway.ZORAN_ID)],
     ['listDevices', (service) => service.listDevices()],
     ['readCode', (service) => service.readCode(MockCompanyGateway.ZORAN_ID)],
     ['issueCode', (service) => service.issueCode(MockCompanyGateway.ZORAN_ID)],

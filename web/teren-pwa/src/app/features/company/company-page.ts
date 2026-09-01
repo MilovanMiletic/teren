@@ -1,152 +1,138 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import { TranslocoDirective } from '@jsverse/transloco';
 
 import {
-  ActivationCode,
   CompanyService,
   CompanyStatus,
-  Phone,
   Worker,
   serverAnswered,
 } from '../../core/company/company.service';
 import { AdminSessionService } from '../../core/session/admin-session.service';
 import { AppHeader } from '../../ui/app-header';
 import { Icon } from '../../ui/icon';
+import { InfoPopover } from '../../ui/info-popover';
 import { LanguageSwitcher } from '../../ui/language-switcher';
+import { ModalSheet } from '../../ui/modal-sheet';
 import { SessionLink } from '../../ui/session-link';
+import { ViewportService } from '../../ui/viewport.service';
+import { companyReasonFor } from './company-reason';
+import {
+  DEFAULT_DIRECTION,
+  PeopleSort,
+  PeopleSortKey,
+  StatusChip,
+  sortWorkers,
+  workerChips,
+} from './people';
 
-/**
- * Why the company could not be read, in the words this screen is allowed to use.
- *
- * A literal map rather than a concatenation, so `i18n.spec.ts` sees every key by reading the
- * source — the same reason `profile-page.ts` and `archive-page.ts` write theirs out in full. The
- * `Record<Exclude<CompanyStatus, 'ok'>, string>` is what the compiler checks: a new status does
- * not build until it has a sentence, and `ok` is excluded because "it worked" is not a reason.
- */
-export const COMPANY_REASON_KEYS: Record<Exclude<CompanyStatus, 'ok'>, string> = {
-  offline: 'company.reason.offline',
-  signedOut: 'company.reason.signedOut',
-  forbidden: 'company.reason.forbidden',
-  notSignedIn: 'company.reason.notSignedIn',
-  refused: 'company.reason.refused',
-  unavailable: 'company.reason.unavailable',
-};
-
-/** The code, the message and how the last look at them went — for **one** worker at a time. */
-interface CodeState {
-  workerId: string;
-  loading: boolean;
-  status: CompanyStatus;
-  code: ActivationCode | null;
-  shareText: string | null;
-  /** The server answered plainly that there is nothing he could type. Information, not failure. */
-  noLiveCode: boolean;
-  /**
-   * This state is the result of an **issue**, not of a read.
-   *
-   * The two failures are not the same failure and must not share a sentence. A read that did not
-   * answer changed nothing, so "the code could not be read" is the truth. An issue that did not
-   * answer **may already have superseded the code the man is holding** — telling the admin it
-   * failed invites him to press again, and the second press supersedes a code that exists. So the
-   * screen has to know which act it is reporting on. {@link serverAnswered} decides the rest.
-   */
-  afterIssue: boolean;
+/** One line of the people list: the person, and the chips that say how he stands. */
+interface PersonRow {
+  worker: Worker;
+  chips: StatusChip[];
 }
 
-/** What was just put on the clipboard, so the screen can confirm the right one. */
-type Copied = 'code' | 'message' | null;
-
-/** One shared empty array, so a worker with no phone does not churn `@for` on every check. */
-const NO_PHONES: readonly Phone[] = [];
-
 /**
- * The company admin's one screen (`plans/profile-and-identity.md` §10.3, decisions 3, 9, 10, 13).
+ * The office (`plans/profile-and-identity.md` §10.3, decisions 3, 9, 10, 13): **the company's
+ * people, and nothing else**.
  *
- * ## What it replaces
+ * ## What this screen is, after the rework of 2026-09-01
  *
- * A `psql` session. Until this screen existed the only way to give a foreman an activation code
- * was to insert a row by hand — which is how activation was proved end to end on 2026-08-31, and
- * which is not a thing a customer can do. Everything here exists to make that one act — *this man,
- * this code, into his chat* — take a minute.
+ * It was a list of cards that opened in place, and each opened card held that man's activation
+ * code, the message that carries it, two copy buttons, his phones with a revoke, and a paragraph
+ * explaining how codes work. One foreman produced a scroll; ten would have been unusable, the
+ * "new foreman" form dominated a tablet, and at 1920 a single card floated in an empty field while
+ * the useful half of the screen was crammed into a narrow rail. The founder's verdict was "this
+ * genuinely now is a bad UI", and he was right.
  *
- * ## The constraint that shapes every decision below: one worker at a time
+ * So the office is two screens now. **This one is a directory**: who is in the company, grouped by
+ * role, dense enough to read twelve men at a glance and sortable by the two questions an owner
+ * actually asks — who is this, and who cannot record today. Everything about one man lives on his
+ * own page (`worker-page.ts`), which is where the code, the message, the phones and the revoke
+ * went.
  *
- * Decision 13, and it is a security property rather than a preference. A code plus a **username**
- * is what activates a phone, so a code alone is worth little; but a message carrying six codes
- * and six names, pasted into a site group chat, lets any man in that chat activate a phone under
- * another man's name — and every entry he then records is signed with that name. Attribution is
- * the thing the whole identity model exists to establish, so there is deliberately **no bulk
- * export, and no state in which two workers' codes are on the screen at once**: {@link revealed}
- * holds at most one worker id, and {@link codeState} holds at most one code. The server's own
- * `GET /api/workers/{id}/share-text` is what makes the right thing the easy thing — one worker's
- * ready-made Serbian message, in *his* language, for the admin to paste into *his* chat.
+ * ## Decision 13 is now structural rather than stateful
  *
- * ## Reading a code never spends it
+ * **No activation code, no share message and no copy action can render on this screen.** There is
+ * no code path to one: this component never calls `readCode` or `issueCode`, holds no code state,
+ * and imports nothing that could produce either. That matters because a code plus a **username**
+ * activates a phone, so a message carrying several names and codes pasted into a site group chat
+ * lets any man in that chat record evidence signed with another man's name — and attribution is
+ * the thing the whole identity model exists to establish.
  *
- * `CompanyService.readCode` is a GET and nothing else. The admin sends a code by Viber and taps
- * back an hour later to look at it; if looking re-issued, it would kill the code the man is at
- * that moment typing. That is precisely why the database stores the plaintext of a *live* code
- * (§5) instead of making "see the code" mean "issue a new one" — and why issuing has to be asked
- * for, twice, when a live code already exists.
+ * The old screen kept that property by *arithmetic*: exactly one worker id in `revealed`, exactly
+ * one `codeState`, and a careful reset on every open. It held. But it was one edit away from not
+ * holding, because two codes on screen was a state the component could represent. Moving codes to a
+ * per-worker route makes the safe thing the only thing the code can express — one URL, one man —
+ * and the list is left with a boolean (`hasLiveCode`) that says a code is waiting without ever
+ * naming it.
  *
- * ## Three real layouts, and the hard one is 390
+ * ## Three deliberate layouts
  *
- * The plan names a worker list with per-row actions at 390 px as one of the two hardest layouts in
- * this project, and the answer is not a shrunken table. Each worker is a **card that opens**: the
- * summary is a name, a username and two or three chips; the actions appear inside the opened card
- * as full-width controls a gloved thumb can hit. Exactly one card is open at a time, which is the
- * same mechanism the one-worker-at-a-time rule already requires — the layout and the security
- * property want the same thing.
+ *   compact   <768      a tight list of tappable rows: name and username on top, chips beneath, a
+ *                       chevron. One row is one tap target and one navigation; nothing expands in
+ *                       place, so a company of ten fits on two screens instead of ten.
+ *   medium    768–1023  a real `<table>` on the 640 column, with the numbers as a strip above it —
+ *                       not a phone column stretched.
+ *   expanded  ≥1024     the table claims **all twelve columns**. There is no rail: the founder moved
+ *                       adding a foreman into a dialog and "how codes work" into an info popover
+ *                       (2026-09-01), both behind the head row's action cluster, because the rail
+ *                       held the useful half of a 1920 screen while the table beside it held air.
+ *
+ * Which of the two renderings is drawn is decided in TypeScript, not by `display: none`
+ * ({@link ViewportService}): a `<table>` whose cells are forced to `display: block` loses its table
+ * role in every browser, so restyling one markup would give a phone the semantics of a table and a
+ * screen reader the semantics of neither.
  *
  * ## Honest failure, per call
  *
  * Nothing here says "something went wrong". `CompanyStatus` keeps *offline*, *your sign-in has
  * expired*, *your role may not do this* and *the server is unwell* apart, because the remedy
  * differs and offering the wrong one is a screen lying. And where the server gave **no verdict at
- * all** ({@link serverAnswered}), a mutation is never reported as failed: a revoke that timed out
- * may well have revoked, and an issue that timed out may well have superseded the code the man is
- * holding, so the screen says it could not confirm and asks him to reload before acting again.
+ * all** ({@link serverAnswered}), a mutation is never reported as failed.
  */
 @Component({
   selector: 'app-company-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AppHeader, DatePipe, Icon, LanguageSwitcher, SessionLink, TranslocoDirective],
+  imports: [
+    AppHeader,
+    DatePipe,
+    Icon,
+    InfoPopover,
+    LanguageSwitcher,
+    ModalSheet,
+    SessionLink,
+    TranslocoDirective,
+  ],
   templateUrl: './company-page.html',
   styleUrl: './company-page.css',
 })
 export class CompanyPage {
   private readonly company = inject(CompanyService);
   private readonly admins = inject(AdminSessionService);
+  private readonly router = inject(Router);
+
+  protected readonly viewport = inject(ViewportService);
 
   protected readonly loading = signal(true);
   protected readonly workers = signal<Worker[]>([]);
-  protected readonly devices = signal<Phone[]>([]);
   /** How the last look at the list went. `ok` is the only value that lets the screen claim it. */
   protected readonly status = signal<CompanyStatus>('ok');
 
-  /** The one worker whose code may be on screen. Never a set — see the class comment. */
-  protected readonly revealed = signal<string | null>(null);
-  protected readonly codeState = signal<CodeState | null>(null);
-
-  /** The phone an admin has asked to revoke and not yet confirmed. */
-  protected readonly revoking = signal<string | null>(null);
-  protected readonly revokeBusy = signal(false);
-  protected readonly revokeFailure = signal<CompanyStatus | null>(null);
-
-  /** Set while a fresh code has been asked for but not yet confirmed — it supersedes a live one. */
-  protected readonly reissuing = signal(false);
-  protected readonly codeBusy = signal(false);
-
-  protected readonly copied = signal<Copied>(null);
   /**
-   * The clipboard refused or does not exist.
+   * How the list is ordered, **in the component and not in the URL**.
    *
-   * Not a failure worth an apology: the code and the message are on screen as selectable text
-   * either way, and a hint that says so is more use than an error. `navigator.clipboard` is absent
-   * in insecure contexts and can reject when the document is not focused.
+   * A sort is a way of looking at a list, not a place in the app: nobody sends somebody else a
+   * link to "my foremen sorted by last contact", and the back gesture must mean "leave the office",
+   * not "undo my last three column taps". Keeping it out of the URL also keeps it off the router —
+   * a query parameter per tap would re-run `requiresCompanyAdmin` and, on this screen, re-read the
+   * whole list from the server to paint the same rows in a different order.
+   *
+   * It starts on the name, ascending, which is the order `GET /api/workers` already returns
+   * (`OrderBy(u => u.DisplayName)`), so the first paint does not visibly reorder itself.
    */
-  protected readonly copyFailed = signal(false);
+  protected readonly sort = signal<PeopleSort>({ key: 'name', direction: 'asc' });
 
   protected readonly addOpen = signal(false);
   protected readonly newName = signal('');
@@ -157,247 +143,108 @@ export class CompanyPage {
 
   /**
    * The company he administers, read off the credential itself — no network, and true before the
-   * first paint. It is the only thing this screen still takes from the session: signing out moved
-   * into the chrome at F7 (`session-link.ts`), and the admin's own name went with it.
+   * first paint. Signing out lives in the chrome (`session-link.ts`), and the admin's own name with
+   * it.
    */
   protected readonly companyName = computed(() => this.admins.session()?.companyName ?? null);
+
+  /**
+   * The one director this screen can honestly show: the man reading it.
+   *
+   * **Deliberately not fetched.** The company-admin API exposes workers only
+   * (`db.WorkersOf(companyId)` in `WorkerEndpoints.cs`) — there is no endpoint that lists a
+   * company's admins, and adding one was explicitly out of scope for a frontend-only increment. So
+   * the directors group holds exactly the session in this browser, marked as *you*, and the screen
+   * invents nobody. One row is the correct answer today rather than a placeholder for a better one.
+   */
+  protected readonly director = computed(() => this.admins.session());
 
   /** The list could not be confirmed with the server, so it is not a list of his company. */
   protected readonly unconfirmed = computed(() => !this.loading() && this.status() !== 'ok');
 
-  protected readonly reasonKey = computed(() => this.reasonFor(this.status()));
+  protected readonly reasonKey = computed(() => companyReasonFor(this.status()));
 
-  /** Phones that can still record, across the company. The number an owner actually asks about. */
-  protected readonly activePhoneCount = computed(
-    () => this.devices().filter((device) => device.revokedAt === null).length,
+  /** His foremen, in the order the list shows them, each with the chips for his row. */
+  protected readonly rows = computed<PersonRow[]>(() =>
+    sortWorkers(this.workers(), this.sort()).map((worker) => ({
+      worker,
+      chips: workerChips(worker),
+    })),
+  );
+
+  /**
+   * Phones across the company that can still record.
+   *
+   * Summed from the workers' own counts rather than read from `GET /api/devices`, which this screen
+   * no longer calls at all. The server counts a worker's un-revoked devices for that field
+   * (`WorkerEndpoints.ListWorkersAsync`), so the number is the same one the old rail showed, for
+   * one request instead of two — and the device *rows*, which is what an admin needs when he is
+   * taking a handset away, belong on the man's own page beside the button that does it.
+   */
+  protected readonly activePhoneCount = computed(() =>
+    this.workers().reduce((total, worker) => total + worker.activeDeviceCount, 0),
+  );
+
+  /** How many men are waiting on a code they could type. Never *which* code — see the class doc. */
+  protected readonly waitingCodeCount = computed(
+    () => this.workers().filter((worker) => worker.hasLiveCode).length,
   );
 
   constructor() {
     void this.load();
   }
 
-  /**
-   * Both lists, in parallel, and neither can take the other down.
-   *
-   * The workers list is the screen; the devices list decorates it. So the screen's status is the
-   * workers' status, and a devices call that failed on its own leaves the phones section quiet
-   * rather than turning a readable list of men into an error page.
-   */
+  /** The list, and the sentence to say if it did not arrive. */
   protected async load(): Promise<void> {
     this.loading.set(true);
-    const [workers, devices] = await Promise.all([
-      this.company.listWorkers(),
-      this.company.listDevices(),
-    ]);
-    this.workers.set(workers.workers);
-    this.devices.set(devices.devices);
-    this.status.set(workers.status);
+    const result = await this.company.listWorkers();
+    this.workers.set(result.workers);
+    this.status.set(result.status);
     this.loading.set(false);
   }
 
   /**
-   * The company's phones, grouped by the man they belong to, live ones first — the order the list
-   * is read in to answer "which of these am I taking away".
+   * Sort by a column: pick it up in its useful direction, tap it again to turn it round.
    *
-   * A computed map rather than a filter per call: the template asks for one worker's phones three
-   * times while drawing his card, and a fresh array on every ask would re-run `@for`'s diff for
-   * nothing.
+   * The useful direction differs per column ({@link DEFAULT_DIRECTION}) — a name wants A→Ž, a date
+   * wants the most recent first — so a first tap never costs a second one.
    */
-  private readonly phonesByWorker = computed(() => {
-    const grouped = new Map<string, Phone[]>();
-    for (const phone of this.devices()) {
-      if (!phone.userId) {
-        continue;
-      }
-      grouped.set(phone.userId, [...(grouped.get(phone.userId) ?? []), phone]);
-    }
-    for (const phones of grouped.values()) {
-      phones.sort((left, right) => Number(left.revokedAt !== null) - Number(right.revokedAt !== null));
-    }
-    return grouped;
-  });
-
-  protected phonesOf(workerId: string): Phone[] {
-    return this.phonesByWorker().get(workerId) ?? (NO_PHONES as Phone[]);
+  protected sortBy(key: PeopleSortKey): void {
+    const current = this.sort();
+    this.sort.set(
+      current.key === key
+        ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+        : { key, direction: DEFAULT_DIRECTION[key] },
+    );
   }
 
-  protected isOpen(workerId: string): boolean {
-    return this.revealed() === workerId;
+  /** `aria-sort` for a column header, so a screen reader reads the order the eye can see. */
+  protected ariaSort(key: PeopleSortKey): 'ascending' | 'descending' | 'none' {
+    const current = this.sort();
+    if (current.key !== key) {
+      return 'none';
+    }
+    return current.direction === 'asc' ? 'ascending' : 'descending';
+  }
+
+  protected sortedBy(key: PeopleSortKey): boolean {
+    return this.sort().key === key;
+  }
+
+  protected ascending(): boolean {
+    return this.sort().direction === 'asc';
   }
 
   /**
-   * Open one worker, closing whoever was open.
+   * One man's page.
    *
-   * The single assignment is the mechanism behind decision 13: there is no code path that leaves
-   * two workers' codes on the screen, because there is only one place a code can be.
+   * The path is built from the route table's own segments by the spec that pins it
+   * (`company-page.spec.ts` resolves it through `testing/route-table.ts`), so renaming the route
+   * without this call site fails a spec rather than silently dropping an admin on Home through the
+   * wildcard — which is exactly how F4b's defect shipped.
    */
-  protected async open(worker: Worker): Promise<void> {
-    if (this.revealed() === worker.id) {
-      this.close();
-      return;
-    }
-
-    this.close();
-    this.revealed.set(worker.id);
-    this.codeState.set({
-      workerId: worker.id,
-      loading: true,
-      status: 'ok',
-      code: null,
-      shareText: null,
-      noLiveCode: false,
-      afterIssue: false,
-    });
-
-    const result = await this.company.readCode(worker.id);
-
-    // He may have closed the card, or opened another man's, while this was in flight. Writing the
-    // answer anyway would put one worker's code under another worker's name.
-    if (this.revealed() !== worker.id) {
-      return;
-    }
-
-    this.codeState.set({
-      workerId: worker.id,
-      loading: false,
-      status: result.status,
-      code: result.code,
-      shareText: result.shareText,
-      noLiveCode: result.noLiveCode,
-      afterIssue: false,
-    });
-  }
-
-  protected close(): void {
-    this.revealed.set(null);
-    this.codeState.set(null);
-    this.revoking.set(null);
-    this.revokeFailure.set(null);
-    this.reissuing.set(false);
-    this.copied.set(null);
-    this.copyFailed.set(false);
-  }
-
-  /** Ask before superseding a code the man may already be holding. */
-  protected askReissue(): void {
-    this.reissuing.set(true);
-  }
-
-  protected cancelReissue(): void {
-    this.reissuing.set(false);
-  }
-
-  /**
-   * Issue a fresh code.
-   *
-   * Reached directly when he has none — there is nothing to destroy — and only through
-   * {@link askReissue} when he has one, because issuing kills the code he is holding.
-   */
-  protected async issue(worker: Worker): Promise<void> {
-    if (this.codeBusy()) {
-      return;
-    }
-    this.codeBusy.set(true);
-    this.reissuing.set(false);
-    this.copied.set(null);
-
-    const result = await this.company.issueCode(worker.id);
-    this.codeBusy.set(false);
-
-    if (this.revealed() !== worker.id) {
-      // He navigated away mid-flight. The code exists on the server; the list reload below is what
-      // makes that visible rather than this screen pretending nothing happened.
-      void this.load();
-      return;
-    }
-
-    this.codeState.set({
-      workerId: worker.id,
-      loading: false,
-      status: result.status,
-      code: result.code,
-      shareText: result.shareText,
-      noLiveCode: false,
-      afterIssue: true,
-    });
-
-    if (result.status === 'ok') {
-      // `has_live_activation_code` on the list row is now stale for this man, and it is the cue
-      // that decides whether the next admin to look reads a code or issues one over it.
-      void this.load();
-    }
-  }
-
-  protected askRevoke(device: Phone): void {
-    this.revoking.set(device.id);
-    this.revokeFailure.set(null);
-  }
-
-  protected cancelRevoke(): void {
-    this.revoking.set(null);
-    this.revokeFailure.set(null);
-  }
-
-  /**
-   * Withdraw a phone's credential.
-   *
-   * **Never reported as failed when the server did not answer.** Revoking is idempotent, so a
-   * retry is harmless — but telling an owner "it did not work" about a revoke that in fact went
-   * through would leave him believing a phone he has taken away can still record.
-   */
-  protected async revoke(device: Phone): Promise<void> {
-    if (this.revokeBusy()) {
-      return;
-    }
-    this.revokeBusy.set(true);
-    const result = await this.company.revokeDevice(device.id);
-    this.revokeBusy.set(false);
-
-    if (result.status === 'ok') {
-      this.revoking.set(null);
-      this.revokeFailure.set(null);
-      await this.load();
-      return;
-    }
-
-    this.revokeFailure.set(result.status);
-  }
-
-  /** The sentence for a status, or null when there is nothing to explain. */
-  protected reasonFor(status: CompanyStatus | null): string | null {
-    return status === null || status === 'ok' ? null : COMPANY_REASON_KEYS[status];
-  }
-
-  /** Whether a failure happened without the server ever giving a verdict. */
-  protected unconfirmedAction(status: CompanyStatus | null): boolean {
-    return status !== null && !serverAnswered(status);
-  }
-
-  protected onCopyCode(): void {
-    const code = this.codeState()?.code?.code;
-    if (code) {
-      void this.copy(code, 'code');
-    }
-  }
-
-  protected onCopyMessage(): void {
-    const message = this.codeState()?.shareText;
-    if (message) {
-      void this.copy(message, 'message');
-    }
-  }
-
-  private async copy(value: string, what: Exclude<Copied, null>): Promise<void> {
-    this.copyFailed.set(false);
-    try {
-      await navigator.clipboard.writeText(value);
-      this.copied.set(what);
-    } catch {
-      // An insecure context, a browser without the API, or a document that lost focus. The value
-      // is on screen and selectable either way, so this is a hint and not an error.
-      this.copied.set(null);
-      this.copyFailed.set(true);
-    }
+  protected open(worker: Worker): void {
+    void this.router.navigate(['/company/worker', worker.id]);
   }
 
   protected openAdd(): void {
@@ -432,11 +279,13 @@ export class CompanyPage {
   }
 
   /**
-   * Add a foreman, and open his first code straight away.
+   * Add a foreman, and go straight to his page.
    *
-   * Adding a man you cannot then activate is not a finished action, which is why the endpoint
-   * returns the worker and his first code together — and why this ends by opening his card rather
-   * than by congratulating the admin and leaving him to find the button.
+   * Adding a man you cannot then activate is not a finished action — which is why this ends on his
+   * own screen, where his first code is waiting, rather than congratulating the admin and leaving
+   * him to find the row. `POST /api/workers` returns that code in the response, and his page reads
+   * it back with the GET that never spends one, so nothing here has to carry a code across a
+   * navigation.
    */
   protected async add(): Promise<void> {
     const name = this.newName().trim();
@@ -457,35 +306,19 @@ export class CompanyPage {
       return;
     }
 
-    const worker = result.worker;
     this.addOpen.set(false);
     this.newName.set('');
     this.newEmail.set('');
+    this.open(result.worker);
+  }
 
-    await this.load();
+  /** The sentence for a status, or null when there is nothing to explain. */
+  protected reasonFor(status: CompanyStatus | null): string | null {
+    return companyReasonFor(status);
+  }
 
-    // His code is already in the response, so this opens on the code rather than fetching it
-    // again — and it is the *only* code on screen, exactly as every other reveal is.
-    this.revealed.set(worker.id);
-    this.codeState.set({
-      workerId: worker.id,
-      loading: false,
-      status: 'ok',
-      code: result.code,
-      shareText: null,
-      noLiveCode: result.code === null,
-      afterIssue: false,
-    });
-
-    if (result.code) {
-      // The ready-made message is a second call and its failure costs nothing: the code is in
-      // hand, and the admin can still read it out.
-      const withText = await this.company.readCode(worker.id);
-      if (this.revealed() === worker.id && withText.status === 'ok' && withText.shareText) {
-        this.codeState.update((state) =>
-          state ? { ...state, shareText: withText.shareText, code: withText.code ?? state.code } : state,
-        );
-      }
-    }
+  /** Whether a failure happened without the server ever giving a verdict. */
+  protected unconfirmedAction(status: CompanyStatus | null): boolean {
+    return status !== null && !serverAnswered(status);
   }
 }

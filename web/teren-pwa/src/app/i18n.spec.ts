@@ -10,7 +10,7 @@ import { CONFIRM_BANNERS } from './core/confirm/confirm-banner';
 import { CONFIRM_FAILURES } from './core/confirm/confirm.service';
 import { PROFILE_ROLES } from './core/identity/profile.service';
 import { REPORT_FAILURES } from './core/report/report.service';
-import { COMPANY_REASON_KEYS } from './features/company/company-page';
+import { COMPANY_REASON_KEYS } from './features/company/company-reason';
 import { REASON_KEYS } from './features/pending/pending-page';
 import { AVAILABLE_LANGUAGES, DEFAULT_LANGUAGE } from './i18n';
 

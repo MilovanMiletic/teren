@@ -14,6 +14,7 @@ import { ProfilePage } from '../../features/profile/profile-page';
 import { guardedRoutes } from '../../testing/route-harness';
 import { routeUrlFor } from '../../testing/route-table';
 import { CompanyPage } from '../../features/company/company-page';
+import { WorkerPage } from '../../features/company/worker-page';
 import { requiresCompanyAdmin, requiresDevice, requiresNoDevice } from './device.guard';
 import { RETURN_URL_PARAM } from './return-url';
 import { SESSION_STORAGE_KEY, Session } from './session';
@@ -62,6 +63,7 @@ describe('the device gate', () => {
   let pending: string;
   let profile: string;
   let company: string;
+  let worker: string;
   let deepLink: string;
 
   beforeAll(async () => {
@@ -73,6 +75,7 @@ describe('the device gate', () => {
     pending = await routeUrlFor(PendingPage);
     profile = await routeUrlFor(ProfilePage);
     company = await routeUrlFor(CompanyPage);
+    worker = await routeUrlFor(WorkerPage);
     deepLink = `${diary}?${ARCHIVE_ENTRY_PARAM}=${ENTRY_ID}`;
   });
 
@@ -322,12 +325,14 @@ describe('the device gate', () => {
         expect(route.canMatch ?? []).toEqual([]);
       } else if (url === welcome || url === login) {
         expect(route.canMatch, url).toEqual([requiresNoDevice]);
-      } else if (url === company) {
-        // The one screen gated on an *admin* credential rather than on this phone's device
+      } else if (url === company || url === worker) {
+        // The two screens gated on an *admin* credential rather than on this phone's device
         // session. A company admin signs in with a password and never holds a device token, so
         // `requiresDevice` here would answer a valid sign-in by demanding an activation code he
         // cannot have. Named explicitly rather than folded into the branch below, so that adding
-        // a second admin screen is a decision someone has to write down here.
+        // an admin screen is a decision someone has to write down here — which is exactly what
+        // happened when one man's page (`/company/worker/:workerId`) joined the table on
+        // 2026-09-01 and this spec went red until it was said out loud.
         expect(route.canMatch, url).toEqual([requiresCompanyAdmin]);
       } else {
         expect(route.canMatch, url).toEqual([requiresDevice]);

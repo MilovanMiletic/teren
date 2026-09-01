@@ -1,33 +1,20 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { TranslocoTestingModule } from '@jsverse/transloco';
 
-import { COMPANY_GATEWAY, CompanyGateway } from '../../core/company/company-gateway';
-import {
-  ActivationCodeResponse,
-  CreateWorkerRequest,
-  CreateWorkerResponse,
-  DeviceListResponse,
-  DeviceResponse,
-  ShareTextResponse,
-  WorkerListResponse,
-} from '../../core/company/company-types';
+import { COMPANY_GATEWAY } from '../../core/company/company-gateway';
 import { MockCompanyGateway } from '../../core/company/mock-company-gateway';
-import {
-  ADMIN_SESSION_STORAGE_KEY,
-  AdminSession,
-  readStoredAdminSession,
-} from '../../core/session/admin-session';
-import { waitUntil } from '../../testing/flush';
-import { routeUrlFor } from '../../testing/route-table';
-import { LoginPage } from '../auth/login-page';
+import { ADMIN_SESSION_STORAGE_KEY, AdminSession } from '../../core/session/admin-session';
+import { KnobbedGateway, httpError } from '../../testing/company-gateway-double';
+import { routePathFor } from '../../testing/route-table';
+import { ViewportService } from '../../ui/viewport.service';
 import en from '../../../../public/i18n/en.json';
 import sr from '../../../../public/i18n/sr.json';
 import { CompanyPage } from './company-page';
+import { WorkerPage } from './worker-page';
 
 /** A signed-in company admin, as `POST /auth/login` left him in this browser. */
 const ADMIN: AdminSession = {
@@ -41,119 +28,27 @@ const ADMIN: AdminSession = {
   signedInAt: '2026-08-31T08:00:00.000Z',
 };
 
-function httpError(status: number, body: unknown = { detail: 'no' }): HttpErrorResponse {
-  return new HttpErrorResponse({ status, statusText: 'x', error: body });
-}
-
-interface Deferred {
-  promise: Promise<void>;
-  release: () => void;
-}
-
-function deferred(): Deferred {
-  let release = (): void => undefined;
-  const promise = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  return { promise, release };
-}
-
-/**
- * `MockCompanyGateway` with knobs.
- *
- * The mock already models the backend the screen was written against — one company, two foremen,
- * three phones, one live code, and issuing that really supersedes — so the happy paths run through
- * it untouched and a spec can assert on what was actually asked for. What it cannot do is refuse,
- * because the endpoint it models does not refuse; these knobs supply the verdicts the screen has
- * to be honest about, and the gates let a spec look at the screen *while* a call is in flight.
- *
- * Hand-written, with plain fields, for the reason the house style has settled on: a `vi.mock` of
- * the whole module would replace the narrowing between the wire and the glass, which on this
- * screen is half of what is under test.
- */
-class KnobbedGateway implements CompanyGateway {
-  readonly real = new MockCompanyGateway();
-
-  workersError: unknown = null;
-  devicesError: unknown = null;
-  readError: unknown = null;
-  issueError: unknown = null;
-  addError: unknown = null;
-  revokeError: unknown = null;
-
-  revokeGate: Deferred | null = null;
-  issueGate: Deferred | null = null;
-
-  /** How many times each list was actually asked for, so a reload can be told from a repaint. */
-  workerListings = 0;
-  deviceListings = 0;
-
-  get reads(): string[] {
-    return this.real.reads;
-  }
-  get issues(): string[] {
-    return this.real.issues;
-  }
-  get revokes(): string[] {
-    return this.real.revokes;
-  }
-  get added(): CreateWorkerRequest[] {
-    return this.real.added;
-  }
-
-  async listWorkers(): Promise<WorkerListResponse> {
-    this.workerListings += 1;
-    this.refuse(this.workersError);
-    return this.real.listWorkers();
-  }
-
-  async listDevices(): Promise<DeviceListResponse> {
-    this.deviceListings += 1;
-    this.refuse(this.devicesError);
-    return this.real.listDevices();
-  }
-
-  async shareText(workerId: string): Promise<ShareTextResponse> {
-    this.refuse(this.readError);
-    return this.real.shareText(workerId);
-  }
-
-  async issueCode(workerId: string): Promise<ActivationCodeResponse> {
-    await this.issueGate?.promise;
-    this.refuse(this.issueError);
-    return this.real.issueCode(workerId);
-  }
-
-  async addWorker(request: CreateWorkerRequest): Promise<CreateWorkerResponse> {
-    this.refuse(this.addError);
-    return this.real.addWorker(request);
-  }
-
-  async revokeDevice(deviceId: string): Promise<DeviceResponse> {
-    await this.revokeGate?.promise;
-    this.refuse(this.revokeError);
-    return this.real.revokeDevice(deviceId);
-  }
-
-  private refuse(error: unknown): void {
-    if (error) {
-      throw error;
-    }
-  }
-}
-
 describe('CompanyPage', () => {
   let fixture: ComponentFixture<CompanyPage>;
   let element: HTMLElement;
   let router: Router;
   let gateway: KnobbedGateway;
-  let writeText: ReturnType<typeof vi.fn>;
 
-  /** Resolved from the shipped route table once, before any test — see `profile-page.spec.ts`. */
-  let login: string;
+  /** Stubbed the way `archive-page.spec.ts` stubs it: the device class decides what is rendered. */
+  const viewport = { atLeastMedium: () => true, expanded: () => true };
+
+  /**
+   * The worker route's own base, resolved from the shipped table by the component class.
+   *
+   * Never spelled out. `company/worker/:workerId` renamed without this call site is precisely the
+   * F4b defect — a navigation that builds clean, type-checks, and drops an admin on Home through
+   * the wildcard.
+   */
+  let workerBase: string;
 
   beforeAll(async () => {
-    login = await routeUrlFor(LoginPage);
+    const path = await routePathFor(WorkerPage);
+    workerBase = `/${path.replace(/\/:[A-Za-z0-9_]+$/, '')}`;
   });
 
   /**
@@ -162,7 +57,7 @@ describe('CompanyPage', () => {
    * The **real** `CompanyService` and the **real** `AdminSessionService` are used, seeded through
    * `localStorage`: the narrowing between a wire response and a row on the glass, and the "is
    * anybody signed in" question that decides whether a request is sent at all, are both part of
-   * what this screen has to get right. A stubbed service would prove nothing about either.
+   * what this screen has to get right.
    */
   async function render(signedIn = true): Promise<void> {
     localStorage.clear();
@@ -186,7 +81,11 @@ describe('CompanyPage', () => {
           preloadLangs: true,
         }),
       ],
-      providers: [provideRouter([]), { provide: COMPANY_GATEWAY, useValue: gateway }],
+      providers: [
+        provideRouter([]),
+        { provide: COMPANY_GATEWAY, useValue: gateway },
+        { provide: ViewportService, useValue: viewport as unknown as ViewportService },
+      ],
     });
 
     fixture = TestBed.createComponent(CompanyPage);
@@ -200,10 +99,7 @@ describe('CompanyPage', () => {
    * Drive change detection until the promise chains the screen started have all landed.
    *
    * The macrotask yield is what makes this reliable rather than lucky: the app is zoneless, so
-   * `whenStable()` knows nothing about an un-tracked `void this.load()`, and this screen chains
-   * three and four deep — add a foreman, reload both lists, then fetch his message. A yield to the
-   * timer queue drains the whole microtask queue each turn, so the depth of the chain stops
-   * mattering.
+   * `whenStable()` knows nothing about an un-tracked `void this.load()`.
    */
   async function settle(): Promise<void> {
     for (let turn = 0; turn < 4; turn += 1) {
@@ -222,13 +118,27 @@ describe('CompanyPage', () => {
     return [...element.querySelectorAll<HTMLButtonElement>('button')];
   }
 
+  /**
+   * A button by what it says — its label **or its accessible name**.
+   *
+   * The head row's three controls are icons now (founder, 2026-09-01), so their only name is the
+   * `aria-label`. A spec that could not see them would be a spec that stopped covering the way an
+   * owner adds a foreman, and it would have gone green while doing it.
+   */
   function button(label: string): HTMLButtonElement {
-    const found = buttons().find((candidate) => candidate.textContent?.includes(label));
+    const found = buttons().find(
+      (candidate) =>
+        candidate.textContent?.includes(label) ||
+        candidate.getAttribute('aria-label')?.includes(label),
+    );
     if (!found) {
       throw new Error(
         `no button reading "${label}" on screen; there are: ` +
           buttons()
-            .map((candidate) => `"${candidate.textContent?.trim()}"`)
+            .map(
+              (candidate) =>
+                `"${candidate.textContent?.trim() || candidate.getAttribute('aria-label')}"`,
+            )
             .join(', '),
       );
     }
@@ -240,36 +150,12 @@ describe('CompanyPage', () => {
     await settle();
   }
 
-  /** Open one man's card, the way an admin does: by tapping his row. */
-  async function openWorker(name: string): Promise<void> {
-    const summary = [...element.querySelectorAll<HTMLButtonElement>('.worker__summary')].find(
-      (candidate) => candidate.textContent?.includes(name),
-    );
-    if (!summary) {
-      throw new Error(`no worker row for ${name}`);
-    }
-    summary.click();
-    await settle();
-  }
-
-  /** One phone's row, so an assertion about *this* handset cannot be answered by another. */
-  function phoneRow(name: string): string {
-    const row = [...element.querySelectorAll('.phone')].find((candidate) =>
-      candidate.textContent?.includes(name),
-    );
-    if (!row) {
-      throw new Error(`no phone row for ${name}`);
-    }
-    return row.textContent ?? '';
-  }
-
-  function stubClipboard(impl: () => Promise<void> = () => Promise.resolve()): void {
-    writeText = vi.fn(impl);
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText },
-      configurable: true,
-      writable: true,
-    });
+  /** The people in the order the screen lists them, whichever rendering is on. */
+  function listedNames(): string[] {
+    const rows = viewport.atLeastMedium()
+      ? element.querySelectorAll('tbody tr.person--open .person__name')
+      : element.querySelectorAll('.row-button .person__name');
+    return [...rows].map((node) => node.textContent?.trim() ?? '');
   }
 
   async function type(selector: string, value: string): Promise<void> {
@@ -286,53 +172,73 @@ describe('CompanyPage', () => {
     vi.clearAllMocks();
     localStorage.clear();
     gateway = new KnobbedGateway();
-    stubClipboard();
+    viewport.atLeastMedium = () => true;
+    viewport.expanded = () => true;
   });
 
   afterEach(() => {
     localStorage.clear();
-    Reflect.deleteProperty(navigator, 'clipboard');
   });
 
-  // ---- Loading the office -------------------------------------------------------------------
+  // ---- Reading the office --------------------------------------------------------------------
 
   describe('loading', () => {
-    it('resolves the loading state into his men and their phones', async () => {
+    it('resolves the loading state into the company’s people, by role', async () => {
       await render();
 
       expect(text()).not.toContain('Učitavanje radnika…');
+      // The owner group is the session in this browser, marked as his own row. The heading is
+      // `profile.role.company_admin` — one role, one name across the app (founder, 2026-09-01).
+      expect(text()).toContain('Vlasnik firme');
+      expect(text()).toContain('Milan Gradnja');
+      expect(text()).toContain('vi');
+      // And his foremen, with the chips that decide what he does next.
+      expect(text()).toContain('Poslovođe');
       expect(text()).toContain('Zoran Jovanović');
+      expect(text()).toContain('zoran.jovanovic');
       expect(text()).toContain('Marko Marković');
-      // The chips that decide the admin's next move, read off the two lists together.
       expect(text()).toContain('Telefon aktivan');
       expect(text()).toContain('Nema telefon');
       expect(text()).toContain('Kod ga čeka');
-      // Live phones across the company: two of the three, the third being withdrawn.
-      expect(element.querySelector('.summary__row:last-child .summary__value')?.textContent).toBe(
-        '2',
-      );
     });
 
-    it('renders Serbian by default — this screen hands out credentials in the owner’s language', async () => {
+    it('renders Serbian by default — this is the owner’s own office', async () => {
       await render();
 
       expect(text()).toContain('Firma');
-      expect(text()).toContain('POSLOVOĐE');
-      expect(text()).not.toContain('FOREMEN');
+      expect(text()).toContain('Poslovođe');
+      expect(text()).not.toContain('Foremen');
+    });
+
+    /**
+     * The three numbers, and the third one is the point: it counts the men a code is waiting for
+     * without the screen ever holding a code.
+     */
+    it('counts his men, the phones that can still record, and the codes that are waiting', async () => {
+      await render();
+
+      const values = [...element.querySelectorAll('.stats__value')].map((n) =>
+        n.textContent?.trim(),
+      );
+      expect(values).toEqual(['2', '1', '1']);
+      // Summed from the workers' own device counts: this screen does not read the device list.
+      expect(gateway.deviceListings).toBe(0);
+    });
+
+    it('is honest about a man who has never called home', async () => {
+      await render();
+
+      // Marko's `last_seen_at` is null on the wire, and null is a word here, never a blank.
+      expect(text()).toContain('Nikad');
     });
 
     it('names the company, and the man whose session the way out would end', async () => {
       await render();
 
       expect(text()).toContain('Vodoinstal Petrović d.o.o.');
-      // His own name is no longer a sentence in the rail. F7 moved the session into the chrome,
-      // and "Prijavljeni ste kao …" went with it: it was content *about* chrome, and it is worth
-      // more as the accessible name of the control that acts on it — which is where a man on a
-      // shared office tablet needs to be told whom he is about to sign out.
-      expect(text()).not.toContain('Prijavljeni ste kao');
-      expect(
-        element.querySelector<HTMLButtonElement>('.session')?.getAttribute('aria-label'),
-      ).toBe('Odjavi se — Milan Gradnja');
+      expect(element.querySelector<HTMLButtonElement>('.session')?.getAttribute('aria-label')).toBe(
+        'Odjavi se — Milan Gradnja',
+      );
     });
 
     /**
@@ -362,7 +268,6 @@ describe('CompanyPage', () => {
 
       expect(text()).toContain('Nije provereno na serveru');
       expect(text()).toContain('Server trenutno ne odgovara.');
-      // …and never the empty-company story, which would be a claim it has no grounds for.
       expect(text()).not.toContain('Dodajte prvog i dajte mu kod.');
     });
 
@@ -389,424 +294,194 @@ describe('CompanyPage', () => {
       expect(text()).toContain('Nema interneta, pa ništa nije moglo da se proveri na serveru.');
     });
 
-    /**
-     * The men are the screen; the phones decorate it. A devices call that failed on its own must
-     * not turn a readable list of foremen into an error page.
-     */
-    it('keeps the men readable when only the phones could not be listed', async () => {
-      gateway.devicesError = httpError(500);
-      await render();
-
-      expect(text()).toContain('Zoran Jovanović');
-      expect(text()).not.toContain('Nije provereno na serveru');
-    });
-
     it('sends nothing at all when this browser holds no admin credential', async () => {
       await render(false);
 
       expect(text()).toContain('Niste prijavljeni, pa ništa nije moglo da se pročita.');
-      expect(gateway.reads).toEqual([]);
-    });
-  });
-
-  // ---- Reading a code -----------------------------------------------------------------------
-
-  describe('revealing a code', () => {
-    /**
-     * §5, and the reversal that put the plaintext back in the database: **looking at a code never
-     * spends it**. The admin sends it by Viber and taps back an hour later to read it aloud; if
-     * looking re-issued, it would kill the code the man is at that moment typing.
-     */
-    it('shows the live code without minting a new one', async () => {
-      await render();
-
-      await openWorker('Zoran Jovanović');
-
-      expect(element.querySelector('[data-code]')?.textContent?.trim()).toBe(
-        MockCompanyGateway.LIVE_CODE,
-      );
-      expect(text()).toContain('KOD ZA PRIDRUŽIVANJE');
-      expect(text()).toContain('Važi do');
-      // No relay exists in any environment today, and the admin has to know he is the channel.
-      expect(text()).toContain('Ništa nije poslato imejlom.');
-
-      expect(gateway.reads).toEqual([MockCompanyGateway.ZORAN_ID]);
-      expect(gateway.issues).toEqual([]);
+      expect(gateway.workerListings).toBe(0);
     });
 
-    /**
-     * Decision 13, as a property of the screen rather than of a comment: there is no state in
-     * which two workers' codes are visible, because there is only one place a code can be.
-     */
-    it('never holds two men’s codes at once', async () => {
+    it('reloads the list on demand, and spends nothing doing it', async () => {
       await render();
+      expect(gateway.workerListings).toBe(1);
 
-      await openWorker('Zoran Jovanović');
-      expect(text()).toContain(MockCompanyGateway.LIVE_CODE);
-
-      await openWorker('Marko Marković');
-
-      expect(text()).not.toContain(MockCompanyGateway.LIVE_CODE);
-      expect(element.querySelectorAll('[data-code]')).toHaveLength(0);
-    });
-
-    it('closes the card again on a second tap', async () => {
-      await render();
-
-      await openWorker('Zoran Jovanović');
-      await openWorker('Zoran Jovanović');
-
-      expect(element.querySelector('[data-code]')).toBeNull();
-    });
-
-    /**
-     * `409 no_live_activation_code` is the server stating a fact, not refusing. The screen offers
-     * the remedy instead of an apology — and issuing here destroys nothing, so it acts on the
-     * first tap rather than asking.
-     */
-    it('offers to make one for a man who has none, and acts on the first tap', async () => {
-      await render();
-
-      await openWorker('Marko Marković');
-
-      expect(text()).toContain('Trenutno nema kod koji bi mogao da ukuca.');
-      expect(text()).not.toContain('Kod nije mogao da se pročita');
-
-      await press('Napravi kod');
-
-      expect(gateway.issues).toEqual([MockCompanyGateway.MARKO_ID]);
-      expect(element.querySelector('[data-code]')?.textContent).toContain('NEW');
-    });
-
-    it('says why a code could not be read, and shows no code at all', async () => {
-      gateway.readError = httpError(403);
-      await render();
-
-      await openWorker('Zoran Jovanović');
-
-      expect(text()).toContain('Kod nije mogao da se pročita');
-      expect(text()).toContain('Ovaj nalog to ne sme.');
-      expect(element.querySelector('[data-code]')).toBeNull();
-    });
-  });
-
-  // ---- Re-issuing ---------------------------------------------------------------------------
-
-  describe('re-issuing a code', () => {
-    it('asks before superseding a code the man may already be holding', async () => {
-      await render();
-      await openWorker('Zoran Jovanović');
-
-      await press('Napravi novi kod');
-
-      // The question names the consequence rather than saying "are you sure".
-      expect(text()).toContain('Kod iznad prestaje da važi čim se napravi novi.');
-      // Nothing has been spent yet, and the code he holds is still the one on screen.
-      expect(gateway.issues).toEqual([]);
-      expect(text()).toContain(MockCompanyGateway.LIVE_CODE);
-    });
-
-    it('leaves the live code alone when the question is declined', async () => {
-      await render();
-      await openWorker('Zoran Jovanović');
-      await press('Napravi novi kod');
-
-      await press('Otkaži');
-
-      expect(gateway.issues).toEqual([]);
-      expect(element.querySelector('[data-code]')?.textContent?.trim()).toBe(
-        MockCompanyGateway.LIVE_CODE,
-      );
-    });
-
-    /**
-     * **The property this feature exists to enforce.**
-     *
-     * Issuing supersedes: the previous code stops working the instant a new one exists. A screen
-     * that still showed the old string would have an owner reading a dead code down the phone
-     * while a foreman typed it at a locked door — the exact failure the plan reversed its
-     * "hash only" design to make impossible.
-     */
-    it('replaces the superseded code on screen, and never shows it again', async () => {
-      await render();
-      await openWorker('Zoran Jovanović');
-      await press('Napravi novi kod');
-
-      await press('Da, napravi novi');
-
-      const shown = element.querySelector('[data-code]')?.textContent?.trim();
-      expect(gateway.issues).toEqual([MockCompanyGateway.ZORAN_ID]);
-      expect(shown).toBeTruthy();
-      expect(shown).not.toBe(MockCompanyGateway.LIVE_CODE);
-      expect(text()).not.toContain(MockCompanyGateway.LIVE_CODE);
-
-      // And the message that carries it carries the *new* code, not the dead one.
-      await press('Kopiraj poruku');
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining(shown ?? 'nothing'));
-      expect(writeText).not.toHaveBeenCalledWith(
-        expect.stringContaining(MockCompanyGateway.LIVE_CODE),
-      );
-    });
-
-    it('shows the work in progress instead of an idle button', async () => {
-      await render();
-      await openWorker('Zoran Jovanović');
-      await press('Napravi novi kod');
-
-      gateway.issueGate = deferred();
-      button('Da, napravi novi').click();
+      element.querySelector<HTMLButtonElement>('.head__reload')?.click();
       await settle();
 
-      expect(text()).toContain('Pravljenje koda…');
-      expect(button('Pravljenje koda…').disabled).toBe(true);
-
-      gateway.issueGate.release();
-      await waitUntil(() => !text().includes('Pravljenje koda…'), {
-        onTick: () => fixture.detectChanges(),
-        describe: 'the code to arrive',
-      });
-      expect(element.querySelector('[data-code]')).not.toBeNull();
-    });
-
-    /**
-     * The distinction `serverAnswered` exists for, on the more dangerous of the two mutations.
-     *
-     * A refused issue changed nothing. An issue that never got a verdict **may well have
-     * superseded the code the man is holding** — so the screen must not call it a failure and
-     * invite another press, because a second press would supersede a code that already exists.
-     */
-    it('does not call an unanswered issue a failure', async () => {
-      gateway.issueError = httpError(500);
-      await render();
-      await openWorker('Zoran Jovanović');
-      await press('Napravi novi kod');
-
-      await press('Da, napravi novi');
-
-      expect(text()).toContain(
-        'Server nije odgovorio, pa se ne zna da li je napravljen novi kod.',
-      );
-      // Never the read-failure sentence: nobody was reading, and the previous code may be dead.
-      expect(text()).not.toContain('Kod nije mogao da se pročita');
-      expect(text()).not.toContain(MockCompanyGateway.LIVE_CODE);
-    });
-
-    it('says plainly when the server refused the issue, because nothing changed', async () => {
-      gateway.issueError = httpError(403);
-      await render();
-      await openWorker('Zoran Jovanović');
-      await press('Napravi novi kod');
-
-      await press('Da, napravi novi');
-
-      expect(text()).toContain('Ovaj nalog to ne sme.');
-      expect(text()).not.toContain('Server nije odgovorio, pa se ne zna');
+      expect(gateway.workerListings).toBe(2);
+      expect(text()).toContain('Zoran Jovanović');
+      // Refreshing is a read of the office, never a mint or a revoke.
+      expect(gateway.issues).toEqual([]);
+      expect(gateway.revokes).toEqual([]);
     });
   });
 
-  // ---- The share text -----------------------------------------------------------------------
+  // ---- Decision 13: no code may exist on this screen -----------------------------------------
 
-  describe('sharing a code', () => {
+  describe('codes are not on this screen at all', () => {
     /**
-     * Decision 13 made easy rather than merely required: **one worker's ready-made message, for
-     * one chat**. A message carrying six codes and six names in a site group lets any man in that
-     * chat activate a phone under another man's name, and every entry he then records is signed
-     * with it.
+     * **Hard rule 1, as a property of the running screen.**
+     *
+     * A code plus a username activates a phone, so a message carrying several names and codes
+     * pasted into a site group chat lets any man in that chat record evidence signed with another
+     * man's name. The old office kept one code on screen at a time by arithmetic; this one cannot
+     * hold a code at all — it never even asks for one.
      */
-    it('copies one man’s message, naming him and nobody else', async () => {
+    it('never reads, shows or copies a code', async () => {
       await render();
-      await openWorker('Zoran Jovanović');
 
-      await press('Kopiraj poruku');
-
-      expect(writeText).toHaveBeenCalledTimes(1);
-      const message = writeText.mock.calls[0][0] as string;
-      expect(message).toContain('Zoran Jovanović');
-      expect(message).toContain(MockCompanyGateway.LIVE_CODE);
-      expect(message).not.toContain('Marko Marković');
-      expect(text()).toContain('Poruka je kopirana. Pošaljite je samo njemu.');
-    });
-
-    it('copies the bare code for reading down a telephone', async () => {
-      await render();
-      await openWorker('Zoran Jovanović');
-
-      await press('Kopiraj kod');
-
-      expect(writeText).toHaveBeenCalledWith(MockCompanyGateway.LIVE_CODE);
-      expect(text()).toContain('Kod je kopiran.');
-    });
-
-    it('says out loud that a code goes to one man and not into a group', async () => {
-      await render();
-      await openWorker('Zoran Jovanović');
-
-      expect(text()).toContain('Jedan čovek, jedna poruka.');
-      // There is no bulk export anywhere on the screen — the whole point of decision 13.
-      expect(buttons().some((candidate) => /svi|sve kod/i.test(candidate.textContent ?? ''))).toBe(
+      expect(gateway.reads).toEqual([]);
+      expect(gateway.issues).toEqual([]);
+      expect(element.querySelector('[data-code]')).toBeNull();
+      expect(text()).not.toContain(MockCompanyGateway.LIVE_CODE);
+      expect(buttons().some((b) => /kopiraj|copy|podeli|share/i.test(b.textContent ?? ''))).toBe(
         false,
       );
+      // …and there is no bulk export anywhere, which is the whole point of decision 13.
+      expect(buttons().some((b) => /svi|sve kod/i.test(b.textContent ?? ''))).toBe(false);
+    });
+
+    it('shows only *that* a code is waiting, which is a boolean', async () => {
+      await render();
+
+      const row = [...element.querySelectorAll('tr.person--open')].find((candidate) =>
+        candidate.textContent?.includes('Zoran'),
+      );
+      expect(row?.textContent).toContain('Kod ga čeka');
+      expect(row?.textContent).not.toContain(MockCompanyGateway.LIVE_CODE);
     });
 
     /**
-     * `navigator.clipboard` is absent in an insecure context and rejects when the document is not
-     * focused — both entirely ordinary on an office tablet. The code is selectable text either
-     * way, so this is a hint and never an error, and it must not claim a copy that did not happen.
+     * The structural half of the same rule, asserted against the shipped source rather than the DOM
+     * — because what is being ruled out is a *future* edit. A screen that cannot reach the code
+     * endpoints cannot be made to leak a code by a well-meaning patch, and moving codes to a
+     * per-worker route is what bought that.
      */
-    it('falls back to a hint when the clipboard refuses', async () => {
-      stubClipboard(() => Promise.reject(new Error('not focused')));
-      await render();
-      await openWorker('Zoran Jovanović');
+    it('holds no code path to a code, or to the clipboard', () => {
+      // `people.ts` is in the list because the list imports it: the chips and the sort live there,
+      // and a code reaching the glass through a helper is a code reaching the glass. The two shared
+      // `ui/` components joined it when the rail became a popover and a dialog — two new surfaces,
+      // and the whole point of decision 13 is that *no* surface may carry a code.
+      const source = [
+        ...['company-page.ts', 'company-page.html', 'people.ts'].map((file) =>
+          readFileSync(join(process.cwd(), 'src', 'app', 'features', 'company', file), 'utf8'),
+        ),
+        ...['info-popover.ts', 'modal-sheet.ts'].map((file) =>
+          readFileSync(join(process.cwd(), 'src', 'app', 'ui', file), 'utf8'),
+        ),
+      ]
+        .join('\n')
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .replace(/<!--[\s\S]*?-->/g, ' ')
+        .replace(/\/\/[^\n]*/g, ' ');
 
-      await press('Kopiraj kod');
-
-      expect(text()).toContain('Aplikacija nije uspela da koristi ostavu.');
-      expect(text()).not.toContain('Kod je kopiran.');
-      // The value itself never leaves the glass.
-      expect(element.querySelector('[data-code]')?.textContent?.trim()).toBe(
-        MockCompanyGateway.LIVE_CODE,
-      );
-    });
-
-    it('survives a browser with no clipboard API at all', async () => {
-      Reflect.deleteProperty(navigator, 'clipboard');
-      await render();
-      await openWorker('Zoran Jovanović');
-
-      await press('Kopiraj kod');
-
-      expect(text()).toContain('Aplikacija nije uspela da koristi ostavu.');
+      for (const forbidden of ['readCode', 'issueCode', 'shareText', 'clipboard', 'data-code']) {
+        expect(source, `the people list must not reach for ${forbidden}`).not.toContain(forbidden);
+      }
     });
   });
 
-  // ---- Revoking a phone ---------------------------------------------------------------------
+  // ---- One man's page ------------------------------------------------------------------------
 
-  describe('revoking a phone', () => {
-    it('asks first, naming which phone and whose', async () => {
+  describe('opening a foreman', () => {
+    it('opens his own page from his row, by the path the route table registers', async () => {
       await render();
-      await openWorker('Zoran Jovanović');
 
-      await press('Opozovi');
+      const row = [...element.querySelectorAll<HTMLElement>('tr.person--open')].find((candidate) =>
+        candidate.textContent?.includes('Zoran'),
+      );
+      row?.click();
+      await settle();
 
-      expect(text()).toContain('Opozvati Zoranov telefon — Zoran Jovanović?');
-      expect(gateway.revokes).toEqual([]);
+      expect(router.navigate).toHaveBeenCalledWith([workerBase, MockCompanyGateway.ZORAN_ID]);
+    });
+
+    /** The row is a pointer convenience; the button inside it is what a keyboard reaches. */
+    it('opens him once, not twice, when the control inside the row is used', async () => {
+      await render();
+
+      const link = [...element.querySelectorAll<HTMLButtonElement>('.person__link')].find(
+        (candidate) => candidate.textContent?.includes('Zoran'),
+      );
+      link?.click();
+      await settle();
+
+      expect(router.navigate).toHaveBeenCalledTimes(1);
+      expect(router.navigate).toHaveBeenCalledWith([workerBase, MockCompanyGateway.ZORAN_ID]);
+    });
+
+    it('offers no page for the director, because there is no endpoint behind one', async () => {
+      await render();
+
+      const rows = [...element.querySelectorAll('tr.person')].filter((row) =>
+        row.textContent?.includes('Milan Gradnja'),
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].classList.contains('person--open')).toBe(false);
+      expect(rows[0].querySelector('button')).toBeNull();
+    });
+  });
+
+  // ---- Sorting ------------------------------------------------------------------------------
+
+  describe('sorting', () => {
+    it('starts in the order the server already sends, so the first paint does not reshuffle', async () => {
+      await render();
+
+      expect(listedNames()).toEqual(['Marko Marković', 'Zoran Jovanović']);
+      expect(element.querySelector('.col--person')?.getAttribute('aria-sort')).toBe('ascending');
+    });
+
+    it('turns a column round on a second tap, and says so to a screen reader', async () => {
+      await render();
+
+      await press('Osoba');
+
+      expect(listedNames()).toEqual(['Zoran Jovanović', 'Marko Marković']);
+      expect(element.querySelector('.col--person')?.getAttribute('aria-sort')).toBe('descending');
     });
 
     /**
-     * The copy `DeviceEndpoints.cs` demands, pinned as a property rather than as a string.
-     *
-     * Under the shipped client a revoked phone's outbox stops getting through until the man
-     * re-activates. An owner pressing this must be told that a day of unsent evidence is about to
-     * stop going anywhere — and equally that nothing on the phone is deleted, because the
-     * opposite fear is what would stop him revoking a phone that walked off site.
+     * "Sort by state" means the order an owner reads the list in to answer *who cannot record
+     * today*: a man with no phone and no code first, a man with a phone last.
      */
-    it('warns what revoking actually costs before he presses it', async () => {
+    it('sorts by state, and only one column is ever the sorted one', async () => {
       await render();
-      await openWorker('Zoran Jovanović');
 
-      await press('Opozovi');
+      await press('Stanje');
 
-      const warning = element.querySelector('.confirm')?.textContent ?? '';
-      // It stops the phone *sending*, not recording…
-      expect(warning).toMatch(/prestaje da se šalje/i);
-      // …nothing local is destroyed…
-      expect(warning).toMatch(/ništa se sa telefona ne briše/i);
-      // …and the way back is a new code.
-      expect(warning).toMatch(/novim kodom/i);
+      // Marko has neither phone nor code; Zoran has a phone.
+      expect(listedNames()).toEqual(['Marko Marković', 'Zoran Jovanović']);
+      expect(element.querySelector('.col--state')?.getAttribute('aria-sort')).toBe('ascending');
+      expect(element.querySelector('.col--person')?.getAttribute('aria-sort')).toBe('none');
+
+      await press('Stanje');
+      expect(listedNames()).toEqual(['Zoran Jovanović', 'Marko Marković']);
+      expect(element.querySelector('.col--state')?.getAttribute('aria-sort')).toBe('descending');
     });
 
-    it('withdraws the phone and shows it withdrawn', async () => {
+    it('sorts by last contact with the most recent first on the first tap', async () => {
       await render();
-      await openWorker('Zoran Jovanović');
-      await press('Opozovi');
 
-      await press('Opozovi telefon');
+      await press('Poslednji kontakt');
 
-      expect(gateway.revokes).toEqual([MockCompanyGateway.ZORAN_PHONE_ID]);
-      const phones = element.querySelector('.phones')?.textContent ?? '';
-      expect(phones).toContain('Opozvan');
-      // The row survives — a stamp, never a delete, because it is provenance on evidence.
-      expect(phones).toContain('Zoranov telefon');
-      // And the company-wide count of phones that can still record drops.
-      expect(element.querySelector('.summary__row:last-child .summary__value')?.textContent).toBe(
-        '1',
-      );
-    });
-
-    it('leaves the phone alone when the question is declined', async () => {
-      await render();
-      await openWorker('Zoran Jovanović');
-      await press('Opozovi');
-
-      await press('Otkaži');
-
-      expect(gateway.revokes).toEqual([]);
-      expect(text()).not.toContain('Opozvati Zoranov telefon');
-    });
-
-    it('shows the work in progress, and refuses a second tap while it runs', async () => {
-      await render();
-      await openWorker('Zoran Jovanović');
-      await press('Opozovi');
-
-      gateway.revokeGate = deferred();
-      button('Opozovi telefon').click();
-      await settle();
-
-      expect(button('Opozivanje…').disabled).toBe(true);
-      button('Opozivanje…').click();
-      await settle();
-
-      gateway.revokeGate.release();
-      await waitUntil(() => gateway.revokes.length > 0, {
-        onTick: () => fixture.detectChanges(),
-        describe: 'the revoke to reach the wire',
-      });
-      // One request, however many times a thumb landed on the button.
-      expect(gateway.revokes).toEqual([MockCompanyGateway.ZORAN_PHONE_ID]);
-    });
-
-    it('says why a refused revoke was refused, and keeps the phone live', async () => {
-      gateway.revokeError = httpError(403);
-      await render();
-      await openWorker('Zoran Jovanović');
-      await press('Opozovi');
-
-      await press('Opozovi telefon');
-
-      expect(text()).toContain('Ovaj nalog to ne sme.');
-      // Scoped to *his* live phone: the man's older handset is legitimately withdrawn already,
-      // and a whole-list assertion would read that stamp as this revoke succeeding.
-      expect(phoneRow('Zoranov telefon')).not.toContain('Opozvan');
-      expect(phoneRow('Zoranov telefon')).toContain('Opozovi');
+      // Zoran called home; Marko never has, and "never" is not the oldest date.
+      expect(listedNames()).toEqual(['Zoran Jovanović', 'Marko Marković']);
+      expect(element.querySelector('.col--contact')?.getAttribute('aria-sort')).toBe('descending');
     });
 
     /**
-     * A revoke that timed out may well have revoked. Telling an owner "it did not work" would
-     * leave him believing a phone he has taken away can still record — which is the one belief
-     * this screen must never produce.
+     * The sort lives in the component. A query parameter per tap would re-run
+     * `requiresCompanyAdmin` and re-read the whole list from the server to paint the same rows in
+     * a different order — and "my foremen sorted by last contact" is not a place anybody links to.
      */
-    it('never reports a revoke as failed when the server gave no verdict', async () => {
-      gateway.revokeError = httpError(500);
+    it('does not navigate, and does not re-read the server, to reorder rows', async () => {
       await render();
-      await openWorker('Zoran Jovanović');
-      await press('Opozovi');
 
-      await press('Opozovi telefon');
+      await press('Stanje');
 
-      expect(text()).toContain('Server nije odgovorio, pa se ne zna da li je telefon opozvan.');
-      expect(text()).not.toContain('Server trenutno ne odgovara.');
-    });
-
-    it('offers no withdraw button on a phone that is already withdrawn', async () => {
-      await render();
-      await openWorker('Zoran Jovanović');
-
-      const revoked = [...element.querySelectorAll('.phone')].find((row) =>
-        row.textContent?.includes('Stari telefon'),
-      );
-      expect(revoked?.textContent).toContain('Opozvan');
-      expect(revoked?.querySelector('button')).toBeNull();
+      expect(router.navigate).not.toHaveBeenCalled();
+      expect(gateway.workerListings).toBe(1);
     });
   });
 
@@ -830,11 +505,10 @@ describe('CompanyPage', () => {
     });
 
     /**
-     * Adding a man you cannot then activate is not a finished action. The endpoint returns the
-     * worker and his first code together, so the screen ends on the code — the only code on
-     * screen, exactly as every other reveal is.
+     * Adding a man you cannot then activate is not a finished action — so this ends on *his* page,
+     * where his first code is waiting. It must never end with a code on the list.
      */
-    it('adds him and shows his first code straight away', async () => {
+    it('adds him and goes to his page, with no code anywhere on this screen', async () => {
       await render();
       await openForm();
       await type('input[type="text"]', 'Petar Petrović');
@@ -842,12 +516,10 @@ describe('CompanyPage', () => {
 
       await press('Dodaj i napravi kod');
 
-      expect(gateway.added).toEqual([
-        { display_name: 'Petar Petrović', email: 'petar@firma.rs' },
-      ]);
-      expect(text()).toContain('Petar Petrović');
-      expect(element.querySelectorAll('[data-code]')).toHaveLength(1);
-      expect(element.querySelector('[data-code]')?.textContent).toContain('NEW');
+      expect(gateway.added).toEqual([{ display_name: 'Petar Petrović', email: 'petar@firma.rs' }]);
+      expect(router.navigate).toHaveBeenCalledWith([workerBase, expect.any(String)]);
+      expect(element.querySelector('[data-code]')).toBeNull();
+      expect(text()).not.toMatch(/NEW\d-CODE/);
     });
 
     it('sends no address at all rather than an empty one', async () => {
@@ -875,6 +547,7 @@ describe('CompanyPage', () => {
 
       expect(text()).toContain('Ta imejl adresa je već na jednom Teren nalogu.');
       expect(text()).not.toContain('To ime je zauzeto');
+      expect(router.navigate).not.toHaveBeenCalled();
     });
 
     it('names a lost username race separately', async () => {
@@ -889,7 +562,12 @@ describe('CompanyPage', () => {
       expect(text()).not.toContain('Ta imejl adresa');
     });
 
-    it('falls back to the plain reason for a conflict it cannot name', async () => {
+    /**
+     * `serverAnswered`, on the one mutation this screen still performs. A `POST /api/workers` that
+     * got no verdict **may well have created the man** — telling the owner it failed invites a
+     * second submission and a second foreman with the same name and a different username.
+     */
+    it('does not call an unanswered add a failure', async () => {
       gateway.addError = httpError(500);
       await render();
       await openForm();
@@ -897,8 +575,20 @@ describe('CompanyPage', () => {
 
       await press('Dodaj i napravi kod');
 
-      expect(text()).toContain('Server trenutno ne odgovara.');
-      expect(gateway.added).toEqual([]);
+      expect(text()).toContain('Server nije odgovorio, pa se ne zna da li je dodat.');
+      expect(router.navigate).not.toHaveBeenCalled();
+    });
+
+    it('says plainly when the server refused, because then nothing changed', async () => {
+      gateway.addError = httpError(403);
+      await render();
+      await openForm();
+      await type('input[type="text"]', 'Petar Petrović');
+
+      await press('Dodaj i napravi kod');
+
+      expect(text()).toContain('Ovaj nalog to ne sme.');
+      expect(text()).not.toContain('Server nije odgovorio');
     });
 
     it('clears the complaint as soon as he edits the field', async () => {
@@ -915,73 +605,272 @@ describe('CompanyPage', () => {
     });
   });
 
-  // ---- Chrome -------------------------------------------------------------------------------
+  // ---- The head row's action cluster ---------------------------------------------------------
 
-  describe('the screen itself', () => {
-    it('offers no way to a screen an admin may not open', async () => {
+  describe('the info popover', () => {
+    function popover(): HTMLElement | null {
+      return element.querySelector('.pop');
+    }
+
+    function infoButton(): HTMLButtonElement {
+      return button('Kako kodovi rade');
+    }
+
+    /**
+     * The founder asked for hover, and hover is right on a mouse. It is also the one gesture a phone
+     * does not have — and a company admin reaches this screen on a phone — so the same explanation
+     * has to open on a tap and on a keyboard focus as well. jsdom reports no fine pointer, which is
+     * exactly the phone's case, so what this exercises is the tap path.
+     */
+    it('opens the explanation on a tap and closes it again', async () => {
       await render();
 
-      // An admin holds no device session, so every screen behind the profile control is one the
-      // gate would turn him away from.
-      expect(element.querySelector('app-profile-link')).toBeNull();
-      expect(element.querySelector('app-header')).not.toBeNull();
+      expect(popover()).toBeNull();
+      expect(infoButton().getAttribute('aria-expanded')).toBe('false');
+
+      await press('Kako kodovi rade');
+
+      expect(popover()?.textContent).toContain('Kod važi jednom i traje sedam dana.');
+      expect(infoButton().getAttribute('aria-expanded')).toBe('true');
+      // A disclosure, not a tooltip: the button owns the thing it opens.
+      expect(infoButton().getAttribute('aria-controls')).toBe(popover()?.id);
+
+      await press('Kako kodovi rade');
+      expect(popover()).toBeNull();
     });
 
-    it('signs out of the office and leaves for the login screen', async () => {
+    it('closes on Escape and on a tap outside it', async () => {
       await render();
+      await press('Kako kodovi rade');
 
-      await press('Odjavi se');
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await settle();
+      expect(popover()).toBeNull();
 
-      expect(readStoredAdminSession()).toBeNull();
-      // Derived from the route table, never spelled out: a rename of `/login` must fail here.
-      expect(router.navigate).toHaveBeenCalledWith([login]);
+      await press('Kako kodovi rade');
+      element
+        .querySelector<HTMLElement>('.head__title')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle();
+      expect(popover()).toBeNull();
     });
 
     /**
-     * **Signing out deletes a credential and not one row of evidence.**
-     *
-     * Asserted against the shipped source rather than the DOM, because what is being ruled out is
-     * a *future* edit — someone tidying the outbox away on the path out of the office. An admin
-     * session guards nothing local; a foreman's phone may be holding a day of unsent work in the
-     * very same browser.
+     * The card that used to carry this text is gone from the page body — that was the point of the
+     * change. It must be *reachable*, not merely deleted.
      */
-    it('holds no way to reach the evidence store', () => {
-      const source = readFileSync(
-        join(process.cwd(), 'src', 'app', 'features', 'company', 'company-page.ts'),
-        'utf8',
-      )
-        .replace(/\/\*[\s\S]*?\*\//g, ' ')
-        .replace(/\/\/[^\n]*/g, ' ');
+    it('is the only place the code explanation lives now', async () => {
+      await render();
 
-      for (const forbidden of ['core/db', 'EntryStore', 'TEREN_DB', 'TerenDb', 'indexedDB']) {
-        expect(source, `the company screen must not reach for ${forbidden}`).not.toContain(
-          forbidden,
-        );
-      }
+      expect(text()).not.toContain('Kod važi jednom i traje sedam dana.');
+
+      await press('Kako kodovi rade');
+
+      expect(text()).toContain('Kod važi jednom i traje sedam dana.');
     });
 
-    it('reloads both lists on demand, and spends nothing doing it', async () => {
+    /** It carries an explanation and nothing else — decision 13 on a brand-new surface. */
+    it('carries no code and no share text', async () => {
       await render();
-      expect(gateway.workerListings).toBe(1);
+      await press('Kako kodovi rade');
 
-      element.querySelector<HTMLButtonElement>('.head__reload')?.click();
+      expect(element.querySelector('[data-code]')).toBeNull();
+      expect(popover()?.textContent).not.toContain(MockCompanyGateway.LIVE_CODE);
+      expect(popover()?.querySelector('button')).toBeNull();
+      expect(gateway.reads).toEqual([]);
+    });
+  });
+
+  describe('the add-a-foreman dialog', () => {
+    function dialog(): HTMLElement | null {
+      return element.querySelector('[role="dialog"]');
+    }
+
+    it('is a labelled modal dialog, with the form inside it', async () => {
+      await render();
+      expect(dialog()).toBeNull();
+
+      await press('Dodaj poslovođu');
+
+      const panel = dialog();
+      expect(panel?.getAttribute('aria-modal')).toBe('true');
+      expect(panel?.getAttribute('aria-label')).toBe('Novi poslovođa');
+      expect(panel?.querySelector('form')).not.toBeNull();
+      // The same form as before: same fields, same optional-address hint, same actions.
+      expect(panel?.textContent).toContain('IME I PREZIME');
+      expect(panel?.textContent).toContain('Sa adresom može sam da zatraži novi kod');
+      expect(button('Dodaj i napravi kod')).toBeTruthy();
+    });
+
+    /**
+     * Focus in on open, **and back to the button that opened it on close**. The return is the half
+     * usually missed, and without it a keyboard user closing this lands at the top of the document.
+     */
+    it('moves focus into the form and hands it back on close', async () => {
+      await render();
+      const opener = button('Dodaj poslovođu');
+      opener.focus();
+
+      await press('Dodaj poslovođu');
+      expect(document.activeElement?.tagName).toBe('INPUT');
+
+      await press('Otkaži');
+      expect(dialog()).toBeNull();
+      expect(document.activeElement).toBe(button('Dodaj poslovođu'));
+      expect(button('Dodaj poslovođu')).toBe(opener);
+    });
+
+    it('closes on Escape and on a click on the backdrop', async () => {
+      await render();
+      await press('Dodaj poslovođu');
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       await settle();
+      expect(dialog()).toBeNull();
 
-      expect(gateway.workerListings).toBe(2);
-      expect(gateway.deviceListings).toBe(2);
-      expect(text()).toContain('Zoran Jovanović');
-      // Refreshing is a read of the office, never a mint or a revoke.
-      expect(gateway.issues).toEqual([]);
-      expect(gateway.revokes).toEqual([]);
+      await press('Dodaj poslovođu');
+      element.querySelector<HTMLElement>('.modal')?.click();
+      await settle();
+      expect(dialog()).toBeNull();
+    });
+
+    /** The page behind a dialog must not scroll under it, and must scroll again afterwards. */
+    it('locks the page behind it, and unlocks it again', async () => {
+      await render();
+      await press('Dodaj poslovođu');
+      expect(document.body.style.overflow).toBe('hidden');
+
+      await press('Otkaži');
+      expect(document.body.style.overflow).toBe('');
+    });
+
+    /**
+     * **The one that would cost a duplicate foreman.**
+     *
+     * A submit that fails puts the only sentence explaining why on the screen. If the dialog closed
+     * on a failed submit, that sentence would be destroyed at the moment it matters — and an owner
+     * who read "it failed" nowhere would press the button again and mint a second foreman with the
+     * same name and a different username.
+     */
+    it('stays open when the submit fails, with the reason still on screen', async () => {
+      gateway.addError = httpError(409, { code: 'email_taken' });
+      await render();
+      await press('Dodaj poslovođu');
+      await type('input[type="text"]', 'Petar Petrović');
+      await type('input[type="email"]', 'zauzeto@firma.rs');
+
+      await press('Dodaj i napravi kod');
+
+      expect(dialog()).not.toBeNull();
+      expect(dialog()?.textContent).toContain('Ta imejl adresa je već na jednom Teren nalogu.');
+      // …and what he typed is still there, so the fix is one edit rather than a retype.
+      expect(element.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe(
+        'Petar Petrović',
+      );
+      expect(router.navigate).not.toHaveBeenCalled();
+    });
+
+    /** The same, for the failure that must never read as a plain failure. */
+    it('stays open, and says it could not confirm, when the server gave no verdict', async () => {
+      gateway.addError = httpError(500);
+      await render();
+      await press('Dodaj poslovođu');
+      await type('input[type="text"]', 'Petar Petrović');
+
+      await press('Dodaj i napravi kod');
+
+      expect(dialog()).not.toBeNull();
+      expect(dialog()?.textContent).toContain(
+        'Server nije odgovorio, pa se ne zna da li je dodat.',
+      );
+    });
+
+    it('carries no code and no copy action', async () => {
+      await render();
+      await press('Dodaj poslovođu');
+
+      expect(element.querySelector('[data-code]')).toBeNull();
+      expect(dialog()?.textContent).not.toContain(MockCompanyGateway.LIVE_CODE);
+      expect(
+        [...(dialog()?.querySelectorAll('button') ?? [])].some((b) =>
+          /kopiraj|podeli/i.test(b.textContent ?? ''),
+        ),
+      ).toBe(false);
+    });
+  });
+
+  // ---- The two renderings -------------------------------------------------------------------
+
+  describe('the table, and the row list under it', () => {
+    /**
+     * A real table to a screen reader from 768 up: a caption, a header cell per column with
+     * `scope`, a `scope="rowgroup"` header per role group, and `aria-sort` on the ordered column.
+     */
+    it('is a table with headers and groups at 768 and up', async () => {
+      await render();
+
+      const table = element.querySelector('table');
+      expect(table).not.toBeNull();
+      expect(table?.querySelector('caption')?.textContent).toContain('Svi u firmi');
+      expect(
+        [...(table?.querySelectorAll('thead th') ?? [])].map((th) => th.getAttribute('scope')),
+      ).toEqual(['col', 'col', 'col', 'col']);
+      expect(
+        [...(table?.querySelectorAll('tbody th[scope="rowgroup"]') ?? [])].map((th) =>
+          th.textContent?.replace(/\s+/g, ' ').trim(),
+        ),
+      ).toEqual(['Vlasnik firme', 'Poslovođe 2']);
+      // Every group header spans the whole table; a `display: flex` on the `<th>` would silently
+      // drop the colspan and shrink the band to one column.
+      expect(
+        [...(table?.querySelectorAll('tbody th[scope="rowgroup"]') ?? [])].every(
+          (th) => th.getAttribute('colspan') === '4',
+        ),
+      ).toBe(true);
+      // Each foreman's name is the accessible row header.
+      expect(table?.querySelector('tbody th[scope="row"]')).not.toBeNull();
+    });
+
+    /**
+     * **A table is the wrong answer at 375**, and not merely visually: a table whose cells are
+     * forced to `display: block` loses its table role in every browser, so restyling one markup
+     * would give a phone the semantics of neither a table nor a list. Two renderings, one at a
+     * time, decided in TypeScript.
+     */
+    it('is a list of tappable rows below 768, with no table at all', async () => {
+      viewport.atLeastMedium = () => false;
+      viewport.expanded = () => false;
+      await render();
+
+      expect(element.querySelector('table')).toBeNull();
+      expect(listedNames()).toEqual(['Marko Marković', 'Zoran Jovanović']);
+      // One row is one control, not a card that expands.
+      const rows = [...element.querySelectorAll<HTMLButtonElement>('.row-button.row')];
+      expect(rows.length).toBe(2);
+
+      rows[1].click();
+      await settle();
+      expect(router.navigate).toHaveBeenCalledWith([workerBase, MockCompanyGateway.ZORAN_ID]);
+    });
+
+    /** The column headers carry the sort above 768; below it, three pills do. */
+    it('keeps the list sortable on a phone', async () => {
+      viewport.atLeastMedium = () => false;
+      await render();
+
+      expect(element.querySelectorAll('.sort-pill').length).toBe(3);
+
+      await press('Stanje');
+      expect(listedNames()).toEqual(['Marko Marković', 'Zoran Jovanović']);
+      expect(element.querySelector('.sort-pill--on')?.getAttribute('aria-pressed')).toBe('true');
     });
   });
 
   /**
    * Decision 9, and the founder rule behind it: every screen ships a deliberate layout for all
-   * three device classes. The plan singles this one out — a worker list with per-row actions at
-   * 390 px — as one of the two hardest in the project, so the answer is asserted rather than
-   * assumed. Read off the shipped stylesheet, because a media query has no DOM to interrogate
-   * under jsdom.
+   * three device classes. Read off the shipped stylesheet, because a media query has no DOM to
+   * interrogate under jsdom — the widths themselves were checked in a browser at 375, 768, 834,
+   * 1280 and 1920.
    */
   describe('three device classes', () => {
     const css = readFileSync(
@@ -991,40 +880,60 @@ describe('CompanyPage', () => {
     const rules = css.replace(/\/\*[\s\S]*?\*\//g, ' ');
 
     it('gives a phone chrome of its own, since the app header starts at 768', async () => {
+      viewport.atLeastMedium = () => false;
       await render();
 
-      // Both exist in the markup; the stylesheet is what hides the compact bar on a tablet.
       expect(element.querySelector('.bar--compact')).not.toBeNull();
       expect(element.querySelector('.bar--compact app-language-switcher')).not.toBeNull();
-      expect(rules).toMatch(/@media \(min-width: 768px\)\s*\{\s*\.bar--compact\s*\{\s*display: none/);
+      expect(rules).toMatch(
+        /@media \(min-width: 768px\)\s*\{\s*\.bar--compact\s*\{\s*display: none/,
+      );
     });
 
     /**
-     * The crew is two-up from 768 **upward**, not only through the tablet band.
-     *
-     * It was bounded at 1023 until F7, which meant a desktop got the arrangement a phone gets: one
-     * card per row. A worker card is a name, a username and two chips — stretched across a 780 px
-     * desktop column it is a 72 px sliver with half a metre of white beside it, and eight of them
-     * scroll a laptop for no reason. That was the founder's *"use the space"* note, and the fix is
-     * to stop the two-up arrangement expiring at the breakpoint above the one he had approved it
-     * at. So this asserts the block's header, not merely its contents: re-bound it to the tablet
-     * band and this goes red rather than silently returning a desktop to single file.
+     * The medium class is designed rather than inherited — and since the rail went it is designed by
+     * *subtraction*: a table on the 640 column with the numbers above it, and nothing else. The
+     * founder's 768 complaint was that the "new foreman" form dominated the screen and the one
+     * worker was a small card above it; the form is behind an icon now and cannot dominate anything.
      */
-    it('designs the medium class and carries it up, rather than stretching the phone through it', () => {
-      const crew = rules.split('@media ').find((block) => block.includes('repeat(2, minmax(0, 1fr))'));
+    it('designs the medium class instead of stretching the phone through it', async () => {
+      viewport.atLeastMedium = () => true;
+      viewport.expanded = () => false;
+      await render();
 
-      expect(crew?.startsWith('(min-width: 768px) {')).toBe(true);
-      // The open card spans both columns: a code, a message and a list of phones inside half a
-      // 640 column is a column of wrapped fragments.
-      expect(crew).toContain('.worker--open');
-      expect(crew).toContain('grid-column: 1 / -1');
+      // A table rather than the phone's row list…
+      expect(element.querySelector('table')).not.toBeNull();
+      // …the numbers above it…
+      expect(element.querySelectorAll('.stats__cell').length).toBe(3);
+      // …and no form anywhere in the page body until it is asked for.
+      expect(element.querySelector('form')).toBeNull();
+      expect(text()).not.toContain('IME I PREZIME');
+      // The rail is gone from the stylesheet, not merely from the markup.
+      expect(rules).not.toContain('pane--aside');
     });
 
-    it('gives the expanded class a real application layout, not a centred phone column', () => {
+    /**
+     * **The founder's 1920 note, finally answered by subtraction.**
+     *
+     * The rail used to hold the whole useful half of the screen while the table beside it held air.
+     * There is no rail: the table takes all twelve columns, and the two things that used to sit
+     * beside it are behind the head row's icons. The card's `min-height` is a couple of rows' worth
+     * of tail rather than the viewport's height — at full width the stretched version printed a
+     * 1150 × 330 slab of white, which is louder than the canvas it was trying to fill, and the two
+     * screenshots at 1920 are what settled it.
+     */
+    it('gives the expanded class a real application layout, not a centred phone column', async () => {
+      await render();
       const expanded = rules.split('@media (min-width: 1024px)')[1] ?? '';
+
       expect(expanded).toContain('grid-template-columns: repeat(12, 1fr)');
-      expect(expanded).toContain('.pane--workers');
-      expect(expanded).toContain('.pane--aside');
+      // The people card is `wide`, which is the class that spans all twelve columns.
+      expect(element.querySelector('.people')?.classList.contains('wide')).toBe(true);
+      expect(expanded).toContain('grid-column: 1 / -1');
+      expect(expanded).toMatch(/\.people\s*\{[^}]*min-height/);
+      // Neither a rail nor an eight-column table survives anywhere in the sheet.
+      expect(rules).not.toContain('pane--aside');
+      expect(rules).not.toContain('span 8');
     });
 
     it('takes every colour from the design tokens', () => {

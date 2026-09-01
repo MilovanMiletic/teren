@@ -2,19 +2,16 @@
   <!--
     Medium and up: the application header, with the company standing where a project stands on the
     foreman's screens. No back control and no profile control — an admin has no device session, so
-    every screen behind those is one the gate would turn him away from. `/company` is where he
-    starts and where he stays.
-
-    And no company control: this **is** the office. It rendered here until F7 and did nothing but
-    re-navigate to the screen it was standing on, which is the one thing a control may never do.
-    The session lives in that header instead of in the rail below (`session-link.ts`).
+    every screen behind those is one the gate would turn him away from. And no company control:
+    this **is** the office, and a control that re-navigates to the screen it stands on is the one
+    thing a control may never do.
   -->
   <app-header [project]="companyName()" [showProfile]="false" [showCompany]="false" />
 
   <!--
-    Compact only: the wordmark, the language switcher and the way out, because below 768 the
-    header does not exist and an admin on a phone would otherwise have no chrome at all — and,
-    since F7 moved sign-out off this screen's rail, no way to end his session either.
+    Compact only: the wordmark, the language switcher and the way out, because below 768 the header
+    does not exist and an admin on a phone would otherwise have no chrome at all — and no way to
+    end a password-backed session on the device most likely to be lost.
   -->
   <div class="column bar bar--compact">
     <span class="bar__brand">{{ t('app.name') }}</span>
@@ -31,14 +28,39 @@
         <p class="t-meta head__company">{{ name }}</p>
       }
     </div>
-    <button type="button" class="btn-icon head__reload" [attr.aria-label]="t('company.reload')" (click)="load()">
-      <app-icon name="refresh" [size]="20" />
-    </button>
+    <!--
+      The action cluster (founder, 2026-09-01): **[info] [+ add] [reload]**. Everything that used to
+      stand in a right-hand rail is here now — the rail held the whole useful half of the screen at
+      1920 while the table beside it held air, and at 768 the "new foreman" form dominated a screen
+      that is supposed to be about the company's people.
+    -->
+    <div class="head__actions">
+      <app-info-popover [heading]="t('company.aside.title')" [body]="t('company.aside.body')" />
+
+      <button
+        type="button"
+        class="btn-icon"
+        [attr.aria-label]="t('company.add.open')"
+        [attr.aria-expanded]="addOpen()"
+        (click)="openAdd()"
+      >
+        <app-icon name="plus" [size]="20" />
+      </button>
+
+      <button
+        type="button"
+        class="btn-icon head__reload"
+        [attr.aria-label]="t('company.reload')"
+        (click)="load()"
+      >
+        <app-icon name="refresh" [size]="20" />
+      </button>
+    </div>
   </header>
 
   <div class="column content">
     @if (loading()) {
-      <p class="card state t-meta" role="status">{{ t('company.loading') }}</p>
+      <p class="card state t-meta wide" role="status">{{ t('company.loading') }}</p>
     } @else {
       @if (unconfirmed() && reasonKey(); as reason) {
         <!--
@@ -55,418 +77,402 @@
         </div>
       }
 
-      <!-- Left at expanded: his men. The substance of the screen. -->
-      <div class="pane pane--workers">
-        @if (workers().length === 0) {
-          <div class="card state state--empty" role="status">
-            <span class="state__mark" aria-hidden="true">
-              <app-icon name="user" [size]="32" />
-            </span>
-            <h2 class="t-h2">{{ t('company.empty.title') }}</h2>
-            <p class="t-body state__body">
-              {{ unconfirmed() && reasonKey() ? t(reasonKey()!) : t('company.empty.body') }}
-            </p>
+      <!--
+        The three numbers an owner asks for out loud, across the top at every width. The last one
+        counts the men a code is waiting for and **never says which code** — that value exists on
+        one screen only, and it is not this one.
+      -->
+      <dl class="card stats wide">
+        <!--
+          **Em-dashes, not zeros, when the list could not be confirmed.** A failed read leaves
+          `workers()` empty, and three noughts printed under a banner saying the server could not
+          be reached is the screen contradicting itself in the same glance — and the reading an
+          owner would take from it ("I have no foremen and no live phones") is the alarming one.
+        -->
+        <div class="stats__cell">
+          <dt class="t-label">{{ t('company.summary.workers') }}</dt>
+          <dd class="t-num stats__value">
+            {{ unconfirmed() ? t('company.people.none') : workers().length }}
+          </dd>
+        </div>
+        <div class="stats__cell">
+          <dt class="t-label">{{ t('company.summary.phones') }}</dt>
+          <dd class="t-num stats__value">
+            {{ unconfirmed() ? t('company.people.none') : activePhoneCount() }}
+          </dd>
+        </div>
+        <div class="stats__cell">
+          <dt class="t-label">{{ t('company.summary.codes') }}</dt>
+          <dd class="t-num stats__value">
+            {{ unconfirmed() ? t('company.people.none') : waitingCodeCount() }}
+          </dd>
+        </div>
+      </dl>
+
+      <!--
+        The substance of the screen, and now the whole of it: everybody in the company, by role.
+        At expanded it spans all twelve columns — there is no longer a rail to leave room for.
+      -->
+      <section class="card people wide" [attr.aria-label]="t('company.people.caption')">
+        @if (viewport.atLeastMedium()) {
+          <!--
+              A real table from 768 up: a header row a screen reader can name, `scope` on every
+              header, one `<tbody>` per role group, and `aria-sort` on the column the list is
+              ordered by. It scrolls inside its own card if a Serbian surname and a long username
+              ever outgrow the column — the page itself never scrolls sideways.
+            -->
+          <div class="people__scroll">
+            <table class="people__table">
+              <caption class="visually-hidden">
+                {{
+                  t('company.people.caption')
+                }}
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col" class="col--person" [attr.aria-sort]="ariaSort('name')">
+                    <button type="button" class="sort" (click)="sortBy('name')">
+                      <span>{{ t('company.people.person') }}</span>
+                      @if (sortedBy('name')) {
+                        <app-icon
+                          name="chevron-down"
+                          [size]="14"
+                          class="sort__arrow"
+                          [class.sort__arrow--asc]="ascending()"
+                        />
+                      }
+                    </button>
+                  </th>
+                  <th scope="col" class="col--state" [attr.aria-sort]="ariaSort('state')">
+                    <button type="button" class="sort" (click)="sortBy('state')">
+                      <span>{{ t('company.people.state') }}</span>
+                      @if (sortedBy('state')) {
+                        <app-icon
+                          name="chevron-down"
+                          [size]="14"
+                          class="sort__arrow"
+                          [class.sort__arrow--asc]="ascending()"
+                        />
+                      }
+                    </button>
+                  </th>
+                  <th scope="col" class="col--contact" [attr.aria-sort]="ariaSort('contact')">
+                    <button type="button" class="sort" (click)="sortBy('contact')">
+                      <span>{{ t('company.people.contact') }}</span>
+                      @if (sortedBy('contact')) {
+                        <app-icon
+                          name="chevron-down"
+                          [size]="14"
+                          class="sort__arrow"
+                          [class.sort__arrow--asc]="ascending()"
+                        />
+                      }
+                    </button>
+                  </th>
+                  <th scope="col" class="col--go">
+                    <span class="visually-hidden">{{ t('company.people.openColumn') }}</span>
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                <tr class="group">
+                  <th colspan="4" scope="rowgroup" class="t-label group__label">
+                    <!--
+                        The band's own flex box is an inner span on purpose: `display: flex` on a
+                        `<th>` takes it out of the table's layout, and `colspan` is then ignored —
+                        the tint shrank to the first column and the group header stopped reading as
+                        one. It cost a screenshot to see and is invisible in the markup.
+                      -->
+                    <!--
+                        **`profile.role.company_admin`, not a heading of this screen's own**
+                        (founder, 2026-09-01): one role has one name across the app, and that name
+                        already ships on the profile screen. A `company.people.directors` key would
+                        be a second place to reword it and a second place to forget.
+                      -->
+                    <span class="group__inner">{{ t('profile.role.company_admin') }}</span>
+                  </th>
+                </tr>
+                @if (director(); as boss) {
+                  <!--
+                      One row, and it is the session in this browser. There is no endpoint that
+                      lists a company's admins, so the screen shows the man reading it and invents
+                      nobody — see `CompanyPage.director`.
+                    -->
+                  <tr class="person">
+                    <th scope="row" class="cell cell--person">
+                      <span class="person__who">
+                        <span class="person__name">{{ boss.displayName }}</span>
+                        <span class="t-meta person__second">
+                          {{ t('company.people.passwordAccount') }}
+                        </span>
+                      </span>
+                    </th>
+                    <td class="cell">
+                      <span class="chip chip--neutral">{{ t('company.people.you') }}</span>
+                    </td>
+                    <td class="cell t-num cell--contact">{{ t('company.people.none') }}</td>
+                    <td class="cell cell--go"></td>
+                  </tr>
+                }
+              </tbody>
+
+              <tbody>
+                <tr class="group">
+                  <th colspan="4" scope="rowgroup" class="t-label group__label">
+                    <span class="group__inner">
+                      {{ t('company.people.foremen') }}
+                      <span class="t-num group__count">{{ workers().length }}</span>
+                    </span>
+                  </th>
+                </tr>
+
+                @if (rows().length === 0) {
+                  <tr>
+                    <td colspan="4" class="cell cell--empty t-meta">
+                      {{ unconfirmed() && reasonKey() ? t(reasonKey()!) : t('company.empty.body') }}
+                    </td>
+                  </tr>
+                }
+
+                @for (row of rows(); track row.worker.id) {
+                  <!--
+                      The whole row opens the man's page; the button inside the name cell is the
+                      control a keyboard and a screen reader use, and it stops the event so one
+                      click is one navigation.
+                    -->
+                  <tr class="person person--open" (click)="open(row.worker)">
+                    <th scope="row" class="cell cell--person">
+                      <button
+                        type="button"
+                        class="person__link"
+                        (click)="$event.stopPropagation(); open(row.worker)"
+                      >
+                        <span class="person__who">
+                          <span class="person__name">{{ row.worker.displayName }}</span>
+                          <span class="t-meta person__second">
+                            {{ row.worker.username ?? t('company.people.noUsername') }}
+                          </span>
+                        </span>
+                        <span class="visually-hidden">{{ t('company.people.open') }}</span>
+                      </button>
+                    </th>
+                    <td class="cell">
+                      <span class="chips">
+                        @for (chip of row.chips; track chip.key) {
+                          <span class="chip chip--{{ chip.tone }}">{{ t(chip.key) }}</span>
+                        }
+                      </span>
+                    </td>
+                    <td class="cell t-num cell--contact">
+                      {{
+                        row.worker.lastSeenAt
+                          ? (row.worker.lastSeenAt | date: 'd. M. y.')
+                          : t('company.people.never')
+                      }}
+                    </td>
+                    <td class="cell cell--go">
+                      <app-icon name="chevron-right" [size]="18" class="person__chevron" />
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
           </div>
         } @else {
-          <h2 class="t-label section__label">
-            {{ t('company.workers.label') }}
-            <span class="t-num section__count">{{ workers().length }}</span>
-          </h2>
-
-          @for (worker of workers(); track worker.id) {
-            <article class="card worker" [class.worker--open]="isOpen(worker.id)">
-              <!--
-                The whole summary is the control that opens the card. A row of small icon buttons
-                is what a table would do, and at 390 px it is a row of targets a gloved thumb
-                cannot separate; the actions live inside the opened card as full-width buttons.
-              -->
-              <button
-                type="button"
-                class="row-button worker__summary"
-                [attr.aria-expanded]="isOpen(worker.id)"
-                (click)="open(worker)"
-              >
-                <span class="worker__avatar" aria-hidden="true">
-                  <app-icon name="user" [size]="20" />
-                </span>
-                <span class="worker__who">
-                  <span class="worker__name">{{ worker.displayName }}</span>
-                  @if (worker.username; as username) {
-                    <!-- His durable identity: the thing he types on a replacement phone. -->
-                    <span class="t-meta worker__username">{{ username }}</span>
-                  }
-                  <span class="worker__chips">
-                    @if (worker.disabled) {
-                      <span class="chip chip--err">{{ t('company.worker.disabled') }}</span>
-                    }
-                    @if (worker.activeDeviceCount > 0) {
-                      <span class="chip chip--ok">{{ t('company.worker.hasPhone') }}</span>
-                    } @else {
-                      <span class="chip chip--neutral">{{ t('company.worker.noPhone') }}</span>
-                    }
-                    @if (worker.hasLiveCode) {
-                      <!--
-                        The cue that decides the admin's next move: read the code he has, rather
-                        than issue one over it.
-                      -->
-                      <span class="chip chip--warn">{{ t('company.worker.hasCode') }}</span>
-                    }
+          <!--
+              Compact: a table is the wrong answer at 375, so this is a list of rows. One row is one
+              tap target and one navigation — nothing expands in place, which is what turned one
+              foreman into an endless scroll on the screen this replaced.
+            -->
+          <div class="list">
+            <h2 class="t-label list__group">{{ t('profile.role.company_admin') }}</h2>
+            @if (director(); as boss) {
+              <div class="row row--static">
+                <span class="person__who">
+                  <span class="person__name">{{ boss.displayName }}</span>
+                  <span class="t-meta person__second">
+                    {{ t('company.people.passwordAccount') }}
                   </span>
                 </span>
-                <app-icon
-                  [name]="isOpen(worker.id) ? 'chevron-down' : 'chevron-right'"
-                  [size]="18"
-                  class="worker__chevron"
-                />
-              </button>
+                <span class="chip chip--neutral">{{ t('company.people.you') }}</span>
+              </div>
+            }
 
-              @if (isOpen(worker.id)) {
-                <div class="worker__panel">
-                  <!-- ---- His code, and only his ------------------------------------------- -->
-                  @if (codeState(); as code) {
-                    @if (code.loading) {
-                      <p class="t-meta panel__state" role="status">{{ t('company.code.loading') }}</p>
-                    } @else if (code.status !== 'ok') {
-                      <!--
-                        A failed *read* and a failed *issue* are not the same failure. A read that
-                        did not answer changed nothing. An issue that did not answer may already
-                        have superseded the code the man is holding — so where the server gave no
-                        verdict this says "reload before making another", never "try again",
-                        because a second press would supersede a code that exists.
-                      -->
-                      <div class="notice notice--err panel__notice" role="status">
-                        <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
-                        <div class="notice__text">
-                          <span class="notice__title">
-                            {{ code.afterIssue ? t('company.code.issueFailed') : t('company.code.failed') }}
-                          </span>
-                          <span class="t-meta">
-                            {{
-                              code.afterIssue && unconfirmedAction(code.status)
-                                ? t('company.code.unconfirmed')
-                                : t(reasonFor(code.status) ?? 'company.reason.unavailable')
-                            }}
-                          </span>
-                        </div>
-                      </div>
-                    } @else if (code.noLiveCode) {
-                      <!--
-                        Not an error: the server said plainly that there is nothing this man could
-                        type right now. Nothing is destroyed by issuing here, so this is the one
-                        path where the button acts on the first tap.
-                      -->
-                      <div class="panel__block">
-                        <p class="t-body panel__lead">{{ t('company.code.none.body') }}</p>
-                        <button
-                          type="button"
-                          class="btn btn--primary"
-                          [disabled]="codeBusy() || worker.disabled"
-                          (click)="issue(worker)"
-                        >
-                          {{ codeBusy() ? t('company.code.issuing') : t('company.code.issue') }}
-                        </button>
-                        @if (worker.disabled) {
-                          <p class="t-meta panel__hint">{{ t('company.code.disabledHint') }}</p>
-                        }
-                      </div>
-                    } @else if (code.code; as live) {
-                      <div class="panel__block">
-                        <span class="t-label">{{ t('company.code.label') }}</span>
-                        <!--
-                          Selectable text, always. The clipboard is unavailable in an insecure
-                          context and can refuse when the document is not focused, and an admin
-                          reading a code aloud down the phone needs it on screen either way.
-                        -->
-                        <p class="code" data-code>{{ live.code }}</p>
-                        @if (live.expiresAt; as expires) {
-                          <p class="t-meta panel__hint">
-                            {{ t('company.code.expires', { date: (expires | date: 'd. M. y.') ?? '' }) }}
-                          </p>
-                        }
-                        @if (live.emailDelivery === 'not_configured' || live.emailDelivery === 'no_address') {
-                          <!--
-                            Said out loud rather than assumed: no relay exists in any environment
-                            today, and a worker with no address on file cannot be sent anything.
-                            Either way the admin is the delivery channel, and he has to know that.
-                          -->
-                          <p class="t-meta panel__hint">{{ t('company.code.notEmailed') }}</p>
-                        }
+            <h2 class="t-label list__group">
+              {{ t('company.people.foremen') }}
+              <span class="t-num group__count">{{ workers().length }}</span>
+            </h2>
 
-                        <div class="panel__actions">
-                          <button type="button" class="btn btn--row btn--solid" (click)="onCopyCode()">
-                            <app-icon name="copy" [size]="18" />
-                            {{ t('company.code.copy') }}
-                          </button>
-                          @if (code.shareText) {
-                            <!--
-                              Decision 13 made easy rather than merely required: one worker's
-                              ready-made message, in his language, for one chat.
-                            -->
-                            <button type="button" class="btn btn--row btn--primary" (click)="onCopyMessage()">
-                              <app-icon name="share" [size]="18" />
-                              {{ t('company.code.copyMessage') }}
-                            </button>
-                          }
-                        </div>
-
-                        @if (copied() === 'code') {
-                          <p class="t-meta panel__ok" role="status">{{ t('company.code.copied') }}</p>
-                        }
-                        @if (copied() === 'message') {
-                          <p class="t-meta panel__ok" role="status">{{ t('company.code.copiedMessage') }}</p>
-                        }
-                        @if (copyFailed()) {
-                          <p class="t-meta panel__hint" role="status">{{ t('company.code.copyFailed') }}</p>
-                        }
-
-                        @if (code.shareText; as message) {
-                          <details class="message">
-                            <summary class="t-meta message__summary">{{ t('company.code.messageLabel') }}</summary>
-                            <p class="message__text">{{ message }}</p>
-                          </details>
-                        }
-
-                        <p class="t-meta panel__hint">{{ t('company.code.oneAtATime') }}</p>
-
-                        <!--
-                          Issuing over a live code kills the one the man may be typing at this
-                          moment. That is why it asks, and why the sentence names the consequence
-                          rather than saying "are you sure".
-                        -->
-                        @if (reissuing()) {
-                          <div class="notice notice--warn panel__notice">
-                            <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
-                            <div class="notice__text">
-                              <span class="notice__title">{{ t('company.code.reissue.title') }}</span>
-                              <span class="t-meta">{{ t('company.code.reissue.body') }}</span>
-                              <span class="panel__actions">
-                                <button type="button" class="btn btn--row btn--tertiary" (click)="cancelReissue()">
-                                  {{ t('common.cancel') }}
-                                </button>
-                                <button
-                                  type="button"
-                                  class="btn btn--row btn--solid"
-                                  [disabled]="codeBusy()"
-                                  (click)="issue(worker)"
-                                >
-                                  {{ codeBusy() ? t('company.code.issuing') : t('company.code.reissue.confirm') }}
-                                </button>
-                              </span>
-                            </div>
-                          </div>
-                        } @else {
-                          <!--
-                            Confirming closes the question, so this button is the only thing left
-                            on screen while the issue is in flight — and an idle "make a new code"
-                            over a code that is at that moment being superseded is the screen
-                            saying nothing is happening. It carries the busy state instead.
-                          -->
-                          <button
-                            type="button"
-                            class="btn btn--row btn--tertiary"
-                            [disabled]="codeBusy()"
-                            (click)="askReissue()"
-                          >
-                            {{ codeBusy() ? t('company.code.issuing') : t('company.code.issueNew') }}
-                          </button>
-                        }
-                      </div>
-                    }
+            <!--
+                The sort control the table's own column headers carry from 768 up. Three pills, and
+                a second tap on the live one turns it round.
+              -->
+            @if (rows().length > 1) {
+              <div class="sort-bar" role="group" [attr.aria-label]="t('company.people.sortBy')">
+                <button
+                  type="button"
+                  class="sort-pill"
+                  [class.sort-pill--on]="sortedBy('name')"
+                  [attr.aria-pressed]="sortedBy('name')"
+                  (click)="sortBy('name')"
+                >
+                  {{ t('company.people.person') }}
+                  @if (sortedBy('name')) {
+                    <app-icon
+                      name="chevron-down"
+                      [size]="14"
+                      class="sort__arrow"
+                      [class.sort__arrow--asc]="ascending()"
+                    />
                   }
-
-                  <!-- ---- His phones ------------------------------------------------------- -->
-                  <div class="panel__block">
-                    <span class="t-label">{{ t('company.phones.label') }}</span>
-                    @if (phonesOf(worker.id).length === 0) {
-                      <p class="t-meta panel__hint">{{ t('company.phones.none') }}</p>
-                    } @else {
-                      <ul class="phones">
-                        @for (phone of phonesOf(worker.id); track phone.id) {
-                          <li class="phone" [class.phone--revoked]="phone.revokedAt !== null">
-                            <span class="phone__text">
-                              <span class="phone__name">{{ phone.name || t('company.phones.unnamed') }}</span>
-                              <span class="t-meta t-num">
-                                @if (phone.revokedAt; as revoked) {
-                                  {{ t('company.phones.revokedOn', { date: (revoked | date: 'd. M. y.') ?? '' }) }}
-                                } @else if (phone.lastSeenAt; as seen) {
-                                  {{ t('company.phones.lastSeen', { date: (seen | date: 'd. M. y. HH:mm') ?? '' }) }}
-                                } @else {
-                                  {{ t('company.phones.never') }}
-                                }
-                              </span>
-                            </span>
-                            @if (phone.revokedAt === null) {
-                              <button
-                                type="button"
-                                class="btn btn--row btn--tertiary phone__revoke"
-                                (click)="askRevoke(phone)"
-                              >
-                                {{ t('company.phones.revoke') }}
-                              </button>
-                            } @else {
-                              <span class="chip chip--neutral">{{ t('company.phones.revoked') }}</span>
-                            }
-                          </li>
-
-                          @if (revoking() === phone.id) {
-                            <!--
-                              The confirmation names *which phone and whose*, and says what
-                              revoking actually does. Decision 8: it does not stop him recording —
-                              he keeps the record button and the day stays on the phone — it stops
-                              the phone sending, until he enters a new code. Promising anything
-                              stronger would be a lie an owner would act on.
-                            -->
-                            <li class="notice notice--warn confirm">
-                              <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
-                              <div class="notice__text">
-                                <span class="notice__title">
-                                  {{
-                                    t('company.phones.confirm.title', {
-                                      phone: phone.name || t('company.phones.unnamed'),
-                                      name: worker.displayName
-                                    })
-                                  }}
-                                </span>
-                                <span class="t-meta">{{ t('company.phones.confirm.body') }}</span>
-                                @if (revokeFailure(); as failure) {
-                                  <span class="t-meta confirm__failure">
-                                    {{
-                                      unconfirmedAction(failure)
-                                        ? t('company.phones.unconfirmed')
-                                        : t(reasonFor(failure) ?? 'company.reason.unavailable')
-                                    }}
-                                  </span>
-                                }
-                                <span class="panel__actions">
-                                  <button type="button" class="btn btn--row btn--tertiary" (click)="cancelRevoke()">
-                                    {{ t('common.cancel') }}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    class="btn btn--row btn--solid"
-                                    [disabled]="revokeBusy()"
-                                    (click)="revoke(phone)"
-                                  >
-                                    {{ revokeBusy() ? t('company.phones.revoking') : t('company.phones.confirm.action') }}
-                                  </button>
-                                </span>
-                              </div>
-                            </li>
-                          }
-                        }
-                      </ul>
-                    }
-                  </div>
-
-                  @if (worker.email) {
-                    <p class="t-meta panel__hint">{{ t('company.worker.email', { email: worker.email }) }}</p>
-                  } @else {
-                    <!-- Decision 14 in reverse: with no address he cannot ask for his own code. -->
-                    <p class="t-meta panel__hint">{{ t('company.worker.noEmail') }}</p>
-                  }
-                </div>
-              }
-            </article>
-          }
-        }
-      </div>
-
-      <!-- Right at expanded: adding a man, the company, and the one rule worth repeating. -->
-      <div class="pane pane--aside">
-        <section class="card add">
-          @if (!addOpen()) {
-            <button type="button" class="row-button add__open" (click)="openAdd()">
-              <span class="add__mark" aria-hidden="true"><app-icon name="plus" [size]="20" /></span>
-              <span class="add__text">
-                <span class="add__title">{{ t('company.add.open') }}</span>
-                <span class="t-meta">{{ t('company.add.body') }}</span>
-              </span>
-            </button>
-          } @else {
-            <form class="add__form" (submit)="onAdd($event)">
-              <h2 class="t-h2">{{ t('company.add.title') }}</h2>
-
-              <label class="field">
-                <span class="t-label">{{ t('company.add.name.label') }}</span>
-                <input
-                  class="field__input"
-                  type="text"
-                  autocomplete="name"
-                  [placeholder]="t('company.add.name.placeholder')"
-                  [value]="newName()"
-                  (input)="onName($any($event.target).value)"
-                />
-              </label>
-
-              <label class="field">
-                <span class="t-label">{{ t('company.add.email.label') }}</span>
-                <input
-                  class="field__input"
-                  type="email"
-                  inputmode="email"
-                  autocomplete="email"
-                  [placeholder]="t('company.add.email.placeholder')"
-                  [value]="newEmail()"
-                  (input)="onEmail($any($event.target).value)"
-                />
-                <!-- Optional, and the hint says what it buys him rather than what it is. -->
-                <span class="t-meta field__hint">{{ t('company.add.email.hint') }}</span>
-              </label>
-
-              @if (addFailure(); as failure) {
-                <p class="t-meta add__error" role="status">
-                  @if (addConflict() === 'email') {
-                    {{ t('company.add.conflict.email') }}
-                  } @else if (addConflict() === 'username') {
-                    {{ t('company.add.conflict.username') }}
-                  } @else {
-                    {{ t(reasonFor(failure) ?? 'company.reason.unavailable') }}
-                  }
-                </p>
-              }
-
-              <div class="panel__actions">
-                <button type="button" class="btn btn--row btn--tertiary" (click)="cancelAdd()">
-                  {{ t('common.cancel') }}
                 </button>
                 <button
-                  type="submit"
-                  class="btn btn--row btn--primary"
-                  [disabled]="addBusy() || newName().trim().length === 0"
+                  type="button"
+                  class="sort-pill"
+                  [class.sort-pill--on]="sortedBy('state')"
+                  [attr.aria-pressed]="sortedBy('state')"
+                  (click)="sortBy('state')"
                 >
-                  {{ addBusy() ? t('company.add.submitting') : t('company.add.submit') }}
+                  {{ t('company.people.state') }}
+                  @if (sortedBy('state')) {
+                    <app-icon
+                      name="chevron-down"
+                      [size]="14"
+                      class="sort__arrow"
+                      [class.sort__arrow--asc]="ascending()"
+                    />
+                  }
+                </button>
+                <button
+                  type="button"
+                  class="sort-pill"
+                  [class.sort-pill--on]="sortedBy('contact')"
+                  [attr.aria-pressed]="sortedBy('contact')"
+                  (click)="sortBy('contact')"
+                >
+                  {{ t('company.people.contact') }}
+                  @if (sortedBy('contact')) {
+                    <app-icon
+                      name="chevron-down"
+                      [size]="14"
+                      class="sort__arrow"
+                      [class.sort__arrow--asc]="ascending()"
+                    />
+                  }
                 </button>
               </div>
-            </form>
-          }
-        </section>
+            }
 
-        <section class="card summary">
-          <h2 class="t-label">{{ t('company.summary.label') }}</h2>
-          <dl class="summary__rows">
-            <div class="summary__row">
-              <dt class="t-meta">{{ t('company.summary.workers') }}</dt>
-              <dd class="t-num summary__value">{{ workers().length }}</dd>
-            </div>
-            <div class="summary__row">
-              <dt class="t-meta">{{ t('company.summary.phones') }}</dt>
-              <dd class="t-num summary__value">{{ activePhoneCount() }}</dd>
-            </div>
-          </dl>
-        </section>
+            @if (rows().length === 0) {
+              <p class="row row--static t-meta" role="status">
+                {{ unconfirmed() && reasonKey() ? t(reasonKey()!) : t('company.empty.body') }}
+              </p>
+            }
 
-        <section class="card note">
-          <h2 class="t-h2">{{ t('company.aside.title') }}</h2>
-          <p class="t-meta">{{ t('company.aside.body') }}</p>
-        </section>
+            @for (row of rows(); track row.worker.id) {
+              <button type="button" class="row-button row" (click)="open(row.worker)">
+                <span class="row__text">
+                  <span class="row__top">
+                    <span class="person__name">{{ row.worker.displayName }}</span>
+                    <span class="t-meta person__second">
+                      {{ row.worker.username ?? t('company.people.noUsername') }}
+                    </span>
+                  </span>
+                  <span class="chips">
+                    @for (chip of row.chips; track chip.key) {
+                      <span class="chip chip--{{ chip.tone }}">{{ t(chip.key) }}</span>
+                    }
+                    <span class="t-meta t-num row__contact">
+                      {{
+                        row.worker.lastSeenAt
+                          ? (row.worker.lastSeenAt | date: 'd. M. y.')
+                          : t('company.people.never')
+                      }}
+                    </span>
+                  </span>
+                </span>
+                <app-icon name="chevron-right" [size]="18" class="person__chevron" />
+              </button>
+            }
+          </div>
+        }
+      </section>
 
+      @if (addOpen()) {
         <!--
-          The sign-out card that used to close this rail is gone (F7 item 2): the session is
-          chrome, not content, and it now sits in the header from 768 up and in this screen's own
-          compact bar below that. Nothing here duplicates it — two ways out of one session is two
-          places to look for the one that works.
+          The same form, in a dialog: same fields, same optional-address hint, same failure
+          sentences, same actions. Only the container changed (founder, 2026-09-01).
+
+          **A failed submit must leave this open.** `add()` sets the failure and returns without
+          touching `addOpen`, and the sentence it sets is the one thing standing between an owner
+          and a second foreman with the same name — closing the dialog would destroy it at the exact
+          moment it matters. A spec pins that.
         -->
-      </div>
+        <app-modal-sheet [heading]="t('company.add.title')" (close)="cancelAdd()">
+          <form class="add__form" (submit)="onAdd($event)">
+            <p class="t-meta add__lead">{{ t('company.add.body') }}</p>
+
+            <label class="field">
+              <span class="t-label">{{ t('company.add.name.label') }}</span>
+              <input
+                class="field__input"
+                type="text"
+                autocomplete="name"
+                [placeholder]="t('company.add.name.placeholder')"
+                [value]="newName()"
+                (input)="onName($any($event.target).value)"
+              />
+            </label>
+
+            <label class="field">
+              <span class="t-label">{{ t('company.add.email.label') }}</span>
+              <input
+                class="field__input"
+                type="email"
+                inputmode="email"
+                autocomplete="email"
+                [placeholder]="t('company.add.email.placeholder')"
+                [value]="newEmail()"
+                (input)="onEmail($any($event.target).value)"
+              />
+              <!-- Optional, and the hint says what it buys him rather than what it is. -->
+              <span class="t-meta field__hint">{{ t('company.add.email.hint') }}</span>
+            </label>
+
+            @if (addFailure(); as failure) {
+              <p class="t-meta add__error" role="status">
+                @if (addConflict() === 'email') {
+                  {{ t('company.add.conflict.email') }}
+                } @else if (addConflict() === 'username') {
+                  {{ t('company.add.conflict.username') }}
+                } @else if (unconfirmedAction(failure)) {
+                  <!--
+                    The server gave no verdict, so the man may well have been added. "It failed"
+                    would invite a second submission and a second foreman with the same name.
+                  -->
+                  {{ t('company.add.unconfirmed') }}
+                } @else {
+                  {{ t(reasonFor(failure) ?? 'company.reason.unavailable') }}
+                }
+              </p>
+            }
+
+            <div class="add__actions">
+              <button type="button" class="btn btn--row btn--tertiary" (click)="cancelAdd()">
+                {{ t('common.cancel') }}
+              </button>
+              <button
+                type="submit"
+                class="btn btn--row btn--primary"
+                [disabled]="addBusy() || newName().trim().length === 0"
+              >
+                {{ addBusy() ? t('company.add.submitting') : t('company.add.submit') }}
+              </button>
+            </div>
+          </form>
+        </app-modal-sheet>
+      }
     }
   </div>
 </div>
