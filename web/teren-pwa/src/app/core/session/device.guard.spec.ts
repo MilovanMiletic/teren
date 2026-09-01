@@ -15,7 +15,13 @@ import { guardedRoutes } from '../../testing/route-harness';
 import { routeUrlFor } from '../../testing/route-table';
 import { CompanyPage } from '../../features/company/company-page';
 import { WorkerPage } from '../../features/company/worker-page';
-import { requiresCompanyAdmin, requiresDevice, requiresNoDevice } from './device.guard';
+import { PlatformPage } from '../../features/platform/platform-page';
+import {
+  requiresCompanyAdmin,
+  requiresDevice,
+  requiresNoDevice,
+  requiresSuperAdmin,
+} from './device.guard';
 import { RETURN_URL_PARAM } from './return-url';
 import { SESSION_STORAGE_KEY, Session } from './session';
 
@@ -64,6 +70,7 @@ describe('the device gate', () => {
   let profile: string;
   let company: string;
   let worker: string;
+  let platform: string;
   let deepLink: string;
 
   beforeAll(async () => {
@@ -76,6 +83,7 @@ describe('the device gate', () => {
     profile = await routeUrlFor(ProfilePage);
     company = await routeUrlFor(CompanyPage);
     worker = await routeUrlFor(WorkerPage);
+    platform = await routeUrlFor(PlatformPage);
     deepLink = `${diary}?${ARCHIVE_ENTRY_PARAM}=${ENTRY_ID}`;
   });
 
@@ -334,6 +342,13 @@ describe('the device gate', () => {
         // happened when one man's page (`/company/worker/:workerId`) joined the table on
         // 2026-09-01 and this spec went red until it was said out loud.
         expect(route.canMatch, url).toEqual([requiresCompanyAdmin]);
+      } else if (url === platform) {
+        // Teren's own surface, on a *third* credential. Named separately from the office branch
+        // above rather than folded into "any admin screen", because that folding is precisely the
+        // mistake: a super admin has no company, is refused by every evidence route on purpose,
+        // and a gate that treated the two roles as ranks would be the first step towards staff
+        // reading a customer's diary.
+        expect(route.canMatch, url).toEqual([requiresSuperAdmin]);
       } else {
         expect(route.canMatch, url).toEqual([requiresDevice]);
       }

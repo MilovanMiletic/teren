@@ -1,0 +1,353 @@
+<div class="screen" *transloco="let t">
+  <!--
+    Medium and up: the application header. No project, no back, no profile and no office link — a
+    member of staff has no device session and no company, so every screen behind those is one the
+    gate would turn him away from.
+  -->
+  <app-header [showProfile]="false" [showCompany]="false" />
+
+  <!-- Compact only: the header does not exist below 768, and a man on a phone must still be able
+       to change language and end a password-backed session. -->
+  <div class="column bar bar--compact">
+    <span class="bar__brand">{{ t('app.name') }}</span>
+    <div class="bar__controls">
+      <app-language-switcher />
+      <app-session-link />
+    </div>
+  </div>
+
+  <header class="column head band-top">
+    <div class="head__text">
+      <h1 class="t-h1 head__title">{{ t('platform.title') }}</h1>
+      <p class="t-meta head__sub">{{ t('platform.subtitle') }}</p>
+    </div>
+
+    <!-- The same action cluster the office uses: [info] [+ add] [reload]. The way to the
+         customers joins it when that page exists — a control pointing at an unregistered route is
+         the F4b defect, which builds clean and drops the caller on Home. -->
+    <div class="head__actions">
+      <app-info-popover [heading]="t('platform.about.title')" [body]="t('platform.about.body')" />
+
+      <button
+        type="button"
+        class="btn-icon"
+        [attr.aria-label]="t('platform.add.open')"
+        [attr.aria-expanded]="addOpen()"
+        (click)="openAdd()"
+      >
+        <app-icon name="plus" [size]="20" />
+      </button>
+
+      <button
+        type="button"
+        class="btn-icon head__reload"
+        [attr.aria-label]="t('platform.reload')"
+        (click)="load()"
+      >
+        <app-icon name="refresh" [size]="20" />
+      </button>
+    </div>
+  </header>
+
+  <div class="column content">
+    @if (loading()) {
+      <p class="card state t-meta wide" role="status">{{ t('platform.loading') }}</p>
+    } @else {
+      @if (unconfirmed() && reasonKey(); as reason) {
+        <!--
+          The server was not reached, said before anything else. A directory that is short because
+          a request failed and one that is short because the product is small look identical
+          unless the screen says which it is.
+        -->
+        <div class="card notice notice--warn wide" role="status">
+          <app-icon name="wifi-off" [size]="20" class="notice__icon" />
+          <div class="notice__text">
+            <span class="notice__title">{{ t('platform.stale.title') }}</span>
+            <span class="t-meta">{{ t(reason) }}</span>
+          </div>
+        </div>
+      }
+
+      <!--
+        Em-dashes rather than zeros when the list could not be confirmed: three noughts under a
+        banner saying the server could not be reached is the screen contradicting itself in one
+        glance, and the reading it invites ("there is nobody in the product") is the alarming one.
+      -->
+      <dl class="card stats wide">
+        <div class="stats__cell">
+          <dt class="t-label">{{ t('platform.summary.staff') }}</dt>
+          <dd class="t-num stats__value">
+            {{ unconfirmed() ? t('platform.none') : staffCount() }}
+          </dd>
+        </div>
+        <div class="stats__cell">
+          <dt class="t-label">{{ t('platform.summary.admins') }}</dt>
+          <dd class="t-num stats__value">
+            {{ unconfirmed() ? t('platform.none') : adminCount() }}
+          </dd>
+        </div>
+        <div class="stats__cell">
+          <dt class="t-label">{{ t('platform.summary.pending') }}</dt>
+          <dd class="t-num stats__value">
+            {{ unconfirmed() ? t('platform.none') : pendingCount() }}
+          </dd>
+        </div>
+      </dl>
+
+      <section class="card people wide" [attr.aria-label]="t('platform.people.caption')">
+        @if (groups().length === 0) {
+          <p class="t-meta state">{{ t('platform.people.empty') }}</p>
+        } @else if (viewport.atLeastMedium()) {
+          <!-- A real table from 768: a header row a screen reader can name, `scope` on every
+               header, one `<tbody>` per group, `aria-sort` on the ordered column. It scrolls
+               inside its own card; the page never scrolls sideways. -->
+          <div class="people__scroll">
+            <table class="people__table">
+              <caption class="visually-hidden">
+                {{ t('platform.people.caption') }}
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col" class="col--person" [attr.aria-sort]="ariaSort('name')">
+                    <button type="button" class="sort" (click)="sortBy('name')">
+                      <span>{{ t('platform.people.person') }}</span>
+                      @if (sortedBy('name')) {
+                        <app-icon
+                          name="chevron-down"
+                          [size]="14"
+                          class="sort__arrow"
+                          [class.sort__arrow--asc]="ascending()"
+                        />
+                      }
+                    </button>
+                  </th>
+                  <th scope="col" class="col--company" [attr.aria-sort]="ariaSort('company')">
+                    <button type="button" class="sort" (click)="sortBy('company')">
+                      <span>{{ t('platform.people.company') }}</span>
+                      @if (sortedBy('company')) {
+                        <app-icon
+                          name="chevron-down"
+                          [size]="14"
+                          class="sort__arrow"
+                          [class.sort__arrow--asc]="ascending()"
+                        />
+                      }
+                    </button>
+                  </th>
+                  <th scope="col" class="col--state" [attr.aria-sort]="ariaSort('state')">
+                    <button type="button" class="sort" (click)="sortBy('state')">
+                      <span>{{ t('platform.people.state') }}</span>
+                      @if (sortedBy('state')) {
+                        <app-icon
+                          name="chevron-down"
+                          [size]="14"
+                          class="sort__arrow"
+                          [class.sort__arrow--asc]="ascending()"
+                        />
+                      }
+                    </button>
+                  </th>
+                </tr>
+              </thead>
+              @for (group of groups(); track group.key) {
+                <tbody>
+                  <tr class="group">
+                    <th scope="colgroup" colspan="3" class="t-label group__label">
+                      {{ t('platform.group.' + group.key) }}
+                    </th>
+                  </tr>
+                  @for (row of group.rows; track row.person.id) {
+                    <tr class="person">
+                      <td class="col--person">
+                        <span class="person__name">{{ row.person.displayName }}</span>
+                        <span class="t-meta person__handle">{{
+                          row.person.email ?? row.person.username ?? t('platform.person.noEmail')
+                        }}</span>
+                      </td>
+                      <td class="col--company t-meta">
+                        <!-- Staff belong to no customer. An em-dash says that; an empty cell
+                             would read as a name the screen failed to load. -->
+                        {{ row.person.companyName ?? t('platform.none') }}
+                      </td>
+                      <td class="col--state">
+                        <span class="chips">
+                          @for (chip of row.chips; track chip.key) {
+                            <span class="chip chip--{{ chip.tone }}">{{ t(chip.key) }}</span>
+                          }
+                        </span>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              }
+            </table>
+          </div>
+        } @else {
+          <!-- Below 768: a list, not a table with its cells forced to blocks. -->
+          @for (group of groups(); track group.key) {
+            <h2 class="t-label group__label">{{ t('platform.group.' + group.key) }}</h2>
+            <ul class="rows">
+              @for (row of group.rows; track row.person.id) {
+                <li class="row">
+                  <span class="person__name">{{ row.person.displayName }}</span>
+                  <span class="t-meta person__handle">{{
+                    row.person.email ?? row.person.username ?? t('platform.person.noEmail')
+                  }}</span>
+                  <span class="t-meta person__handle">{{
+                    row.person.companyName ?? t('platform.person.noCompany')
+                  }}</span>
+                  <span class="chips">
+                    @for (chip of row.chips; track chip.key) {
+                      <span class="chip chip--{{ chip.tone }}">{{ t(chip.key) }}</span>
+                    }
+                  </span>
+                </li>
+              }
+            </ul>
+          }
+        }
+      </section>
+    }
+
+    @if (addOpen()) {
+      <app-modal-sheet [heading]="t('platform.add.title')" (close)="cancelAdd()">
+        @if (issued(); as invite) {
+          <!--
+            Success, and the dialog deliberately stays open. There is no SMTP relay, so this link
+            is the entire onboarding: it is read down the phone or pasted into a chat. Closing on
+            success would destroy the one value this dialog exists to produce.
+          -->
+          <div class="issued">
+            <p class="t-meta">
+              {{ t('platform.add.created', { name: issuedFor()?.displayName ?? '' }) }}
+            </p>
+
+            <p class="t-label">{{ t('platform.add.link.label') }}</p>
+            <code class="issued__link">{{ invite.url ?? invite.token }}</code>
+
+            <p class="t-meta">{{ t('platform.add.link.hint') }}</p>
+
+            <div class="issued__actions">
+              <button type="button" class="btn btn--row btn--tertiary" (click)="copyLink()">
+                <app-icon name="copy" [size]="18" />
+                {{ copied() ? t('platform.add.link.copied') : t('platform.add.link.copy') }}
+              </button>
+              <button type="button" class="btn btn--row" (click)="cancelAdd()">
+                {{ t('platform.add.done') }}
+              </button>
+            </div>
+          </div>
+        } @else {
+          <!--
+            Two tabs because they are two different requests, not one with a flag: a company admin
+            needs a company and a member of staff must not have one
+            (`ck_app_user_company_scope`). Switching clears the company, so a stale selection can
+            never produce a 400 the founder cannot account for.
+          -->
+          <div class="tabs" role="tablist" [attr.aria-label]="t('platform.add.title')">
+            <button
+              type="button"
+              role="tab"
+              class="tabs__tab"
+              [class.tabs__tab--on]="tab() === 'company_admin'"
+              [attr.aria-selected]="tab() === 'company_admin'"
+              (click)="showTab('company_admin')"
+            >
+              {{ t('platform.add.tab.companyAdmin') }}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              class="tabs__tab"
+              [class.tabs__tab--on]="tab() === 'super_admin'"
+              [attr.aria-selected]="tab() === 'super_admin'"
+              (click)="showTab('super_admin')"
+            >
+              {{ t('platform.add.tab.staff') }}
+            </button>
+          </div>
+
+          <form class="add__form" (submit)="onAdd($event)">
+            <p class="t-meta add__lead">
+              {{
+                tab() === 'company_admin'
+                  ? t('platform.add.body.companyAdmin')
+                  : t('platform.add.body.staff')
+              }}
+            </p>
+
+            <label class="field">
+              <span class="t-label">{{ t('platform.add.name.label') }}</span>
+              <input
+                id="platform-add-name"
+                class="field__input"
+                type="text"
+                autocomplete="name"
+                [placeholder]="t('platform.add.name.placeholder')"
+                [value]="newName()"
+                (input)="newName.set($any($event.target).value)"
+              />
+            </label>
+
+            <label class="field">
+              <span class="t-label">{{ t('platform.add.email.label') }}</span>
+              <input
+                id="platform-add-email"
+                class="field__input"
+                type="email"
+                autocomplete="email"
+                [placeholder]="t('platform.add.email.placeholder')"
+                [value]="newEmail()"
+                (input)="newEmail.set($any($event.target).value)"
+              />
+              <span class="t-meta">{{ t('platform.add.email.hint') }}</span>
+            </label>
+
+            @if (tab() === 'company_admin') {
+              <label class="field">
+                <span class="t-label">{{ t('platform.add.company.label') }}</span>
+                <select
+                  id="platform-add-company"
+                  class="field__input"
+                  [value]="newCompanyId()"
+                  (change)="newCompanyId.set($any($event.target).value)"
+                >
+                  <option value="">{{ t('platform.add.company.choose') }}</option>
+                  @for (customer of customerOptions(); track customer.id) {
+                    <option [value]="customer.id">{{ customer.name }}</option>
+                  }
+                </select>
+                @if (customerOptions().length === 0) {
+                  <!-- Nothing to put him in. Said here rather than left as an empty dropdown,
+                       because the remedy is on another screen. -->
+                  <span class="t-meta">{{ t('platform.add.company.none') }}</span>
+                }
+              </label>
+            }
+
+            @if (addReasonKey(); as reason) {
+              <div class="notice notice--err" role="status">
+                <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
+                <div class="notice__text">
+                  <span class="notice__title">{{ t('platform.add.failed') }}</span>
+                  <span class="t-meta">{{
+                    mustReload() ? t('platform.add.unconfirmed') : t(reason)
+                  }}</span>
+                </div>
+              </div>
+            }
+
+            <div class="add__actions">
+              <button type="button" class="btn btn--row btn--tertiary" (click)="cancelAdd()">
+                {{ t('platform.add.cancel') }}
+              </button>
+              <button type="submit" class="btn btn--row" [disabled]="!canSubmit()">
+                {{ adding() ? t('platform.add.adding') : t('platform.add.submit') }}
+              </button>
+            </div>
+          </form>
+        }
+      </app-modal-sheet>
+    }
+  </div>
+</div>

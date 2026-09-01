@@ -346,6 +346,10 @@ describe('app routes', () => {
       // One foreman: his code, his phones, the revoke. A route rather than a card that opens
       // inside the list, which is what makes "never two men's codes on one screen" structural.
       'company/worker/:workerId',
+      // Teren's own surface (F7). Gated on `requiresSuperAdmin` — a third admin credential, and
+      // deliberately not "company admin or better": the roles are not a hierarchy, and a gate
+      // written as a rank is the first step towards staff reading a customer's diary.
+      'platform',
       '**',
     ]);
     expect(routes.at(-1)?.redirectTo).toBe('');

@@ -1,0 +1,323 @@
+/*
+ * `/platform` — Teren's own directory.
+ *
+ *   compact   <768      the screen's own bar (the app header is display:none there), then a list
+ *                       of people grouped by role. No table: cells forced to blocks lose the
+ *                       table role in every browser, so the markup itself changes instead.
+ *   medium    768–1023  a real table on the 640 column, with the numbers as a strip above it.
+ *   expanded  ≥1024     the table claims all twelve columns. There is no rail — the office learned
+ *                       on 2026-09-01 that a rail holds the useful half of a 1920 screen while the
+ *                       table beside it holds air.
+ *
+ * Every colour, space and radius is a token from `design/tokens.md`. There is no raw hex here.
+ */
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--space-4);
+}
+
+.bar__brand {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.bar__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* The app header exists from 768 up and carries the wordmark, so this bar would be a second one. */
+@media (min-width: 768px) {
+  .bar--compact {
+    display: none;
+  }
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+
+.head__text {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.head__sub {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.head__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+
+@media (min-width: 768px) {
+  .head {
+    padding-top: var(--space-6);
+    padding-bottom: 0;
+  }
+
+  /* The app header already names the product; repeating it here is chrome twice. */
+  .head__sub {
+    display: none;
+  }
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-8);
+}
+
+@media (min-width: 1024px) {
+  .content {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: var(--space-6);
+    align-content: start;
+    padding-top: var(--space-5);
+  }
+
+  /* Everything spans the full grid: this screen is one table and the numbers above it. */
+  .wide {
+    grid-column: 1 / -1;
+  }
+}
+
+.state {
+  padding: var(--space-5);
+}
+
+/* ---- The three numbers ---------------------------------------------------------------------- */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 0;
+  overflow: hidden;
+}
+
+.stats__cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4) 18px;
+  border-right: 1px solid var(--color-card-line);
+}
+
+.stats__cell:last-child {
+  border-right: 0;
+}
+
+.stats dt,
+.stats dd {
+  margin: 0;
+}
+
+.stats__value {
+  font-size: var(--text-h1);
+  line-height: 1.1;
+}
+
+/* ---- The directory -------------------------------------------------------------------------- */
+
+.people {
+  padding: 0;
+  overflow: hidden;
+}
+
+/*
+ * The table scrolls inside its own card if a Serbian surname and a long address outgrow the
+ * columns. **The page itself never scrolls sideways** — horizontal page scroll at any width is a
+ * defect, and this is what keeps the promise while letting the data be wide.
+ */
+.people__scroll {
+  overflow-x: auto;
+}
+
+.people__table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.people__table th,
+.people__table td {
+  padding: var(--space-3) 18px;
+  border-bottom: 1px solid var(--color-card-line);
+  vertical-align: middle;
+}
+
+.people__table thead th {
+  padding: 0 18px;
+  background: var(--color-canvas);
+}
+
+.sort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--tap-min);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-ink-2);
+  font-size: var(--text-label);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.sort__arrow {
+  transition: transform 120ms ease;
+}
+
+.sort__arrow--asc {
+  transform: rotate(180deg);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .sort:hover {
+    color: var(--color-accent-deep);
+  }
+}
+
+.group__label {
+  padding: var(--space-3) 18px;
+  background: var(--color-canvas);
+  color: var(--color-ink-2);
+}
+
+.person__name {
+  display: block;
+  font-weight: 600;
+}
+
+.person__handle {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+/* Below 768 the same people as a list of rows, each one a legible block rather than a squeezed
+   table row. */
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-card-line);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.row .chips {
+  margin-top: var(--space-1);
+}
+
+/* ---- The add dialog ------------------------------------------------------------------------- */
+
+/*
+ * Two tabs, because a company admin and a member of staff are two different requests rather than
+ * one with a flag. They are `role="tab"` buttons and not a segmented input: the panel below is the
+ * same form with one field added, so there is nothing for a radio group to buy.
+ */
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+  padding: var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--color-canvas);
+}
+
+.tabs__tab {
+  flex: 1 1 0;
+  min-height: var(--tap-min);
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--color-ink-2);
+  font-size: var(--text-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tabs__tab--on {
+  background: var(--color-card);
+  box-shadow: var(--shadow-card);
+  color: var(--color-ink);
+}
+
+.add__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.add__lead {
+  margin: 0;
+}
+
+.add__actions,
+.issued__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.add__actions .btn,
+.issued__actions .btn {
+  flex: 1 1 0;
+}
+
+.issued {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/*
+ * The link, shown once and meant to be read aloud or copied.
+ *
+ * `overflow-wrap: anywhere` rather than a scroll box: a founder reading a token down the phone
+ * needs to see all of it at once, and a link that scrolls sideways is one he will read half of.
+ */
+.issued__link {
+  display: block;
+  padding: var(--space-3);
+  border-radius: var(--radius-card);
+  background: var(--color-canvas);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-meta);
+  overflow-wrap: anywhere;
+  user-select: all;
+}

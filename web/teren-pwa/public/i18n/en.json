@@ -764,5 +764,94 @@
       "title": "How codes work",
       "body": "A code works once and lasts seven days. It is his name plus the code that joins a phone, so send both to that one man — never into a group chat."
     }
+  },
+  "platform": {
+    "title": "Platform",
+    "subtitle": "Teren staff",
+    "loading": "Loading accounts…",
+    "reload": "Refresh",
+    "none": "—",
+    "about": {
+      "title": "What you can see here",
+      "body": "Every account in the product, and the customers they belong to. Teren staff can see which companies and accounts exist and what is failing — never a transcript, a photograph or a report."
+    },
+    "companies": {
+      "open": "Customers"
+    },
+    "stale": {
+      "title": "Not confirmed with the server"
+    },
+    "summary": {
+      "staff": "STAFF",
+      "admins": "ADMINS",
+      "pending": "NOT FINISHED"
+    },
+    "group": {
+      "staff": "Teren staff",
+      "admins": "Customer administrators",
+      "workers": "Foremen"
+    },
+    "people": {
+      "caption": "Everyone in the product",
+      "person": "Person",
+      "company": "Customer",
+      "state": "State",
+      "empty": "No accounts yet."
+    },
+    "person": {
+      "disabled": "Removed",
+      "pending": "Never signed in",
+      "active": "Active",
+      "noEmail": "No address",
+      "noCompany": "No customer"
+    },
+    "add": {
+      "open": "Add a person",
+      "title": "Add a person",
+      "submit": "Add and make a link",
+      "adding": "Adding…",
+      "cancel": "Cancel",
+      "done": "Done",
+      "failed": "Could not add this person",
+      "unconfirmed": "The server did not answer, so it is not known whether the account was created. Refresh before trying again.",
+      "created": "{{name}} was added.",
+      "tab": {
+        "companyAdmin": "Customer admin",
+        "staff": "Teren staff"
+      },
+      "body": {
+        "companyAdmin": "He administers one customer: his foremen, their codes and their phones.",
+        "staff": "Teren staff see every account and every customer. They can never read a customer’s diary."
+      },
+      "name": {
+        "label": "NAME",
+        "placeholder": "Petar Petrović"
+      },
+      "email": {
+        "label": "EMAIL",
+        "placeholder": "petar@firma.rs",
+        "hint": "This is how he signs in, and the only way to reset him later."
+      },
+      "company": {
+        "label": "CUSTOMER",
+        "choose": "Choose a customer…",
+        "none": "No customers yet. Add one first."
+      },
+      "link": {
+        "label": "HIS LINK",
+        "copy": "Copy the link",
+        "copied": "Copied",
+        "hint": "Send it to him. It works once, for 48 hours, and there is no email yet — so read it out or paste it into a chat."
+      }
+    },
+    "reason": {
+      "offline": "No internet. Nothing reached the server.",
+      "signedOut": "Your sign-in has expired. Sign in again.",
+      "forbidden": "Your role may not do this.",
+      "notSignedIn": "You are not signed in.",
+      "refused": "The server did not accept this.",
+      "emailTaken": "That address already has an account. Invite that account instead of making a second one.",
+      "unavailable": "The server is not responding right now."
+    }
   }
 }

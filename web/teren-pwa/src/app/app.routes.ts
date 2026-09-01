@@ -4,6 +4,7 @@ import {
   requiresCompanyAdmin,
   requiresDevice,
   requiresNoDevice,
+  requiresSuperAdmin,
 } from './core/session/device.guard';
 
 /**
@@ -168,6 +169,23 @@ export const routes: Routes = [
     path: 'company/worker/:workerId',
     canMatch: [requiresCompanyAdmin],
     loadComponent: () => import('./features/company/worker-page').then((m) => m.WorkerPage),
+  },
+  {
+    /**
+     * Teren's own surface (F7): every account in the product, and the way to add one.
+     *
+     * **`requiresSuperAdmin`, not "company admin or better".** The roles are not a hierarchy — a
+     * super admin has no company by construction and is refused by every evidence route on
+     * purpose — so a gate written as a rank would be the first step towards staff reading a
+     * customer's diary.
+     *
+     * Before the wildcard, for the reason `/company` is: a member of staff has no device session,
+     * so `'**' → redirectTo: ''` would send him to Home, whose guard would send him to Welcome,
+     * and the app would answer a valid sign-in with a screen asking for a code he cannot have.
+     */
+    path: 'platform',
+    canMatch: [requiresSuperAdmin],
+    loadComponent: () => import('./features/platform/platform-page').then((m) => m.PlatformPage),
   },
   { path: '**', redirectTo: '' },
 ];

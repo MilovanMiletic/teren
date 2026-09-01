@@ -764,5 +764,94 @@
       "title": "Kako kodovi rade",
       "body": "Kod važi jednom i traje sedam dana. Telefon se pridružuje njegovim korisničkim imenom i kodom, pa oboje šaljite baš tom čoveku — nikada u grupu."
     }
+  },
+  "platform": {
+    "title": "Platforma",
+    "subtitle": "Teren tim",
+    "loading": "Učitavanje naloga…",
+    "reload": "Osveži",
+    "none": "—",
+    "about": {
+      "title": "Šta se ovde vidi",
+      "body": "Svi nalozi u aplikaciji i firme kojima pripadaju. Teren tim vidi koje firme i nalozi postoje i šta ne radi — nikada transkript, fotografiju ili izveštaj."
+    },
+    "companies": {
+      "open": "Firme"
+    },
+    "stale": {
+      "title": "Nije provereno na serveru"
+    },
+    "summary": {
+      "staff": "TEREN TIM",
+      "admins": "ADMINI",
+      "pending": "NIJE ZAVRŠENO"
+    },
+    "group": {
+      "staff": "Teren tim",
+      "admins": "Administratori firmi",
+      "workers": "Poslovođe"
+    },
+    "people": {
+      "caption": "Svi u aplikaciji",
+      "person": "Osoba",
+      "company": "Firma",
+      "state": "Stanje",
+      "empty": "Još nema naloga."
+    },
+    "person": {
+      "disabled": "Uklonjen",
+      "pending": "Nije se prijavio",
+      "active": "Aktivan",
+      "noEmail": "Nema adresu",
+      "noCompany": "Bez firme"
+    },
+    "add": {
+      "open": "Dodaj osobu",
+      "title": "Dodaj osobu",
+      "submit": "Dodaj i napravi link",
+      "adding": "Dodavanje…",
+      "cancel": "Odustani",
+      "done": "Gotovo",
+      "failed": "Osoba nije mogla da se doda",
+      "unconfirmed": "Server nije odgovorio, pa se ne zna da li je nalog napravljen. Osvežite pre nego što pokušate ponovo.",
+      "created": "{{name}} je dodat.",
+      "tab": {
+        "companyAdmin": "Admin firme",
+        "staff": "Teren tim"
+      },
+      "body": {
+        "companyAdmin": "On vodi jednu firmu: svoje poslovođe, njihove kodove i telefone.",
+        "staff": "Teren tim vidi sve naloge i sve firme. Nikada ne može da čita dnevnik firme."
+      },
+      "name": {
+        "label": "IME",
+        "placeholder": "Petar Petrović"
+      },
+      "email": {
+        "label": "IMEJL",
+        "placeholder": "petar@firma.rs",
+        "hint": "Time se prijavljuje i samo tako može kasnije da mu se resetuje lozinka."
+      },
+      "company": {
+        "label": "FIRMA",
+        "choose": "Izaberite firmu…",
+        "none": "Još nema firmi. Prvo dodajte jednu."
+      },
+      "link": {
+        "label": "NJEGOV LINK",
+        "copy": "Kopiraj link",
+        "copied": "Kopirano",
+        "hint": "Pošaljite mu ga. Važi jednom, 48 sati, a imejl još ne postoji — pročitajte mu ga ili nalepite u poruku."
+      }
+    },
+    "reason": {
+      "offline": "Nema interneta. Ništa nije stiglo do servera.",
+      "signedOut": "Prijava je istekla. Prijavite se ponovo.",
+      "forbidden": "Vaša uloga ovo ne može da uradi.",
+      "notSignedIn": "Niste prijavljeni.",
+      "refused": "Server ovo nije prihvatio.",
+      "emailTaken": "Ta adresa već ima nalog. Pozovite taj nalog umesto pravljenja drugog.",
+      "unavailable": "Server trenutno ne odgovara."
+    }
   }
 }
