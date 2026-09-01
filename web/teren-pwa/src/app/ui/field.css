@@ -1,0 +1,85 @@
+/*
+ * The labelled form field used by the admin dialogs — `/company`'s "add a foreman", `/platform`'s
+ * "add a person", `/platform/companies`' "add a customer".
+ *
+ * ## Why this is a file and not three copies
+ *
+ * It was three copies, and two of them did not exist. `company-page.css` defined `.field` and
+ * `.field__input`; the two platform dialogs wrote the same class names in their markup and had no
+ * rules behind them, so their inputs rendered as bare browser defaults — a hairline box with the
+ * label sitting beside it instead of above (founder, 2026-09-01: *"use the textbox we used so far,
+ * this one looks bad"*). Angular scopes a component's styles to that component, which is exactly
+ * right and exactly why a shared class name needs a shared stylesheet: copying the markup carries
+ * the class, and the class carries nothing.
+ *
+ * Add it to a screen with `styleUrls: ['./ui/field.css', './that-screen.css']` — the screen's own
+ * sheet comes last so it can still override.
+ *
+ * ## What deliberately did NOT move in here
+ *
+ * `auth-form.css` and `confirm-page.css` also spell `.field__input`, and they are **not** the same
+ * control:
+ *
+ * - The auth screens wrap the input in a `.field__box` that also holds the reveal button, so the
+ *   border, the focus ring and the invalid state belong to the box rather than to the input.
+ * - The confirmation screen's fields are a dense inline grid — `--tap-row` rather than
+ *   `--tap-primary`, flex-basis sizing, a textarea variant.
+ *
+ * Folding either into this file would mean one rule set serving three shapes, which is how a
+ * change to one screen starts breaking two others. Three files, three shapes, one of them shared.
+ */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.field__input {
+  width: 100%;
+  min-height: var(--tap-primary);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-field-line);
+  border-radius: var(--radius-field);
+  background: var(--color-card);
+  color: var(--color-ink);
+  font-family: var(--font-family);
+  /*
+   * 16 px is not a style choice: iOS Safari zooms the page when a focused field is smaller, and an
+   * admin adding a customer from his phone should not have to pinch his way back out.
+   */
+  font-size: 16px;
+}
+
+.field__input::placeholder {
+  color: var(--color-ink-3);
+}
+
+/*
+ * There is deliberately **no focus rule here.** `styles.css` already gives every `input` and
+ * `select` a 3 px `--color-accent-deep` ring at 2 px offset, and it is written with `:where()` so
+ * it carries zero specificity — meaning any rule in this file silently wins. A first cut did
+ * exactly that with a thinner, lighter ring, and produced a focus state this one dialog wore and
+ * no other control in the product did.
+ */
+
+/*
+ * A `<select>` wearing the same class — `/platform`'s customer picker is one.
+ *
+ * Without `appearance: none` it keeps the platform's own control chrome and ignores the height,
+ * the radius and the border above, so the one dropdown in the dialog reads as a different control
+ * from the two fields beside it. The arrow is drawn back in as a background image, since removing
+ * the appearance removes that too.
+ */
+select.field__input {
+  appearance: none;
+  padding-right: var(--space-8);
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%236b6a66' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--space-4) center;
+  cursor: pointer;
+}
+
+.field__hint {
+  margin: 0;
+}

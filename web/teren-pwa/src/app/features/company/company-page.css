@@ -420,26 +420,11 @@ thead th {
   color: var(--color-err);
 }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.field__input {
-  width: 100%;
-  min-height: var(--tap-primary);
-  padding: 0 var(--space-4);
-  border: 1px solid var(--color-field-line);
-  border-radius: var(--radius-field);
-  background: var(--color-card);
-  color: var(--color-ink);
-  font-family: var(--font-family);
-  font-size: 16px;
-}
+/* `.field` and `.field__input` now live in `ui/field.css`, which this component lists first in
+   its `styleUrls`. They were defined here and nowhere else, so the two platform dialogs that
+   copied the markup got the class names and none of the rules. */
 
 .state,
-.field__hint,
 .add__error {
   margin: 0;
 }

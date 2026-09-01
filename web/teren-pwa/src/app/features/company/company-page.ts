@@ -106,7 +106,7 @@ interface PersonRow {
     TranslocoDirective,
   ],
   templateUrl: './company-page.html',
-  styleUrl: './company-page.css',
+  styleUrls: ['../../ui/field.css', './company-page.css'],
 })
 export class CompanyPage {
   private readonly company = inject(CompanyService);

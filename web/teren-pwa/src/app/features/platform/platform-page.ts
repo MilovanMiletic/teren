@@ -105,7 +105,7 @@ type AddTab = 'company_admin' | 'super_admin';
     TranslocoDirective,
   ],
   templateUrl: './platform-page.html',
-  styleUrl: './platform-page.css',
+  styleUrls: ['../../ui/field.css', './platform-page.css'],
 })
 export class PlatformPage {
   private readonly platform = inject(PlatformService);

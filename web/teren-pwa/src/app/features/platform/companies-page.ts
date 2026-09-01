@@ -66,7 +66,7 @@ import { sortCustomers } from './platform-people';
     TranslocoDirective,
   ],
   templateUrl: './companies-page.html',
-  styleUrl: './companies-page.css',
+  styleUrls: ['../../ui/field.css', './companies-page.css'],
 })
 export class CompaniesPage {
   private readonly platform = inject(PlatformService);
