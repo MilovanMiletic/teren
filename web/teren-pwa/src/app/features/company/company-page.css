@@ -1,25 +1,22 @@
 /*
- * The company admin's screen, in three deliberate layouts.
+ * The office: the company's people, in three deliberate layouts.
  *
- *   compact   <768      one column of worker cards that open in place. The actions live inside
- *                       the opened card as full-width controls — the plan calls a worker list
- *                       with per-row actions at 390 one of the two hardest layouts in this
- *                       project, and a row of small icon buttons is the answer that does not work.
- *   medium    768–1023  the same order on a 640 column, with the worker cards two-up and the open
- *                       one spanning both — a tablet gains proportion rather than a taller phone.
- *   expanded  ≥1024     a 12-column application layout: the crew two-up on the left, and on the
- *                       right the aside that adds a man, counts them, and explains the codes.
- *
- * The crew grid is two-up from 768 all the way up rather than only through the tablet band (F7).
- * A worker card is a name, a username and two chips; stretched across 780 px of desktop column it
- * is a 72 px sliver with half a metre of white beside it, and eight of them scroll a laptop for no
- * reason. Two-up halves the scroll, gives the card a shape, and is the arrangement the founder had
- * already approved one breakpoint below.
+ *   compact   <768      a tight list of tappable rows inside one card — name and username on top,
+ *                       chips and the last contact beneath, a chevron. One row, one tap, one
+ *                       navigation. Nothing expands in place, which is what turned a single
+ *                       foreman into an endless scroll on the screen this replaces.
+ *   medium    768–1023  a real `<table>` on the 640 column, the three numbers as a strip above it,
+ *                       and the form and the help **two-up** below — a tablet gains proportion
+ *                       rather than a taller phone.
+ *   expanded  ≥1024     a 12-column application layout: the table claims 8 columns and the height
+ *                       of the window; the rail beside it holds the two things that are not the
+ *                       list. The reverse of what shipped before, where the rail held everything
+ *                       useful and the main column held air.
  *
  * **No artboard exists for this screen** — `design/` carries Welcome and Login and nothing for an
  * admin surface. Every shape here is borrowed from something the founder has already approved: the
- * head row and the two-pane grid from the archive and the profile, the opening card from Home's
- * recent entries, the notice and chip objects from `styles.css`. Every value comes from
+ * head row and the two-pane grid from the archive and the profile, the row list from Home's recent
+ * entries, the notice and chip objects from `styles.css`. Every value comes from
  * `design/tokens.md`; there is no raw hex in this file.
  */
 
@@ -33,7 +30,7 @@
 /*
  * The phone's chrome, as one row: the language switcher and the way out. `.bar` justifies its
  * children apart, so the two controls are wrapped to keep them together on the right rather than
- * pushed to opposite edges of a 390 px screen.
+ * pushed to opposite edges of a 375 px screen.
  */
 .bar__controls {
   display: flex;
@@ -59,6 +56,14 @@
   overflow-wrap: anywhere;
 }
 
+/* [info] [+ add] [reload], at every width. 44 px each, which `btn-icon` already guarantees. */
+.head__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+
 /* From medium up the app header already names the company, so the subtitle would say it twice. */
 @media (min-width: 768px) {
   .head {
@@ -80,342 +85,335 @@
   padding-bottom: var(--space-8);
 }
 
-@media (min-width: 1024px) {
-  .content {
-    display: grid;
-    grid-template-columns: repeat(12, 1fr);
-    gap: var(--space-6);
-    align-items: start;
-    padding-top: var(--space-5);
-  }
+/* ---- The three numbers -------------------------------------------------------------------- */
 
-  /* A notice about the whole screen belongs across the whole screen. */
-  .wide,
-  .state {
-    grid-column: 1 / -1;
-  }
-
-  .pane--workers {
-    grid-column: span 8;
-  }
-
-  .pane--aside {
-    grid-column: span 4;
-    /*
-     * The aside sticks: adding a foreman and signing out are reachable however far down a list of
-     * twelve men the owner has scrolled. `--header-height` because the app header is in normal
-     * flow above it and must not be scrolled under.
-     */
-    position: sticky;
-    top: calc(var(--header-height) + var(--space-6));
-  }
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
 }
 
-.section__label {
+.stats__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-4) 18px;
+  /* Only the internal seams: a divider on the card's own edge would be a border on a card. */
+  border-right: 1px solid var(--color-card-line);
+}
+
+.stats__cell:last-child {
+  border-right: 0;
+}
+
+.stats dt,
+.stats dd {
+  margin: 0;
+}
+
+.stats__value {
+  font-size: var(--text-h1);
+  font-weight: 700;
+}
+
+/* ---- The people card ---------------------------------------------------------------------- */
+
+.people {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/*
+ * The table scrolls **inside its own card** if a long Serbian surname and a long username ever
+ * outgrow the column. The page never scrolls sideways at any width — that is the rule this
+ * container exists to keep.
+ */
+.people__scroll {
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.people__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+/*
+ * The columns are given widths rather than left to the browser, and that is not tidiness.
+ * `overflow-wrap: anywhere` on the name — which a 30-character Serbian surname needs — drops its
+ * min-content width to one character, so auto layout collapsed the name column to 140 px at 768 and
+ * broke "Zoran Jovanović" over two lines while the chips had room to spare.
+ */
+.col--person {
+  width: 42%;
+}
+
+.col--contact {
+  width: 140px;
+}
+
+.col--go {
+  width: 44px;
+}
+
+th,
+td {
+  text-align: left;
+  vertical-align: middle;
+}
+
+/* ---- Sortable column headers --------------------------------------------------------------- */
+
+thead th {
+  padding: 0;
+  border-bottom: 1px solid var(--color-card-line);
+}
+
+/*
+ * The button fills the header cell rather than sitting inside it, so the target is the whole
+ * column heading — 44 px tall on a tablet's touch screen, not a 12 px word.
+ */
+.sort {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: var(--tap-min);
+  padding: 0 18px;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink-2);
+  font-size: var(--text-label);
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sort__arrow {
+  flex: none;
+  color: var(--color-accent-deep);
+}
+
+/* One glyph, both directions: the descending chevron turned over. */
+.sort__arrow--asc {
+  transform: rotate(180deg);
+}
+
+/* ---- Group headers and rows ---------------------------------------------------------------- */
+
+/*
+ * The group band, in both renderings, plus the phone's sort row: one declaration of the tint and
+ * the padding they share. Merged rather than repeated three times because this stylesheet sits
+ * against the 6 kB `anyComponentStyle` budget, and a warning nobody can fix by deleting a comment
+ * is a warning that gets ignored.
+ */
+.group__label,
+.list__group,
+.sort-bar {
+  padding: var(--space-3) 18px;
+  background: var(--color-canvas);
+}
+
+.group__label {
+  font-weight: 600;
+}
+
+/*
+ * The band's flex box lives on an inner span, never on the `<th>`: `display: flex` on a table cell
+ * takes it out of the table's own layout and `colspan` stops applying, which shrinks a group header
+ * to the width of the first column.
+ */
+.group__inner,
+.list__group {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
-  margin: 0;
-  padding-left: var(--space-1);
 }
 
-.section__count {
+.group__count {
   color: var(--color-ink-3);
 }
 
-/* ---- Loading, and the honest empty state --------------------------------------------------- */
+.cell {
+  padding: var(--space-3) 18px;
+  font-weight: 400;
+}
 
-.state {
+.cell--empty {
   padding: var(--space-5) 18px;
 }
 
-.state--empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-8) var(--space-5);
-  text-align: center;
+.cell--contact {
+  white-space: nowrap;
+  color: var(--color-ink-2);
+  font-size: var(--text-meta);
 }
 
-.state__mark {
+.cell--go {
+  width: 1%;
+  padding-left: 0;
+  text-align: right;
+}
+
+.person + .person .cell,
+.person--open {
+  cursor: pointer;
+}
+
+.person__who {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  background: var(--color-canvas);
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.person__name {
+  font-size: var(--text-body);
+  font-weight: 600;
+  /* A long Serbian name wraps; it never pushes the chevron off the row. */
+  overflow-wrap: anywhere;
+}
+
+.person__second {
+  overflow-wrap: anywhere;
+}
+
+/* The control a keyboard and a screen reader use. Text, not a button, to the eye. */
+.person__link {
+  display: flex;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.person__chevron {
+  flex: none;
   color: var(--color-ink-3);
 }
 
-.state__body {
-  max-width: 44ch;
-  color: var(--color-ink-2);
-}
-
-/* ---- A worker --------------------------------------------------------------------------- */
-
-/*
- * The whole summary is one target, and it is a tall one: 72 px against the 48 px floor, because a
- * name, a username and up to three chips have to fit inside it on a 390 px screen.
- */
-.worker__summary {
-  gap: var(--space-3);
-  min-height: 72px;
-  padding: var(--space-4) 18px;
-}
-
-.worker__avatar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--color-accent-tint-1);
-  color: var(--color-accent-deep);
-}
-
-.worker__who {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex-grow: 1;
-  min-width: 0;
-}
-
-.worker__name {
-  font-size: var(--text-body);
-  font-weight: 600;
-  /* A long Serbian name wraps; it never pushes the chevron off the card. */
-  overflow-wrap: anywhere;
-}
-
-.worker__username {
-  overflow-wrap: anywhere;
-}
-
-.worker__chips {
+.chips {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-1);
-  margin-top: var(--space-1);
 }
 
-.worker__chevron {
-  flex: none;
-  color: var(--color-ink-2);
-}
+/* ---- Compact: the row list ----------------------------------------------------------------- */
 
-.worker--open {
-  box-shadow:
-    0 2px 6px rgba(26, 26, 26, 0.06),
-    0 10px 28px rgba(26, 26, 26, 0.09);
-}
-
-/* ---- The opened panel --------------------------------------------------------------------- */
-
-.worker__panel {
+.list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
-  padding: var(--space-5) 18px var(--space-5);
-  border-top: 1px solid var(--color-card-line);
-  background: var(--color-canvas);
 }
 
-.panel__block {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-/* One rule for every paragraph in the panel: the browser's own margin is never wanted here. */
-.panel__lead,
-.panel__hint,
-.panel__ok,
-.panel__state,
-.add__error,
-.field__hint,
-.note p,
-.note h2,
-.summary h2,
-.summary__row dt,
-.summary__value,
-.state,
-.state__body,
-.code {
+.list__group {
   margin: 0;
 }
 
-.panel__hint {
-  max-width: 52ch;
-}
-
-.panel__ok {
-  color: var(--color-ok);
-}
-
-.panel__notice {
-  border-radius: var(--radius-field);
-}
-
-/*
- * Two actions abreast from the first pixel: at 390 px a "Copy code" and a "Copy message" of this
- * height are 44 px targets side by side with room to spare, and stacking them would push the
- * phones section off the screen on every open card.
- */
-.panel__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-1);
-}
-
-.panel__actions .btn {
-  flex: 1 1 auto;
-  width: auto;
-  min-width: 140px;
-}
-
-/* ---- The code ----------------------------------------------------------------------------- */
-
-/*
- * The code itself, given the weight it deserves: this is read aloud down a telephone and typed by
- * a man with gloves on. Tabular figures, wide tracking, and selectable — the clipboard is not
- * available in every context and the text must work when it is not.
- */
-.code {
-  padding: var(--space-4) 18px;
-  border-radius: var(--radius-field);
-  background: var(--color-card);
-  font-size: var(--text-h1);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 3px;
-  overflow-wrap: anywhere;
-  user-select: all;
-}
-
-.message {
-  border-radius: var(--radius-field);
-  background: var(--color-card);
-}
-
-.message__summary {
-  padding: var(--space-3) var(--space-4);
-  cursor: pointer;
-  list-style: none;
-}
-
-.message__summary::-webkit-details-marker {
-  display: none;
-}
-
-.message__text {
-  margin: 0;
-  padding: 0 var(--space-4) var(--space-4);
-  font-size: var(--text-meta);
-  color: var(--color-ink-2);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  user-select: all;
-}
-
-/* ---- Phones ------------------------------------------------------------------------------- */
-
-.phones {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.phone {
+.row {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  flex-wrap: wrap;
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-field);
-  background: var(--color-card);
+  min-height: 64px;
+  margin: 0;
+  padding: var(--space-3) 18px;
 }
 
-.phone--revoked {
-  background: transparent;
-  box-shadow: inset 0 0 0 1px var(--color-field-line);
+.row + .row {
+  border-top: 1px solid var(--color-card-line);
 }
 
-.phone__text {
+/* A row nobody can open must not look like one that can. */
+.row--static {
+  cursor: default;
+}
+
+.row__text {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-2);
   flex-grow: 1;
   min-width: 0;
 }
 
-.phone__name {
-  font-size: var(--text-body);
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.phone__revoke {
-  flex: none;
-  width: auto;
-  padding: 0 var(--space-4);
-}
-
-.confirm {
-  border-radius: var(--radius-field);
-}
-
-.confirm__failure {
-  color: var(--color-err);
-}
-
-/* ---- The aside ---------------------------------------------------------------------------- */
-
-.add__open {
-  gap: var(--space-3);
-  width: 100%;
-  min-height: 72px;
-  padding: var(--space-4) 18px;
-}
-
-.add__mark {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--color-accent-tint-1);
-  color: var(--color-accent-deep);
-}
-
-.add__text {
+.row__top {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
 }
 
-.add__title {
-  font-size: var(--text-body);
-  font-weight: 600;
+.row__contact {
+  white-space: nowrap;
 }
 
+/*
+ * The sort control the table's column headers carry from 768 up. Three pills on the canvas above
+ * the card, 44 px tall, and a second tap on the live one turns it round. A `<select>` would have
+ * been fewer pixels and one more tap plus a native wheel for a man with gloves on.
+ */
+.sort-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.sort-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--tap-min);
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-card);
+  box-shadow: var(--shadow-card);
+  color: var(--color-ink-2);
+  font-size: var(--text-meta);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sort-pill--on {
+  background: var(--color-ink);
+  color: var(--color-card);
+}
+
+.sort-pill--on .sort__arrow {
+  color: var(--color-card);
+}
+
+/* ---- The rail ------------------------------------------------------------------------------- */
+
+/* Inside the dialog, which supplies its own padding — see `ui/modal-sheet.ts`. */
 .add__form {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  padding: var(--space-5) 18px;
+}
+
+.add__lead {
+  margin: 0;
+  max-width: 44ch;
+}
+
+.add__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.add__actions .btn {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 140px;
 }
 
 .add__error {
@@ -440,119 +438,104 @@
   font-size: 16px;
 }
 
-.summary,
-.note {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-5) 18px;
-}
-
-.summary__rows {
-  display: flex;
-  gap: var(--space-6);
+.state,
+.field__hint,
+.add__error {
   margin: 0;
 }
 
-.summary__row {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.state {
+  padding: var(--space-5) 18px;
 }
 
-.summary__value {
-  font-size: var(--text-h1);
-  font-weight: 700;
-}
+/* ---- Medium: the table, and the rail two-up ------------------------------------------------ */
 
-.note p {
-  max-width: 52ch;
-}
-
-/* ---- Medium and expanded: the crew is a grid, with the open card across both ---------------- */
-
-@media (min-width: 768px) {
-  /*
-   * `.pane.pane--workers`, not `.pane--workers`: from 1024 the shared `.pane` object is a flex
-   * column, and this has to outrank it rather than depend on which stylesheet the browser loaded
-   * last. Below 1024 `.pane` is `display: contents` and there is nothing to outrank.
-   */
-  .pane.pane--workers {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-4);
-    /* Rows pack to the top; the cards *within* a row stretch, so a row has one baseline edge. */
-    align-content: start;
-  }
-
-  .pane--workers .section__label,
-  .pane--workers .state {
-    grid-column: 1 / -1;
-  }
-
-  /*
-   * An open card takes the full width. A code, a message and a list of phones inside half a 640
-   * column is a column of wrapped fragments; the men beside it can wait a row.
-   */
-  .worker--open {
-    grid-column: 1 / -1;
-  }
-
-  /*
-   * A closed card fills its row's height, so a man with two chips and a man with none sit on one
-   * line instead of leaving a ragged step down the grid. The summary grows with it and keeps its
-   * content centred, which is why the card becomes a column here and not merely taller.
-   */
-  .worker {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .worker__summary {
-    flex-grow: 1;
-    padding: var(--space-4) var(--space-5);
-  }
-
-  .worker__panel {
-    padding: var(--space-5);
-  }
-
-  .add__form,
-  .summary,
-  .note {
-    padding: var(--space-5);
-  }
-}
-
-/* ---- Expanded: the crew grid gets the room, the aside stays reference ----------------------- */
+/* ---- Expanded: the table claims the width and the height ----------------------------------- */
 
 @media (min-width: 1024px) {
+  .content {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: var(--space-6);
+    align-items: start;
+    align-content: start;
+    padding-top: var(--space-5);
+  }
+
+  /* Anything about the whole screen belongs across the whole screen. */
+  .wide {
+    grid-column: 1 / -1;
+  }
+
+  .people {
+    /*
+     * **Re-judged once the rail went (2026-09-01), and it went the other way.**
+     *
+     * While the table was eight of twelve columns, stretching it to the fold was the better of two
+     * bad options: the alternative left one row in an eight-column field of canvas, which was the
+     * founder's original complaint. Now the table is the full 1200 and the page has no second
+     * column, so the same rule would print roughly 330 px of empty **white** across the whole
+     * window — a far louder emptiness than warm canvas, and the screenshots at 1920 make the
+     * comparison plainly. So the table keeps a couple of rows' worth of tail and the page then
+     * honestly ends, which is what a real data table does with two rows in it.
+     */
+    min-height: 320px;
+  }
+
   /*
-   * A name read at arm's length off a laptop, not at 300 mm off a phone. The card's height comes
-   * from the row it is in — every closed card in a row is as tall as the tallest — so nothing here
-   * needs to set one.
+   * The name takes the slack now that the table owns all twelve columns.
+   *
+   * It was 32% while the table was eight columns wide, where the chips needed every pixel they
+   * could get to stay on one line. At 1200 they have room to spare, and the column that benefits
+   * from the rest is the one holding Serbian surnames.
    */
-  .worker__name {
+  .col--person {
+    width: 45%;
+  }
+
+  .col--contact {
+    width: 160px;
+  }
+
+  .stats__cell {
+    padding: var(--space-5);
+  }
+
+  /* Read at arm's length off a laptop, not at 300 mm off a phone. */
+  .person__name {
     font-size: var(--text-h2);
   }
 
-  /* The code has room to breathe on a desktop, where it is read off the screen to a telephone. */
-  .code {
-    font-size: clamp(28px, 3vw, 40px);
-    letter-spacing: 6px;
+  .cell,
+  .cell--empty,
+  .group__label,
+  .sort {
+    padding-left: var(--space-5);
+    padding-right: var(--space-5);
+  }
+
+  .cell--go {
+    padding-left: 0;
   }
 }
 
 /* ---- Pointer affordances -------------------------------------------------------------------- */
 
 @media (hover: hover) and (pointer: fine) {
-  .worker__summary:hover .worker__chevron,
-  .add__open:hover .add__title {
+  .person--open:hover {
+    background: var(--color-accent-tint-1);
+  }
+
+  .person--open:hover .person__chevron,
+  .row-button:hover .person__chevron {
     color: var(--color-accent-deep);
   }
 
-  .worker__summary:hover,
-  .add__open:hover {
+  .row-button:hover {
     background: var(--color-accent-tint-1);
+  }
+
+  .sort:hover {
+    color: var(--color-ink);
   }
 }

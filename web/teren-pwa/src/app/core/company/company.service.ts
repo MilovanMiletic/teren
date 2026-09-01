@@ -118,6 +118,19 @@ export interface WorkersResult {
   workers: Worker[];
 }
 
+/**
+ * One foreman, read out of the company's own list.
+ *
+ * `missing` is information rather than failure, modelled the way `ArchiveService.getEntry` models
+ * a 404: the list came back, and this id is not in it. See {@link CompanyService.getWorker} for why
+ * that is the only honest answer available to a client.
+ */
+export interface WorkerResult {
+  status: CompanyStatus;
+  worker: Worker | null;
+  missing: boolean;
+}
+
 export interface DevicesResult {
   status: CompanyStatus;
   devices: Phone[];
@@ -181,6 +194,36 @@ export class CompanyService {
     } catch (error) {
       return { status: classify(error), workers: [] };
     }
+  }
+
+  /**
+   * One foreman by id, for his own page.
+   *
+   * **There is no `GET /api/workers/{id}`.** The company-admin surface exposes the list, the
+   * activation code, the share text and a PATCH (`WorkerEndpoints.cs`); a per-worker read was
+   * deliberately left out of scope for this increment, which is frontend-only. So one man is read
+   * out of the list, and the properties that matters are unchanged by that:
+   *
+   * - **Tenancy still holds.** `db.WorkersOf(companyId)` scopes the list server-side, so another
+   *   company's worker is simply not in it and comes back as `missing` — the same answer the
+   *   server's own 404 doctrine gives, and for the same reason: an id that is not yours must not be
+   *   distinguishable from an id that does not exist.
+   * - **Nothing is spent.** It is one GET of a list. Reading a man's page never touches his code.
+   *
+   * The cost is one list per visit instead of one row, which on a company of twelve foremen is a
+   * few hundred bytes. If the list ever grows a page cursor, that is the moment to add the
+   * endpoint rather than the moment to page through it here.
+   */
+  async getWorker(workerId: string): Promise<WorkerResult> {
+    const listing = await this.listWorkers();
+    if (listing.status !== 'ok') {
+      // The list could not be read, so *nothing* is known about this man — least of all that he
+      // does not exist. `missing` stays false: it is a fact, and a failed read is not one.
+      return { status: listing.status, worker: null, missing: false };
+    }
+
+    const worker = listing.workers.find((candidate) => candidate.id === workerId) ?? null;
+    return { status: 'ok', worker, missing: worker === null };
   }
 
   /** The company's phones, revoked ones included — the admin needs both to tell them apart. */

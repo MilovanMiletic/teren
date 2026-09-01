@@ -139,9 +139,111 @@ delegates. Its source-scanning guard moved with it (`PasswordTokens.Add` → `Pa
 which is the guard working rather than being weakened: a command that stopped minting still fails it.
 
 **Suites after the fixes: 892 backend and 863 PWA**, both verified green by execution.
+
+**Later — "frontend was destroyed": it was not, and the check cost five minutes**
+
+Reported as destroyed, asked to rebuild. Nothing was rebuilt, because nothing was gone: `git status`
+clean, **179 source files on disk against 179 tracked in HEAD**, 58 spec files, `ng build` clean with
+all thirteen route chunks emitted (`welcome`, `login`, `activate`, `profile`, `company` included), and
+**863/863 PWA specs green by execution** in 6.6 s at load average 0.5. No stash, nothing recoverable
+in the reflog, both i18n dictionaries serving ~1050 keys.
+
+The tree *looked* touched because HEAD arrived by `pull --tags origin main` at 14:53, which rewrote
+the working files and left them with a 15:03 mtime. That pull **brought the frontend in**, it did not
+take anything out. What was actually wrong: **nothing was listening on 4200** — a stopped dev server
+and a dead browser tab. `npm start` was the whole fix.
+
+Worth writing down because the instinct the request invites — regenerate the frontend — would have
+destroyed 179 reviewed files, F5/F6/F7/F8 and the just-fixed `entry-detail` freshness guard among
+them, to repair a problem that did not exist. **Verify against the tree before rebuilding anything;
+the founder reports symptoms from his browser, not from `git status`.**
+
+**Then "backend also doesn't work" — same diagnosis, same five minutes**
+
+Also not broken, also not running. `dotnet build` clean with **0 warnings**, Docker up (29.7.2) with
+Postgres and MinIO both healthy, **all 7 migrations applied across both histories** (6 evidence + 1
+identity), 13 tables, the three contract project ids intact, and the demo seed present. What was
+wrong: **no `Teren.Api` process on 5080.**
+
+Started it, then proved the backend rather than assuming it: `/health` 200, authenticated
+`GET /api/projects` 200 with the three Serbian sites, `/api/me` returning the right worker, company
+and device, and an unauthenticated call **401** — so the gate holds. **892/892 backend tests green**
+by execution (57 s). The demo activation code `DEM0-TEST` is still live and unconsumed, and it was
+**deliberately not spent** to run this check — the demo device token authenticates the same paths
+without burning a single-use credential the distributor may need.
+
+**The real lesson is not about either half.** Two "it's broken" reports in one session, both stopped
+processes, because bringing this stack up is four manual steps with nothing supervising them. Worth a
+one-command `dev up`.
+
+**Also — the demo company admin's password, by request**
+
+`petar.petrovic@…example.com` (company_admin, Vodoinstal Petrović) got a new password. Done through
+**the product's own path, not a hand-written hash**: `invite-admin` minted a reset token, then
+`POST /auth/password` consumed it, so the value went through `PasswordHash` and landed as
+`pbkdf2-sha256$600000$…` freshly salted, and the trail carries `password_token_issued`
+(`{"source":"console","purpose":"reset"}`) followed by `password_set`. Proven: login **200** with a
+real `trn_s_…` session, a wrong password **401**, and the token **401** on replay, so single-use
+holds. `seed` still ships this account with **no** password — that statement in CLAUDE.md is about
+the seed and stays true; only this dev database now has one.
+
+**Then the company-admin surface was rebuilt — the founder's own verdict was "this genuinely now is a bad UI"**
+
+He shot `/company` at 375, 768 and 1920. At 375 the crew card expanded *inside the list*, so a code,
+an explanation and two full-width buttons lived in a row; at 768 the add form dominated and one
+foreman hung above it; at 1920 the left column was ~90 % empty while everything useful was crushed
+into a narrow rail. He asked for a table grouped by role and a page per worker.
+
+**Scope was cut to frontend-only after one check:** `WorkerEndpoints.cs` lists `WorkersOf(companyId)`
+— workers only — so there is no directors data to group by. The group is the signed-in admin from
+his own session, and nothing is invented. A directors endpoint is the backend increment that would
+change that.
+
+`/company` is now a people directory: a real `<table>` at ≥768 (`scope`, `aria-sort`, one `tbody`
+per group) and a **tappable row list below 768**, chosen in TypeScript from a viewport signal rather
+than by `display:none`, because a table whose cells are forced to `display:block` has the semantics
+of neither. Sorting is a pure tested function. Per-worker detail is a new route,
+`/company/worker/:workerId`. Then, on his second look, the rail went entirely: "Kako kodovi rade"
+became an info popover, and the add form and the PODACI block became modals, all reached from a head
+cluster next to the reload button.
+
+**The interesting part is not the table — it is what the reviewer caught.**
+
+The implementer claimed four freshness defences, "each mutation-proven". Two of them were not.
+Removing the `code` computed filter left the suite green; removing the **`issue()` mid-flight
+guard** left it green too. With both gone the exact catastrophe its own class comment describes is
+reachable: confirm a new code for Zoran, move to Marko before the POST resolves, and Zoran's live
+code *and his share message naming him* paint under Marko's name — on the one screen whose entire
+job is handing out credentials. **The read paths were pinned; the destructive path was not.** That is
+the `entry-detail` failure of the day before wearing different clothes: an assertion that was never
+a witness. Both are witnessed now, and I re-ran the mutation myself rather than trusting the report —
+two specs red without the guard, file restored byte-identical by sha256.
+
+*Recorded as a rule: when an agent says "mutation-proven", ask which mutations it actually ran. This
+one had reasoned about two of the four and written the reasoning down as proof — and had even noted
+in its own report that removing one alone would leave the suite green, which should have been the
+tell.*
+
+Two bugs the implementer found only by opening its own screenshots, both worth the pass: the popover
+**did not open on a mouse at all** (`mouseenter` opened it, the following `click` toggled it shut),
+and at 375 the bubble ran off the left edge, clipped by `overflow-x: hidden` and therefore invisible
+to a `scrollWidth` check. Hover-only was rejected on principle — a company_admin reaches these
+screens on a phone, where hover does not exist — so it opens on hover, tap and keyboard focus.
+
+**966 specs in 62 files** (from 863/58), `ng build` clean with no budget line, nothing outside `web/`
+touched. **The second pass — popover, both modals, the head clusters — has never been through the
+reviewer**; only the table-and-detail half has. The founder asked to commit and push before that
+round ran, which is a deliberate choice and is written here so the gap is not discovered later.
+
+**The value is deliberately not written down in the repo.** `DEM0-TEST` is already a published live
+credential to the demo company and CLAUDE.md flags it as needing a decision at B3a; a company_admin
+password in a git-tracked file would be a second, worse one. **If this same value is ever used on
+B3a staging behind a public URL, it is a real admin credential to a real hostname** — set it there
+from the console, never from a doc.
 **Founder actions**
-- [ ] **Look at `/company` and Home at 1280 and 1920.** The F7 layout pass is green and has never
-      been seen at any width.
+- [ ] **Look at `/company` and Home at 1280 and 1920 with your own eyes.** A headless browser has
+      now seen all nine widths and found no overflow, so this is a taste check, no longer a
+      correctness one.
 - [ ] Serbian copy pass on the new strings: `pending.action.reactivate`, `home.reactivate.*`,
       `archive.photos.loading` / `.retry`.
 - [ ] Still owed: an SMTP relay, and the 1280 artboards for the three auth screens.

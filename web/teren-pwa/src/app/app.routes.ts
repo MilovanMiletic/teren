@@ -148,5 +148,26 @@ export const routes: Routes = [
     canMatch: [requiresCompanyAdmin],
     loadComponent: () => import('./features/company/company-page').then((m) => m.CompanyPage),
   },
+  {
+    /*
+     * One foreman: his activation code, the message that carries it, his phones and the revoke
+     * (2026-09-01). A route of its own rather than a card that opens inside the list, and the
+     * reason is not only that a phone could not read the opened card — **it makes decision 13
+     * structural**. One URL is one man, so there is no state anywhere in the app that can hold two
+     * workers' codes at once; the list it is reached from cannot render a code at all.
+     *
+     * A path segment and not a query parameter, unlike the archive's `?entry=`: nothing else on
+     * this screen depends on the list, the back gesture must mean "back to the people", and a
+     * reload must come back to the same man.
+     *
+     * Gated on the same admin credential as `/company`, and **before** the wildcard for the same
+     * reason: a company admin has no device session, so `'**' → redirectTo: ''` would send him to
+     * Home, whose own guard would send him to Welcome, and the app would answer a valid sign-in
+     * with a screen asking him for a code he cannot have.
+     */
+    path: 'company/worker/:workerId',
+    canMatch: [requiresCompanyAdmin],
+    loadComponent: () => import('./features/company/worker-page').then((m) => m.WorkerPage),
+  },
   { path: '**', redirectTo: '' },
 ];

@@ -144,14 +144,35 @@ before being presented as done; gating fixes go back to the implementer and are 
   route answers 500, including the malformed ones that should answer 400. It cost six red tests on
   2026-09-01 before the cause was obvious. `ValidatorWiringTests` now reads both files and fails on
   the mismatch.
-- **The F7 layout pass is built and green but has never been *seen* (2026-08-31).** The founder's
-  four notes off a 1920 screenshot of `/company` are all answered — `showCompany` kills the dead
-  header button, `ui/session-link.ts` puts the session in the chrome, the crew grid stays two-up
-  above 1023, and Home's expanded grid finally claims the window's height. The agent was to drive a
-  headless browser at 390/768/834/1280/1920 and inspect the screenshots; it died on an API rate
-  limit first, and **no browser driver is installed in the repo**, so every layout claim here rests
-  on specs that read the stylesheet and on reading the diff. Look at the five widths before
-  believing them.
+- **The company-admin surface was rebuilt on 2026-09-01 (founder: "this genuinely now is a bad UI").**
+  `/company` is a **people directory** — a real `<table>` at ≥768, a tappable row list below it,
+  grouped `VLASNIK FIRME` (the signed-in admin, from the session — there is **no** directors
+  endpoint, `WorkersOf(companyId)` returns workers only) then `POSLOVOĐE`. Per-worker detail moved to
+  a new route, **`/company/worker/:workerId`**, and the rail is gone: "Kako kodovi rade" is an info
+  popover and the add-foreman form and the PODACI block are modals, all three reached from a head
+  cluster beside the reload button (`ui/info-popover.ts`, `ui/modal-sheet.ts`).
+  *Decision 13 is now **structural** rather than stateful: `CompanyPage` never calls
+  `readCode`/`issueCode` and holds no code state, so no list can ever carry two men's credentials —
+  a source-scanning spec forbids the very words in the list files, and it is load-bearing (planting
+  `data-code` turns it red).* The popover opens on hover **and** tap **and** keyboard: hover-only
+  help is unreachable on the device this product is built around, and an admin does reach these
+  screens on a phone.
+- **"Mutation-proven" is a claim that has now been false once, on the screen that hands out
+  credentials.** The first cut of the rework claimed four freshness defences were mutation-proven;
+  the reviewer re-ran them and **two survived removal with the whole suite green** — the `code`
+  computed filter and, worse, the **`issue()` mid-flight guard**. With both gone, confirming a new
+  code for one foreman and navigating to another mid-POST paints the first man's code and share
+  message under the second man's name. Witnessed now, and **re-verified independently**: removing
+  the `issue()` guard turns two specs red, and the file was restored byte-identical (sha256).
+  *The read paths were pinned and the destructive path was not — check which half a proof covers.*
+- **The F7 layout pass has now been SEEN (2026-09-01) — this note said the opposite for two days.**
+  The founder's four notes off a 1920 screenshot of `/company` are all answered — `showCompany` kills
+  the dead header button, `ui/session-link.ts` puts the session in the chrome, the crew grid stays
+  two-up above 1023, and Home's expanded grid finally claims the window's height. The frontend
+  reviewer installed a throwaway Playwright into its own temp dir and **actually drove the app at
+  390/767/768/833/834/1023/1024/1280/1920**: no horizontal overflow at any width, the crew grid is
+  two-up from 768 through 1920, and Home's record pane fills a 1080 viewport. **There is still no
+  browser driver committed to the repo** — the next agent that needs one installs it the same way.
   *`session-link.ts` renders in **two** places on `/company` — the header, and that screen's own
   compact bar — because the header is `display: none` below 768 and an admin can reach `/company` on
   a phone. Delete either one and he is stranded with no way to end a password-backed session.*
@@ -257,13 +278,25 @@ before being presented as done; gating fixes go back to the implementer and are 
   **It is a real credential to the demo company published in the repo**, and redeeming it revokes the
   demo phone until the next `seed`. Harmless on a laptop; **needs a decision at B3a**, when that
   company goes behind a public URL.
-- **Suites: 862 PWA specs** (58 files) and **892 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
+- **Suites: 966 PWA specs** (62 files) and **892 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
   + Testcontainers over real Postgres, ~66 s; PdfPig in tests only, so report assertions read text
   back out of the rendered PDF). `dotnet test` needs Docker running.
   *The figures here were stale before 2026-08-30 (403/447 recorded against an actual 436/476) —
   both were re-measured off the tree, not carried forward.*
-- **Check at session start:** the tree is green (`dotnet build` clean, **892 backend tests, 863 PWA
-  specs**, both verified by execution 2026-08-31 at session end).
+- **Check at session start:** the tree is green — **892 backend tests and 966 PWA specs, both
+  re-verified by execution 2026-09-01**, `dotnet build` clean with 0 warnings, `ng build` clean with
+  no budget warning.
+- **"It doesn't work" has meant "it isn't running" twice in a row (2026-09-01).** First "frontend was
+  destroyed, build again" — a stopped `ng serve`. Then "backend also doesn't work" — no `Teren.Api`
+  process on 5080. **Neither was a code fault, and in both cases the tree was untouched and green.**
+  Nothing is supervised here, so a reboot or a Docker restart leaves four things down; the founder
+  reports what his browser shows, not what `git status` says. **Before changing a line, check: is the
+  process listening (`ss -ltnp`), are the containers up (`docker compose ps`), does it build, do the
+  suites pass.** Regenerating the frontend on that first report would have destroyed 179 reviewed
+  files — F5–F8 and the just-fixed `entry-detail` freshness guard among them — to repair a stopped
+  process.
+  *The local stack is four manual steps (`docker compose up -d`, `migrate`, `dotnet run`,
+  `npm start`) and there is no one-command "bring it all up". That is why this keeps happening.*
   ***Re-run both suites after every review.*** Twice on 2026-08-31 a reviewer or a stopped implementer
   left its own mutation in the working tree — a typo'd unique-constraint name that turned a duplicate
   email into a 500, and a removed `pathMatch: 'full'` that made the PWA suite hang forever instead of

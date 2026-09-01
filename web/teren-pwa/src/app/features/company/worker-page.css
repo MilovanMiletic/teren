@@ -1,0 +1,365 @@
+/*
+ * One foreman's page, in three deliberate layouts.
+ *
+ *   compact   <768      one column: the code, then his phones. That is the order an admin came here
+ *                       for — send him his code — and every control in it is a full-width target a
+ *                       gloved thumb can hit.
+ *   medium    768–1023  the same order on the 640 column.
+ *   expanded  ≥1024     the code takes 7 of 12 columns and the phones 5, side by side. **No rail**:
+ *                       his details and the code explanation moved behind the head row's icon
+ *                       buttons (founder, 2026-09-01), which is what freed the width.
+ *
+ * **No artboard exists for this screen.** Every shape is borrowed from something the founder has
+ * already approved: the head row from the profile and the archive, the code block and the phone
+ * rows from the office screen this was split out of, the notice and chip objects from
+ * `styles.css`. Every value comes from `design/tokens.md`; there is no raw hex in this file.
+ */
+
+/* Compact only: the header does not exist below 768, so the wordmark and the chrome do. */
+@media (min-width: 768px) {
+  .bar--compact {
+    display: none;
+  }
+}
+
+.bar__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+
+.head__text {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.head__title {
+  overflow-wrap: anywhere;
+}
+
+.head__username {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+/* [info] [profile] [reload], at every width. 44 px each, which btn-icon already guarantees. */
+.head__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+
+@media (min-width: 768px) {
+  .head {
+    padding-top: var(--space-6);
+    padding-bottom: 0;
+  }
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-8);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-left: var(--space-1);
+}
+
+/* ---- Loading, missing, unreachable --------------------------------------------------------- */
+
+.state {
+  margin: 0;
+  padding: var(--space-5) 18px;
+}
+
+.state--empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8) var(--space-5);
+  text-align: center;
+}
+
+.state__mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--color-canvas);
+  color: var(--color-ink-3);
+}
+
+.state__body {
+  margin: 0;
+  max-width: 44ch;
+  color: var(--color-ink-2);
+}
+
+.state__action {
+  width: auto;
+  min-width: 220px;
+  margin-top: var(--space-2);
+}
+
+/* ---- A block of the page ------------------------------------------------------------------- */
+
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-5) 18px;
+}
+
+.block__lead,
+.block__hint,
+.block__ok,
+.details__hint,
+.code,
+.block > p {
+  margin: 0;
+}
+
+.block__hint {
+  max-width: 52ch;
+}
+
+.block__ok {
+  color: var(--color-ok);
+}
+
+.block__notice {
+  border-radius: var(--radius-field);
+}
+
+/*
+ * Two actions abreast from the first pixel: at 375 px a "Copy code" and a "Copy message" of this
+ * height are 44 px targets side by side with room to spare, and stacking them would push the
+ * phones section off the screen.
+ */
+.block__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.block__actions .btn {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 140px;
+}
+
+/* ---- The code ------------------------------------------------------------------------------ */
+
+/*
+ * The code itself, given the weight it deserves: this is read aloud down a telephone and typed by
+ * a man with gloves on. Tabular figures, wide tracking, and selectable — the clipboard is not
+ * available in every context and the text must work when it is not.
+ */
+.code {
+  padding: var(--space-4) 18px;
+  border-radius: var(--radius-field);
+  background: var(--color-canvas);
+  font-size: var(--text-h1);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 3px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.message {
+  border-radius: var(--radius-field);
+  background: var(--color-canvas);
+}
+
+.message__summary {
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  list-style: none;
+}
+
+.message__summary::-webkit-details-marker {
+  display: none;
+}
+
+.message__text {
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-4);
+  font-size: var(--text-meta);
+  color: var(--color-ink-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+/* ---- Phones -------------------------------------------------------------------------------- */
+
+.phones {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.phone {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-field);
+  background: var(--color-canvas);
+}
+
+.phone--revoked {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--color-field-line);
+}
+
+.phone__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.phone__name {
+  font-size: var(--text-body);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.phone__revoke {
+  flex: none;
+  width: auto;
+  padding: 0 var(--space-4);
+}
+
+.confirm {
+  border-radius: var(--radius-field);
+}
+
+.confirm__failure {
+  color: var(--color-err);
+}
+
+/* ---- The rail ------------------------------------------------------------------------------ */
+
+/*
+ * The details list, inside the dialog. It keeps the row rhythm the profile screen uses, but not the
+ * card treatment: it is already on the panel's own white surface, and a card on a card is a border
+ * this design system does not have.
+ */
+.details {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.details__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-card-line);
+}
+
+.details__row:last-child {
+  border-bottom: 0;
+}
+
+.details__key {
+  margin: 0;
+}
+
+.details__value {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.details__hint {
+  max-width: 52ch;
+}
+
+/* ---- Medium: the rail two-up under the substance -------------------------------------------- */
+
+@media (min-width: 768px) {
+  .block {
+    padding: var(--space-5);
+  }
+
+  .code {
+    padding: var(--space-5);
+  }
+}
+
+/* ---- Expanded: the credential claims the width --------------------------------------------- */
+
+@media (min-width: 1024px) {
+  .content {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: var(--space-6);
+    align-items: start;
+    align-content: start;
+    padding-top: var(--space-5);
+  }
+
+  /* Anything about the whole screen belongs across the whole screen. */
+  .wide {
+    grid-column: 1 / -1;
+  }
+
+  /*
+   * The two things an admin came here to do, side by side. There is no rail any more — his details
+   * and the code explanation are behind the head row's icon buttons — so the code takes the larger
+   * half and the phones the smaller, both starting at the top of the band.
+   */
+  .code-block {
+    grid-column: span 7;
+  }
+
+  .phones-block {
+    grid-column: span 5;
+  }
+
+  /* Read off the screen to a telephone, so it gets the room a desktop has. */
+  .code {
+    padding: var(--space-6);
+    font-size: clamp(28px, 3vw, 44px);
+    letter-spacing: 6px;
+  }
+}
+
+/* ---- Pointer affordances -------------------------------------------------------------------- */
+
+@media (hover: hover) and (pointer: fine) {
+  .message__summary:hover {
+    color: var(--color-ink);
+  }
+}

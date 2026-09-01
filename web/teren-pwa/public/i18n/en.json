@@ -630,8 +630,39 @@
     "title": "Company",
     "reload": "Refresh",
     "loading": "Loading your people…",
-    "workers": {
-      "label": "FOREMEN"
+    "people": {
+      "caption": "Everybody in the company, by role",
+      "foremen": "Foremen",
+      "person": "Person",
+      "state": "State",
+      "contact": "Last contact",
+      "open": "open",
+      "openColumn": "Open",
+      "sortBy": "Sort the foremen",
+      "you": "you",
+      "passwordAccount": "Signs in with a password",
+      "noUsername": "no username",
+      "never": "Never",
+      "none": "—"
+    },
+    "detail": {
+      "title": "Foreman",
+      "loading": "Loading the foreman…",
+      "back": "Back to the people",
+      "details": "Details",
+      "username": "USERNAME",
+      "email": "EMAIL ADDRESS",
+      "phoneCount": "ACTIVE PHONES",
+      "lastSeen": "LAST CONTACT",
+      "notFound": {
+        "title": "That foreman is not in your company",
+        "body": "He may have been removed, or the link may belong to another company. Go back to your people and pick him from the list.",
+        "action": "Back to the people"
+      },
+      "unavailable": {
+        "title": "The foreman could not be read"
+      },
+      "open": "The foreman's details"
     },
     "stale": {
       "title": "Not checked with the server",
@@ -652,14 +683,14 @@
     "summary": {
       "label": "COMPANY",
       "workers": "Foremen",
-      "phones": "Active phones"
+      "phones": "Active phones",
+      "codes": "Codes waiting"
     },
     "worker": {
       "disabled": "Removed",
       "hasPhone": "Phone active",
       "noPhone": "No phone",
       "hasCode": "Code waiting",
-      "email": "Email: {{email}}",
       "noEmail": "No email address on file, so he cannot ask for a new code himself — he has to ask you."
     },
     "code": {
@@ -705,7 +736,8 @@
         "title": "Withdraw {{phone}} — {{name}}?",
         "body": "From its next contact the server refuses that phone. He keeps recording and nothing on the phone is deleted, but what he has recorded stops being sent until he joins again with a new code.",
         "action": "Withdraw the phone"
-      }
+      },
+      "failed": "The phones could not be read."
     },
     "add": {
       "open": "Add a foreman",
@@ -725,7 +757,8 @@
       "conflict": {
         "username": "That name was taken while he was being added. Nothing was saved — try again.",
         "email": "That email address is already on a Teren account. Leave it out, or use another one."
-      }
+      },
+      "unconfirmed": "The server did not answer, so it is not known whether he was added. Refresh the people before adding him again — adding him twice makes two foremen with the same name."
     },
     "aside": {
       "title": "How codes work",

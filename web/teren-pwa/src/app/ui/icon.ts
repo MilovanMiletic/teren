@@ -29,6 +29,7 @@ export type IconName =
   | 'eye'
   | 'eye-off'
   | 'user'
+  | 'info'
   | 'log-in'
   | 'log-out'
   | 'copy';
@@ -205,6 +206,11 @@ export type IconName =
           <path d="M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4" />
           <path d="M16 17l5-5-5-5" />
           <path d="M21 12H9" />
+        }
+        @case ('info') {
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 16v-4" />
+          <path d="M12 8h.01" />
         }
         @case ('user') {
           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />

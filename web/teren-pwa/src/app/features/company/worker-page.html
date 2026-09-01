@@ -1,0 +1,447 @@
+<div class="screen" *transloco="let t">
+  <!--
+    Medium and up: the application header, with the company standing where a project stands on the
+    foreman's screens. No profile control and no office control — the way back to the people is the
+    control in the head row below, at every width, so there is one door and not two.
+  -->
+  <app-header [project]="companyName()" [showProfile]="false" [showCompany]="false" />
+
+  <!--
+    Compact only: the wordmark, the language switcher and the way out. The header is `display: none`
+    below 768 and a company admin can reach this screen on a phone, so without this he would have no
+    way to end a password-backed session on the device most likely to be lost.
+  -->
+  <div class="column bar bar--compact">
+    <span class="bar__brand">{{ t('app.name') }}</span>
+    <div class="bar__controls">
+      <app-language-switcher />
+      <app-session-link />
+    </div>
+  </div>
+
+  <header class="column head band-top">
+    <button
+      type="button"
+      class="btn-icon head__back"
+      [attr.aria-label]="t('company.detail.back')"
+      (click)="back()"
+    >
+      <app-icon name="chevron-left" [size]="20" />
+    </button>
+
+    <div class="head__text">
+      @if (worker(); as man) {
+        <h1 class="t-h1 head__title">{{ man.displayName }}</h1>
+        <p class="t-meta head__username">
+          {{ man.username ?? t('company.people.noUsername') }}
+        </p>
+      } @else {
+        <h1 class="t-h1 head__title">
+          {{ missing() ? t('company.detail.notFound.title') : t('company.detail.title') }}
+        </h1>
+      }
+    </div>
+
+    @if (!missing()) {
+      <!--
+        The action cluster (founder, 2026-09-01): **[info] [profile] [reload]**. The two cards that
+        used to stand in a right-hand rail are behind the first two — his details in a dialog, and
+        how codes work in a popover — which leaves the page body to the two things an admin came
+        here to do.
+      -->
+      <div class="head__actions">
+        <app-info-popover [heading]="t('company.aside.title')" [body]="t('company.aside.body')" />
+
+        @if (worker()) {
+          <button
+            type="button"
+            class="btn-icon"
+            [attr.aria-label]="t('company.detail.open')"
+            [attr.aria-expanded]="detailsOpen()"
+            (click)="openDetails()"
+          >
+            <app-icon name="user" [size]="20" />
+          </button>
+        }
+
+        <button
+          type="button"
+          class="btn-icon head__reload"
+          [attr.aria-label]="t('company.reload')"
+          (click)="reload()"
+        >
+          <app-icon name="refresh" [size]="20" />
+        </button>
+      </div>
+    }
+  </header>
+
+  <div class="column content">
+    @if (loading()) {
+      <p class="card state t-meta wide" role="status">{{ t('company.detail.loading') }}</p>
+    } @else if (missing()) {
+      <!--
+        A rendered state, not an error: the list came back and this id is not in it. It covers "no
+        such man" and "another company's man" together, deliberately — the server refuses to tell
+        those apart, and a client must not invent the distinction.
+      -->
+      <div class="card state state--empty wide" role="status">
+        <span class="state__mark" aria-hidden="true">
+          <app-icon name="user" [size]="32" />
+        </span>
+        <h2 class="t-h2">{{ t('company.detail.notFound.title') }}</h2>
+        <p class="t-body state__body">{{ t('company.detail.notFound.body') }}</p>
+        <button type="button" class="btn btn--primary state__action" (click)="back()">
+          {{ t('company.detail.notFound.action') }}
+        </button>
+      </div>
+    } @else if (!worker()) {
+      <!--
+        The read did not answer, so nothing is known about this man — least of all that he does not
+        exist. The reason is the sentence, and the way back is still on screen.
+      -->
+      <div class="card state state--empty wide" role="status">
+        <span class="state__mark" aria-hidden="true">
+          <app-icon name="wifi-off" [size]="32" />
+        </span>
+        <h2 class="t-h2">{{ t('company.detail.unavailable.title') }}</h2>
+        <p class="t-body state__body">{{ t(reasonKey() ?? 'company.reason.unavailable') }}</p>
+        <button type="button" class="btn btn--tertiary state__action" (click)="reload()">
+          {{ t('company.reload') }}
+        </button>
+      </div>
+    } @else if (worker(); as man) {
+      @if (unconfirmed() && reasonKey(); as reason) {
+        <div class="card notice notice--warn wide" role="status">
+          <app-icon name="wifi-off" [size]="20" class="notice__icon" />
+          <div class="notice__text">
+            <span class="notice__title">{{ t('company.stale.title') }}</span>
+            <span class="t-meta">{{ t(reason) }}</span>
+          </div>
+        </div>
+      }
+
+      <!-- How he stands, in the same words the people list uses about him. -->
+      <div class="chips wide">
+        @for (chip of chips(); track chip.key) {
+          <span class="chip chip--{{ chip.tone }}">{{ t(chip.key) }}</span>
+        }
+      </div>
+
+      <!--
+        The substance of the screen, and now the whole of it: his credential and his phones. Two
+        grid items at expanded rather than one column with a rail beside it — the rail's contents
+        are behind the head row's two icon buttons.
+      -->
+      <!-- ---- His code, and only his ----------------------------------------------------- -->
+      <section class="card block code-block" [attr.aria-label]="t('company.code.label')">
+        @if (code(); as state) {
+          @if (state.loading) {
+            <p class="t-meta" role="status">{{ t('company.code.loading') }}</p>
+          } @else if (state.status !== 'ok') {
+            <!--
+                A failed *read* and a failed *issue* are not the same failure. A read that did not
+                answer changed nothing. An issue that did not answer may already have superseded
+                the code the man is holding — so where the server gave no verdict this says
+                "reload before making another", never "try again", because a second press would
+                supersede a code that exists.
+              -->
+            <div class="notice notice--err block__notice" role="status">
+              <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
+              <div class="notice__text">
+                <span class="notice__title">
+                  {{ state.afterIssue ? t('company.code.issueFailed') : t('company.code.failed') }}
+                </span>
+                <span class="t-meta">
+                  {{
+                    state.afterIssue && unconfirmedAction(state.status)
+                      ? t('company.code.unconfirmed')
+                      : t(reasonFor(state.status) ?? 'company.reason.unavailable')
+                  }}
+                </span>
+              </div>
+            </div>
+          } @else if (state.noLiveCode) {
+            <!--
+                Not an error: the server said plainly that there is nothing this man could type
+                right now. Nothing is destroyed by issuing here, so this is the one path where the
+                button acts on the first tap.
+              -->
+            <span class="t-label">{{ t('company.code.label') }}</span>
+            <p class="t-body block__lead">{{ t('company.code.none.body') }}</p>
+            <button
+              type="button"
+              class="btn btn--primary"
+              [disabled]="codeBusy() || man.disabled"
+              (click)="issue()"
+            >
+              {{ codeBusy() ? t('company.code.issuing') : t('company.code.issue') }}
+            </button>
+            @if (man.disabled) {
+              <p class="t-meta block__hint">{{ t('company.code.disabledHint') }}</p>
+            }
+          } @else if (state.code; as live) {
+            <span class="t-label">{{ t('company.code.label') }}</span>
+            <!--
+                Selectable text, always. The clipboard is unavailable in an insecure context and
+                can refuse when the document is not focused, and an admin reading a code aloud
+                down the phone needs it on screen either way.
+              -->
+            <p class="code" data-code>{{ live.code }}</p>
+            @if (live.expiresAt; as expires) {
+              <p class="t-meta block__hint">
+                {{ t('company.code.expires', { date: (expires | date: 'd. M. y.') ?? '' }) }}
+              </p>
+            }
+            @if (live.emailDelivery === 'not_configured' || live.emailDelivery === 'no_address') {
+              <!--
+                  Said out loud rather than assumed: no relay exists in any environment today, and
+                  a worker with no address on file cannot be sent anything. Either way the admin is
+                  the delivery channel, and he has to know that.
+                -->
+              <p class="t-meta block__hint">{{ t('company.code.notEmailed') }}</p>
+            }
+
+            <div class="block__actions">
+              <button type="button" class="btn btn--row btn--solid" (click)="onCopyCode()">
+                <app-icon name="copy" [size]="18" />
+                {{ t('company.code.copy') }}
+              </button>
+              @if (state.shareText) {
+                <!--
+                    Decision 13 made easy rather than merely required: one worker's ready-made
+                    message, in his language, for one chat.
+                  -->
+                <button type="button" class="btn btn--row btn--primary" (click)="onCopyMessage()">
+                  <app-icon name="share" [size]="18" />
+                  {{ t('company.code.copyMessage') }}
+                </button>
+              }
+            </div>
+
+            @if (copied() === 'code') {
+              <p class="t-meta block__ok" role="status">{{ t('company.code.copied') }}</p>
+            }
+            @if (copied() === 'message') {
+              <p class="t-meta block__ok" role="status">{{ t('company.code.copiedMessage') }}</p>
+            }
+            @if (copyFailed()) {
+              <p class="t-meta block__hint" role="status">{{ t('company.code.copyFailed') }}</p>
+            }
+
+            @if (state.shareText; as message) {
+              <details class="message">
+                <summary class="t-meta message__summary">
+                  {{ t('company.code.messageLabel') }}
+                </summary>
+                <p class="message__text">{{ message }}</p>
+              </details>
+            }
+
+            <p class="t-meta block__hint">{{ t('company.code.oneAtATime') }}</p>
+
+            <!--
+                Issuing over a live code kills the one the man may be typing at this moment. That
+                is why it asks, and why the sentence names the consequence rather than saying "are
+                you sure".
+              -->
+            @if (reissuing()) {
+              <div class="notice notice--warn block__notice">
+                <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
+                <div class="notice__text">
+                  <span class="notice__title">{{ t('company.code.reissue.title') }}</span>
+                  <span class="t-meta">{{ t('company.code.reissue.body') }}</span>
+                  <span class="block__actions">
+                    <button
+                      type="button"
+                      class="btn btn--row btn--tertiary"
+                      (click)="cancelReissue()"
+                    >
+                      {{ t('common.cancel') }}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn--row btn--solid"
+                      [disabled]="codeBusy()"
+                      (click)="issue()"
+                    >
+                      {{
+                        codeBusy() ? t('company.code.issuing') : t('company.code.reissue.confirm')
+                      }}
+                    </button>
+                  </span>
+                </div>
+              </div>
+            } @else {
+              <!--
+                  Confirming closes the question, so this button is the only thing left on screen
+                  while the issue is in flight — and an idle "make a new code" over a code that is
+                  at that moment being superseded is the screen saying nothing is happening. It
+                  carries the busy state instead.
+                -->
+              <button
+                type="button"
+                class="btn btn--row btn--tertiary"
+                [disabled]="codeBusy()"
+                (click)="askReissue()"
+              >
+                {{ codeBusy() ? t('company.code.issuing') : t('company.code.issueNew') }}
+              </button>
+            }
+          }
+        }
+      </section>
+
+      <!-- ---- His phones ------------------------------------------------------------------- -->
+      <section class="card block phones-block" [attr.aria-label]="t('company.phones.label')">
+        <span class="t-label">{{ t('company.phones.label') }}</span>
+        @if (devicesStatus() !== 'ok') {
+          <!--
+              "He has no phone yet" and "the phone list could not be read" are opposite claims
+              about the same empty card, and the second one decides whether an owner believes a
+              handset that walked off site can still record. The man's own read succeeded, so this
+              is the phones' failure and it is said here rather than at the top of the screen.
+            -->
+          <p class="t-meta block__hint" role="status">
+            {{ t('company.phones.failed') }}
+            {{ t(reasonFor(devicesStatus()) ?? 'company.reason.unavailable') }}
+          </p>
+        } @else if (phones().length === 0) {
+          <p class="t-meta block__hint">{{ t('company.phones.none') }}</p>
+        } @else {
+          <ul class="phones">
+            @for (phone of phones(); track phone.id) {
+              <li class="phone" [class.phone--revoked]="phone.revokedAt !== null">
+                <span class="phone__text">
+                  <span class="phone__name">{{ phone.name || t('company.phones.unnamed') }}</span>
+                  <span class="t-meta t-num">
+                    @if (phone.revokedAt; as revoked) {
+                      {{
+                        t('company.phones.revokedOn', {
+                          date: (revoked | date: 'd. M. y.') ?? '',
+                        })
+                      }}
+                    } @else if (phone.lastSeenAt; as seen) {
+                      {{
+                        t('company.phones.lastSeen', {
+                          date: (seen | date: 'd. M. y. HH:mm') ?? '',
+                        })
+                      }}
+                    } @else {
+                      {{ t('company.phones.never') }}
+                    }
+                  </span>
+                </span>
+                @if (phone.revokedAt === null) {
+                  <button
+                    type="button"
+                    class="btn btn--row btn--tertiary phone__revoke"
+                    (click)="askRevoke(phone)"
+                  >
+                    {{ t('company.phones.revoke') }}
+                  </button>
+                } @else {
+                  <span class="chip chip--neutral">{{ t('company.phones.revoked') }}</span>
+                }
+              </li>
+
+              @if (revoking() === phone.id) {
+                <!--
+                    The confirmation names *which phone and whose*, and says what revoking actually
+                    does. Decision 8: it does not stop him recording — he keeps the record button
+                    and the day stays on the phone — it stops the phone sending, until he enters a
+                    new code. Promising anything stronger would be a lie an owner would act on.
+                  -->
+                <li class="notice notice--warn confirm">
+                  <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
+                  <div class="notice__text">
+                    <span class="notice__title">
+                      {{
+                        t('company.phones.confirm.title', {
+                          phone: phone.name || t('company.phones.unnamed'),
+                          name: man.displayName,
+                        })
+                      }}
+                    </span>
+                    <span class="t-meta">{{ t('company.phones.confirm.body') }}</span>
+                    @if (revokeFailure(); as failure) {
+                      <span class="t-meta confirm__failure">
+                        {{
+                          unconfirmedAction(failure)
+                            ? t('company.phones.unconfirmed')
+                            : t(reasonFor(failure) ?? 'company.reason.unavailable')
+                        }}
+                      </span>
+                    }
+                    <span class="block__actions">
+                      <button
+                        type="button"
+                        class="btn btn--row btn--tertiary"
+                        (click)="cancelRevoke()"
+                      >
+                        {{ t('common.cancel') }}
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn--row btn--solid"
+                        [disabled]="revokeBusy()"
+                        (click)="revoke(phone)"
+                      >
+                        {{
+                          revokeBusy()
+                            ? t('company.phones.revoking')
+                            : t('company.phones.confirm.action')
+                        }}
+                      </button>
+                    </span>
+                  </div>
+                </li>
+              }
+            }
+          </ul>
+        }
+      </section>
+
+      @if (detailsOpen()) {
+        <!--
+          The PODACI block, unchanged, in a dialog: username, address, live phones, last contact.
+          **Facts this page already showed** — decision 13 means no code and no share text may
+          appear here, and there is nothing in this block that could carry one.
+        -->
+        <app-modal-sheet [heading]="t('company.detail.details')" (close)="closeDetails()">
+          <dl class="details">
+            <div class="details__row">
+              <dt class="t-meta details__key">{{ t('company.detail.username') }}</dt>
+              <!-- Decision 7: this is what he types on a replacement phone, so it is a value. -->
+              <dd class="details__value">
+                {{ man.username ?? t('company.people.noUsername') }}
+              </dd>
+            </div>
+            <div class="details__row">
+              <dt class="t-meta details__key">{{ t('company.detail.email') }}</dt>
+              <dd class="details__value">{{ man.email ?? t('company.people.none') }}</dd>
+            </div>
+            <div class="details__row">
+              <dt class="t-meta details__key">{{ t('company.detail.phoneCount') }}</dt>
+              <dd class="details__value t-num">{{ man.activeDeviceCount }}</dd>
+            </div>
+            <div class="details__row">
+              <dt class="t-meta details__key">{{ t('company.detail.lastSeen') }}</dt>
+              <dd class="details__value t-num">
+                {{
+                  man.lastSeenAt
+                    ? (man.lastSeenAt | date: 'd. M. y. HH:mm')
+                    : t('company.people.never')
+                }}
+              </dd>
+            </div>
+          </dl>
+          @if (!man.email) {
+            <!-- Decision 14 in reverse: with no address he cannot ask for his own code. -->
+            <p class="t-meta details__hint">{{ t('company.worker.noEmail') }}</p>
+          }
+        </app-modal-sheet>
+      }
+    }
+  </div>
+</div>

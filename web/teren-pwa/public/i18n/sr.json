@@ -630,8 +630,39 @@
     "title": "Firma",
     "reload": "Osveži",
     "loading": "Učitavanje radnika…",
-    "workers": {
-      "label": "POSLOVOĐE"
+    "people": {
+      "caption": "Svi u firmi, po ulozi",
+      "foremen": "Poslovođe",
+      "person": "Osoba",
+      "state": "Stanje",
+      "contact": "Poslednji kontakt",
+      "open": "otvori",
+      "openColumn": "Otvori",
+      "sortBy": "Sortiraj poslovođe",
+      "you": "vi",
+      "passwordAccount": "Prijava lozinkom",
+      "noUsername": "nema korisničko ime",
+      "never": "Nikad",
+      "none": "—"
+    },
+    "detail": {
+      "title": "Poslovođa",
+      "loading": "Učitavanje poslovođe…",
+      "back": "Vrati se na ljude",
+      "details": "Podaci",
+      "username": "KORISNIČKO IME",
+      "email": "IMEJL ADRESA",
+      "phoneCount": "AKTIVNI TELEFONI",
+      "lastSeen": "POSLEDNJI KONTAKT",
+      "notFound": {
+        "title": "Taj poslovođa nije u vašoj firmi",
+        "body": "Možda je uklonjen, ili link pripada drugoj firmi. Vratite se na spisak ljudi i izaberite ga tamo.",
+        "action": "Vrati se na ljude"
+      },
+      "unavailable": {
+        "title": "Poslovođa nije mogao da se pročita"
+      },
+      "open": "Podaci o poslovođi"
     },
     "stale": {
       "title": "Nije provereno na serveru",
@@ -652,14 +683,14 @@
     "summary": {
       "label": "FIRMA",
       "workers": "Poslovođe",
-      "phones": "Aktivni telefoni"
+      "phones": "Aktivni telefoni",
+      "codes": "Kodovi čekaju"
     },
     "worker": {
       "disabled": "Isključen",
       "hasPhone": "Telefon aktivan",
       "noPhone": "Nema telefon",
       "hasCode": "Kod ga čeka",
-      "email": "Imejl: {{email}}",
       "noEmail": "Nema upisanu imejl adresu, pa ne može sam da zatraži novi kod — mora da pita vas."
     },
     "code": {
@@ -705,7 +736,8 @@
         "title": "Opozvati {{phone}} — {{name}}?",
         "body": "Od sledećeg javljanja server odbija taj telefon. On i dalje snima i ništa se sa telefona ne briše, ali ono što je snimio prestaje da se šalje dok se ponovo ne pridruži novim kodom.",
         "action": "Opozovi telefon"
-      }
+      },
+      "failed": "Telefoni nisu mogli da se pročitaju."
     },
     "add": {
       "open": "Dodaj poslovođu",
@@ -725,7 +757,8 @@
       "conflict": {
         "username": "To ime je zauzeto dok je dodavan. Ništa nije sačuvano — pokušajte ponovo.",
         "email": "Ta imejl adresa je već na jednom Teren nalogu. Izostavite je ili upišite drugu."
-      }
+      },
+      "unconfirmed": "Server nije odgovorio, pa se ne zna da li je dodat. Osvežite spisak pre nego što ga dodate ponovo — dva dodavanja znače dva poslovođe sa istim imenom."
     },
     "aside": {
       "title": "Kako kodovi rade",

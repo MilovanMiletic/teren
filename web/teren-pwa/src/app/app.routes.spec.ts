@@ -175,8 +175,11 @@ function navigationTargets(): { targets: NavigationTarget[]; unresolvable: strin
  * **32 → 34 at F8**: the revocation surface. Home's notice and the pending row's "Unesi novi kod"
  * both send him to `/activate` carrying where he was, which is two navigations to a route that
  * already existed. Counted off the tree.
+ *
+ * **34 → 36 with the office rework (2026-09-01)**: the people list opens one man's page, and that
+ * page has the way back to the people. Counted off the tree.
  */
-const NAVIGATION_COUNT = 34;
+const NAVIGATION_COUNT = 36;
 
 /**
  * The query parameters a navigation may put on the URL, by the name of the constant that holds
@@ -337,9 +340,12 @@ describe('app routes', () => {
       'activate',
       'login',
       // The office (F6). Gated on an *admin* credential rather than on this phone's device
-      // session — the only route in the table that is, and the reason it is listed last among
+      // session — the only routes in the table that are, and the reason they are listed last among
       // the real routes rather than beside `profile`.
       'company',
+      // One foreman: his code, his phones, the revoke. A route rather than a card that opens
+      // inside the list, which is what makes "never two men's codes on one screen" structural.
+      'company/worker/:workerId',
       '**',
     ]);
     expect(routes.at(-1)?.redirectTo).toBe('');
