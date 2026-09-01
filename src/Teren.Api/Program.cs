@@ -346,7 +346,12 @@ if (args.Contains("migrate") || args.Contains("seed"))
         var deviceToken = scope.ServiceProvider
             .GetRequiredService<IOptions<DeviceAuthOptions>>().Value.DeviceToken;
 
-        var inserted = await DemoSeeder.SeedAsync(db, deviceToken);
+        // The fixed, repo-published demo code is minted **only on a development host**. It is a
+        // real credential to the demo company that anyone who can read the repository already
+        // holds; on a laptop that costs nothing, and behind a public URL it is a way in.
+        var publishDemoCode = app.Environment.IsDevelopment();
+
+        var inserted = await DemoSeeder.SeedAsync(db, deviceToken, publishDemoCode);
         Console.WriteLine(inserted == 0
             ? "Demo data already present and usable; nothing written."
             : $"Demo data seeded: {inserted} row(s) written.");
@@ -354,9 +359,12 @@ if (args.Contains("migrate") || args.Contains("seed"))
         // Printed on every seed, not only when a row was written: this is the one credential a
         // fresh phone needs to get past the welcome screen, and there is no admin screen to read
         // it from until F6.
-        Console.WriteLine(
-            $"Demo activation: username {DemoSeeder.WorkerUsername}, "
-            + $"code {DemoSeeder.DemoActivationCodeDisplay}.");
+        Console.WriteLine(publishDemoCode
+            ? $"Demo activation: username {DemoSeeder.WorkerUsername}, "
+              + $"code {DemoSeeder.DemoActivationCodeDisplay}."
+            : $"Demo activation: username {DemoSeeder.WorkerUsername}, and NO code — the "
+              + "published one is minted on development hosts only. Issue him a real code from "
+              + "/company.");
     }
 
     return;

@@ -255,6 +255,16 @@ export class PlatformPage {
     return this.ascending() ? 'ascending' : 'descending';
   }
 
+  /**
+   * To one man's page: his link, and the switch that takes him out of service.
+   *
+   * The id goes in the path rather than the state, so a reload and a shared URL both land on the
+   * same person — and so the route table, not this call site, owns the shape of the address.
+   */
+  protected openPerson(person: Person): void {
+    void this.router.navigate(['/platform/user', person.id]);
+  }
+
   /** To the customers. Both screens point at each other, so neither is a dead end. */
   protected openCompanies(): void {
     void this.router.navigate(['/platform/companies']);

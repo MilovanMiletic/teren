@@ -878,14 +878,46 @@
       "company": "Customer",
       "state": "State",
       "empty": "No accounts yet.",
-      "open": "People"
+      "open": "People",
+      "openColumn": "Open"
     },
     "person": {
       "disabled": "Removed",
       "pending": "Never signed in",
       "active": "Active",
       "noEmail": "No address",
-      "noCompany": "No customer"
+      "noCompany": "No customer",
+      "title": "Account",
+      "back": "Back to the people",
+      "loading": "Loading the account…",
+      "open": "Open {{name}}",
+      "role": "ROLE",
+      "created": "ADDED",
+      "lastLogin": "LAST SIGN-IN",
+      "actions": "What you can do",
+      "working": "Working…",
+      "invite": {
+        "hint": "He has never set a password. This makes him a link that lets him choose one.",
+        "action": "Make a link"
+      },
+      "reset": {
+        "hint": "He already has a password. A new link lets whoever opens it choose a new one and sign in as him — so send it to him and nobody else.",
+        "action": "Make a reset link"
+      },
+      "worker": {
+        "hint": "A foreman never has a password. He joins a phone with his username and a code from his own company’s admin."
+      },
+      "superseded": "Any link he had before has just stopped working.",
+      "enable": "Put back in service",
+      "disable": "Take out of service",
+      "action": {
+        "failed": "That did not go through"
+      },
+      "unconfirmed": "The server did not answer, so it is not known whether it took effect. Refresh before trying again.",
+      "missing": {
+        "title": "No such account",
+        "body": "It may have been removed, or the address you followed may be wrong."
+      }
     },
     "add": {
       "open": "Add a person",

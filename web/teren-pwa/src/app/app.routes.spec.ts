@@ -181,8 +181,11 @@ function navigationTargets(): { targets: NavigationTarget[]; unresolvable: strin
  *
  * **36 → 38 at F7**: the platform's people list opens the customers page, and `/set-password`
  * sends a man who has just chosen a passphrase on to `/login`. Counted off the tree.
+ *
+ * **38 → 40**: the people list opens one account's page, and that page has the way back to the
+ * people. Counted off the tree.
  */
-const NAVIGATION_COUNT = 38;
+const NAVIGATION_COUNT = 40;
 
 /**
  * The query parameters a navigation may put on the URL, by the name of the constant that holds
@@ -359,6 +362,9 @@ describe('app routes', () => {
       // The customers, on a route of their own so the heaviest action in the product does not
       // sit beside a row about somebody's phone.
       'platform/companies',
+      // One account: his link, and the switch that takes him out of service. A route rather than
+      // a row action, because re-inviting mints a working credential and supersedes any live one.
+      'platform/user/:userId',
       '**',
     ]);
     expect(routes.at(-1)?.redirectTo).toBe('');

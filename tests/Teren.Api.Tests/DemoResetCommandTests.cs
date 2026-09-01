@@ -91,7 +91,7 @@ public sealed class DemoResetCommandTests(TerenTestApp app)
         // The ordinary case, so the fix above cannot have been bought by breaking it.
         await using var scratch = await app.CreateScratchDatabaseAsync();
         var connectionString = scratch.Database.GetConnectionString()!;
-        await DemoSeeder.SeedAsync(scratch, TerenTestApp.DeviceToken, Ct);
+        await DemoSeeder.SeedAsync(scratch, TerenTestApp.DeviceToken, publishDemoCode: true, Ct);
 
         var exitCode = await RunAsync(
             connectionString,

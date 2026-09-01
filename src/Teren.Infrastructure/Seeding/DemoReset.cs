@@ -256,7 +256,10 @@ public static class DemoReset
             // Inside the same transaction: a failure here restores the demo that was there
             // before, rather than leaving the founder with no demo at all.
             db.ChangeTracker.Clear();
-            var inserted = await DemoSeeder.SeedAsync(db, deviceToken, ct);
+            // `reset-demo` is refused outside Development (or an explicit Demo:ResetEnabled), so
+            // this host is one where the published demo code is harmless — and a reset that left
+            // the demo unjoinable would defeat the point of the command.
+            var inserted = await DemoSeeder.SeedAsync(db, deviceToken, publishDemoCode: true, ct);
 
             await transaction.CommitAsync(ct);
 

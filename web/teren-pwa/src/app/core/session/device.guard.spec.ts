@@ -18,6 +18,7 @@ import { WorkerPage } from '../../features/company/worker-page';
 import { PlatformPage } from '../../features/platform/platform-page';
 import { SetPasswordPage } from '../../features/auth/set-password-page';
 import { CompaniesPage } from '../../features/platform/companies-page';
+import { PersonPage } from '../../features/platform/person-page';
 import {
   requiresCompanyAdmin,
   requiresDevice,
@@ -75,6 +76,7 @@ describe('the device gate', () => {
   let platform: string;
   let setPassword: string;
   let platformCompanies: string;
+  let platformPerson: string;
   let deepLink: string;
 
   beforeAll(async () => {
@@ -90,6 +92,7 @@ describe('the device gate', () => {
     platform = await routeUrlFor(PlatformPage);
     setPassword = await routeUrlFor(SetPasswordPage);
     platformCompanies = await routeUrlFor(CompaniesPage);
+    platformPerson = await routeUrlFor(PersonPage);
     deepLink = `${diary}?${ARCHIVE_ENTRY_PARAM}=${ENTRY_ID}`;
   });
 
@@ -351,7 +354,7 @@ describe('the device gate', () => {
         // happened when one man's page (`/company/worker/:workerId`) joined the table on
         // 2026-09-01 and this spec went red until it was said out loud.
         expect(route.canMatch, url).toEqual([requiresCompanyAdmin]);
-      } else if (url === platform || url === platformCompanies) {
+      } else if (url === platform || url === platformCompanies || url === platformPerson) {
         // Teren's own surface, on a *third* credential. Named separately from the office branch
         // above rather than folded into "any admin screen", because that folding is precisely the
         // mistake: a super admin has no company, is refused by every evidence route on purpose,

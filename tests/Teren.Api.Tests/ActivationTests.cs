@@ -399,7 +399,7 @@ public sealed class ActivationTests(TerenTestApp app) : ApiTestBase(app)
         // agree and only the endpoint judges all three.
         await using (var db = App.CreateDbContext(companyId: null))
         {
-            await DemoSeeder.SeedAsync(db, deviceToken: null, ct: Ct);
+            await DemoSeeder.SeedAsync(db, deviceToken: null, publishDemoCode: true, ct: Ct);
         }
 
         var response = await Activate(
@@ -416,7 +416,7 @@ public sealed class ActivationTests(TerenTestApp app) : ApiTestBase(app)
         // still refuse the second phone, or the demo code is a permanent password.
         await using (var db = App.CreateDbContext(companyId: null))
         {
-            await DemoSeeder.SeedAsync(db, deviceToken: null, ct: Ct);
+            await DemoSeeder.SeedAsync(db, deviceToken: null, publishDemoCode: true, ct: Ct);
         }
 
         (await Activate(DemoSeeder.WorkerUsername, DemoSeeder.DemoActivationCodeDisplay))

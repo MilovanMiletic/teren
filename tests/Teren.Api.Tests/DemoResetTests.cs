@@ -157,7 +157,7 @@ public sealed class DemoResetTests(TerenTestApp app)
     public async Task Ten_demos_worth_of_junk_is_removed_and_the_seed_comes_back()
     {
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
         await GivenJunkFromDemosAsync(db, count: 10);
 
         var result = await DemoReset.ResetAsync(db, deviceToken: DemoDeviceToken, ct: Ct);
@@ -190,7 +190,7 @@ public sealed class DemoResetTests(TerenTestApp app)
         // every reported entry in the database — evidence somebody may rely on in a dispute —
         // would be silently deletable, and nothing else in the system would notice.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
         await GivenJunkFromDemosAsync(db, count: 2);
 
         var result = await DemoReset.ResetAsync(db, deviceToken: DemoDeviceToken, ct: Ct);
@@ -215,7 +215,7 @@ public sealed class DemoResetTests(TerenTestApp app)
         // must be unwritable before, during and after — the reset deletes and re-seeds, it never
         // edits, so it has no reason to disarm this one.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         await DemoReset.ResetAsync(db, deviceToken: DemoDeviceToken, ct: Ct);
 
@@ -236,7 +236,7 @@ public sealed class DemoResetTests(TerenTestApp app)
         // captured entries could never leave the phone — a reset that looks like it worked and
         // silently breaks the demo it exists to protect.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
         await GivenJunkFromDemosAsync(db, count: 3);
 
         await DemoReset.ResetAsync(db, deviceToken: DemoDeviceToken, ct: Ct);
@@ -270,7 +270,7 @@ public sealed class DemoResetTests(TerenTestApp app)
     public async Task Resetting_twice_leaves_the_same_state_as_resetting_once()
     {
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
         await GivenJunkFromDemosAsync(db, count: 4);
 
         var first = await DemoReset.ResetAsync(db, deviceToken: DemoDeviceToken, ct: Ct);
@@ -302,7 +302,7 @@ public sealed class DemoResetTests(TerenTestApp app)
     public async Task No_other_company_is_touched_including_its_reported_entries()
     {
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
         await GivenAnotherCompanyAsync(db);
         await GivenJunkFromDemosAsync(db, count: 2);
 
@@ -328,7 +328,7 @@ public sealed class DemoResetTests(TerenTestApp app)
         // fk_entry_supersedes_entry is RESTRICT, so one bulk DELETE can fail purely on the order
         // Postgres picked. ROADMAP C4 will produce these rows for real.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         var original = Guid.NewGuid();
         var correction = Guid.NewGuid();
@@ -363,7 +363,7 @@ public sealed class DemoResetTests(TerenTestApp app)
         var interceptor = new FailOnceInterceptor("INSERT INTO company");
         await using var db = await app.CreateScratchDatabaseAsync(null, interceptor);
 
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
         await GivenJunkFromDemosAsync(db, count: 2);
         db.ChangeTracker.Clear();
 
@@ -394,7 +394,7 @@ public sealed class DemoResetTests(TerenTestApp app)
     public async Task Only_the_demo_company_prefix_is_swept_from_the_bucket()
     {
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         var objects = new FakeDemoObjectPurge();
         objects.Put(
@@ -470,7 +470,7 @@ public sealed class DemoResetTests(TerenTestApp app)
     public async Task A_dry_run_reports_what_is_there_and_destroys_nothing()
     {
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
         await GivenJunkFromDemosAsync(db, count: 5);
 
         var objects = new FakeDemoObjectPurge();

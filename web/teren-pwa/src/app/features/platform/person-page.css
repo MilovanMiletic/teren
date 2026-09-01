@@ -322,38 +322,59 @@
   user-select: all;
 }
 
+/* ---- One account ---------------------------------------------------------------------------- */
+
+.detail,
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+}
+
+.facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+}
+
 /*
- * The compact row's button.
- *
- * **Needed the moment the row became a real button rather than a clickable `<li>`.** The `<li>`
- * was the flex column; the button became the flex *child*, and its own spans went back to
- * inline — so at 390 the name, the address, the customer and the chips sat side by side and
- * wrapped mid-word. The specs passed and so did the overflow check; only the screenshot showed it.
+ * Label above value on a phone, side by side from 768. A two-column grid at 390 puts a Serbian
+ * label and a long address into two narrow columns and wraps both — which is how a detail list
+ * becomes unreadable on the device most likely to be holding it.
  */
-.row-button {
+.facts__row {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  /* A button centres its text by default, and a flex column stretches its children — so without
-     these the whole row read as centred, which no other list in the app does. */
-  align-items: flex-start;
-  width: 100%;
-  min-height: var(--tap-min);
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
 }
 
-.row-button .chips {
-  margin-top: var(--space-1);
+.facts__row dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
-@media (hover: hover) and (pointer: fine) {
-  .row-button:hover .person__name {
-    color: var(--color-accent-deep);
+@media (min-width: 768px) {
+  .facts__row {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--space-4);
+  }
+
+  .facts__row dt {
+    flex: 0 0 160px;
+  }
+}
+
+@media (min-width: 1024px) {
+  /* Two panes: what he is on the left, what can be done to him on the right. The actions are the
+     dangerous half, and they get their own column rather than sitting under a fact list. */
+  .detail {
+    grid-column: span 7;
+  }
+
+  .actions {
+    grid-column: span 5;
   }
 }

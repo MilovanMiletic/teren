@@ -32,7 +32,7 @@ public sealed class DemoRecoveryTests(TerenTestApp app)
         // Revoke, re-seed, and the phone works again — without the founder having to know that
         // the fix is a second UPDATE nobody wrote down.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"""
@@ -41,7 +41,7 @@ public sealed class DemoRecoveryTests(TerenTestApp app)
              """,
             Ct);
 
-        var written = await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        var written = await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         written.ShouldBe(1, "the re-seed reported no work, so the demo is still dead");
         await AssertDemoPhoneUsableAsync(db);
@@ -53,12 +53,12 @@ public sealed class DemoRecoveryTests(TerenTestApp app)
         // Same class, same silence: the credential check requires app_user.disabled_at IS NULL,
         // so a disabled worker is a dead phone with a different cause.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"UPDATE app_user SET disabled_at = now() WHERE id = {DemoSeeder.WorkerId}", Ct);
 
-        var written = await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        var written = await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         written.ShouldBe(1);
         await AssertDemoPhoneUsableAsync(db);
@@ -68,12 +68,12 @@ public sealed class DemoRecoveryTests(TerenTestApp app)
     public async Task Re_seeding_resumes_a_suspended_demo_company()
     {
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"UPDATE company SET suspended_at = now() WHERE id = {DemoSeeder.CompanyId}", Ct);
 
-        var written = await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        var written = await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         written.ShouldBe(1);
         await AssertDemoPhoneUsableAsync(db);
@@ -83,7 +83,7 @@ public sealed class DemoRecoveryTests(TerenTestApp app)
     public async Task All_three_withdrawals_at_once_are_cleared_by_one_re_seed()
     {
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"UPDATE device SET revoked_at = now() WHERE id = {DemoSeeder.DemoDeviceId}", Ct);
@@ -92,7 +92,7 @@ public sealed class DemoRecoveryTests(TerenTestApp app)
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"UPDATE company SET suspended_at = now() WHERE id = {DemoSeeder.CompanyId}", Ct);
 
-        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct)).ShouldBe(3);
+        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct)).ShouldBe(3);
 
         await AssertDemoPhoneUsableAsync(db);
     }
@@ -104,7 +104,7 @@ public sealed class DemoRecoveryTests(TerenTestApp app)
         // back into a state it can be given from; rewriting a name the founder changed on purpose
         // is the upsert this seeder has always refused to be.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"""
@@ -116,7 +116,7 @@ public sealed class DemoRecoveryTests(TerenTestApp app)
             $"UPDATE company SET name = 'Preimenovana firma' WHERE id = {DemoSeeder.CompanyId}",
             Ct);
 
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         (await ScalarAsync(db, "SELECT display_name AS \"Value\" FROM app_user WHERE id = {0}",
                 DemoSeeder.WorkerId))
@@ -135,10 +135,10 @@ public sealed class DemoRecoveryTests(TerenTestApp app)
         // The whole restore is behind a WHERE, so idempotence is unaffected: the ordinary case
         // must still be a no-op, or every `seed` would claim to have done something.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
-        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct)).ShouldBe(0);
-        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct)).ShouldBe(0);
+        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct)).ShouldBe(0);
+        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct)).ShouldBe(0);
     }
 
     // ---------------------------------------------------------------- the cross-tenant guard
@@ -152,7 +152,7 @@ public sealed class DemoRecoveryTests(TerenTestApp app)
         // MAN. Unreachable today, because only the seeder and the fixture insert devices; D3's
         // activation endpoint is what makes it writable.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
         var otherCompany = await GivenAnotherCompanyAsync(db);
 
         var ex = await Should.ThrowAsync<PostgresException>(async () =>
@@ -178,7 +178,7 @@ public sealed class DemoRecoveryTests(TerenTestApp app)
         // by the unique index before the composite foreign key was ever consulted — and this test
         // would then be asserting the wrong constraint.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
         var otherCompany = await GivenAnotherCompanyAsync(db);
 
         var now = DateTime.UtcNow;
@@ -202,7 +202,7 @@ public sealed class DemoRecoveryTests(TerenTestApp app)
     {
         // The guard must block what it is meant to block and nothing else.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"""
@@ -224,7 +224,7 @@ public sealed class DemoRecoveryTests(TerenTestApp app)
         // platform staff structurally unable to do the job the role exists for. Who may act is a
         // role gate (D2), not a schema constraint.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         var staffId = Guid.NewGuid();
         var now = DateTime.UtcNow;

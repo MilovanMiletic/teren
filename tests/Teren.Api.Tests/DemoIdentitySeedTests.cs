@@ -33,7 +33,7 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
     {
         // The hinge itself, asserted directly rather than inferred from a request succeeding.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         var stored = await ScalarAsync(
             db, "SELECT token_hash AS \"Value\" FROM device WHERE id = {0}", DemoSeeder.DemoDeviceId);
@@ -46,7 +46,7 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
     public async Task The_demo_device_belongs_to_the_demo_worker_and_the_demo_company()
     {
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         var owner = await ScalarAsync(
             db, "SELECT user_id::text AS \"Value\" FROM device WHERE id = {0}",
@@ -63,7 +63,7 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
     public async Task The_demo_company_gets_an_owner_and_a_foreman()
     {
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         var admin = await ScalarAsync(
             db, "SELECT role AS \"Value\" FROM app_user WHERE id = {0}", DemoSeeder.CompanyAdminId);
@@ -84,7 +84,7 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
         // (ck_app_user_worker_has_no_password). A seed that shipped a password would be a
         // credential in the repository.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         var withPasswords = await CountAsync(
             db, "SELECT count(*)::int AS \"Value\" FROM app_user WHERE password_hash IS NOT NULL");
@@ -96,9 +96,9 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
     public async Task Seeding_twice_writes_no_identity_rows_the_second_time()
     {
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
-        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct)).ShouldBe(0);
+        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct)).ShouldBe(0);
 
         (await CountAsync(db, "SELECT count(*)::int AS \"Value\" FROM app_user")).ShouldBe(2);
         (await CountAsync(db, "SELECT count(*)::int AS \"Value\" FROM device")).ShouldBe(1);
@@ -113,9 +113,9 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
         // kept a stale hash after Auth__DeviceToken was rotated, `seed` would report success and
         // every phone would get 401 with nothing anywhere saying why.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, "the-first-device-token-value", Ct);
+        await DemoSeeder.SeedAsync(db, "the-first-device-token-value", publishDemoCode: true, Ct);
 
-        var inserted = await DemoSeeder.SeedAsync(db, "a-completely-different-token", Ct);
+        var inserted = await DemoSeeder.SeedAsync(db, "a-completely-different-token", publishDemoCode: true, Ct);
 
         inserted.ShouldBe(1);
         (await ScalarAsync(
@@ -132,9 +132,9 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
     {
         // The upsert must not make every re-seed report work it did not do.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
-        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct)).ShouldBe(0);
+        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct)).ShouldBe(0);
     }
 
     [Fact]
@@ -145,7 +145,7 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
         // start-up rather than refusing to boot.
         await using var db = await app.CreateScratchDatabaseAsync();
 
-        var inserted = await DemoSeeder.SeedAsync(db, deviceToken: null, ct: Ct);
+        var inserted = await DemoSeeder.SeedAsync(db, deviceToken: null, publishDemoCode: true, ct: Ct);
 
         inserted.ShouldBe(10); // the full seed less the device
         (await CountAsync(db, "SELECT count(*)::int AS \"Value\" FROM device")).ShouldBe(0);
@@ -169,7 +169,7 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
         // Now that the row is real the two must agree, or the demo archive shows provenance
         // pointing at a phone nobody can find.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         var orphaned = await CountAsync(
             db,
@@ -192,7 +192,7 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
         // the seeded company admin has no password. "Main is always demo-ready" (invariant 6) is
         // this row.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         var display = await ScalarAsync(
             db,
@@ -227,7 +227,7 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
         // one is seeded data published in the repository, and a code that quietly expired a week
         // after the last seed is discovered by the distributor mid-pitch.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         var stillLiveInAYear = await CountAsync(
             db,
@@ -247,9 +247,9 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
         // ux_activation_code_live would refuse a second one anyway — this is the assertion that
         // the seeder does not try, and that a re-seed still reports no work.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
-        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct)).ShouldBe(0);
+        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct)).ShouldBe(0);
 
         (await LiveCodeCountAsync(db)).ShouldBe(1);
         (await CountAsync(db, "SELECT count(*)::int AS \"Value\" FROM activation_code"))
@@ -263,7 +263,7 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
         // the re-mint, the next man to open the app on a fresh browser finds a demo he cannot
         // join, and `seed` reports success while he does.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"""
@@ -273,7 +273,7 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
             Ct);
 
         (await LiveCodeCountAsync(db)).ShouldBe(0);
-        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct)).ShouldBe(1);
+        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct)).ShouldBe(1);
 
         (await LiveCodeCountAsync(db)).ShouldBe(1);
         (await ScalarAsync(
@@ -303,7 +303,7 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
         // predicate cannot mention now()), so the replacement is only possible if the seeder
         // retires it first — and retiring it is also where its plaintext finally goes.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"""
@@ -312,7 +312,7 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
              """,
             Ct);
 
-        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct)).ShouldBe(2); // superseded + minted
+        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct)).ShouldBe(2); // superseded + minted
 
         (await LiveCodeCountAsync(db)).ShouldBe(1);
         (await CountAsync(
@@ -331,7 +331,7 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
         // An admin pressing "issue a new code" for the demo worker supersedes the fixed one. The
         // seed is the way back, exactly as it is for a revoked demo phone.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
 
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"""
@@ -350,7 +350,7 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
              """,
             Ct);
 
-        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, Ct)).ShouldBe(2);
+        (await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct)).ShouldBe(2);
 
         (await LiveCodeCountAsync(db)).ShouldBe(1);
         (await ScalarAsync(
@@ -386,4 +386,50 @@ public sealed class DemoIdentitySeedTests(TerenTestApp app)
 
     private static async Task<int> CountAsync(DbContext db, string sql) =>
         (await db.Database.SqlQueryRaw<int>(sql).ToListAsync(Ct)).Single();
+}
+
+/// <summary>
+/// The published demo code, and the default that keeps it off a public box.
+/// <para>
+/// <c>DemoSeeder.DemoActivationCode</c> is written down in the source and in
+/// <c>docs/demo-script.md</c>, so it is a live credential to the demo company that anyone who can
+/// read the repository already holds. On a laptop that costs nothing; behind a public URL it is a
+/// way in, and redeeming it revokes the demo phone until the next seed.
+/// </para>
+/// </summary>
+public sealed class DemoCodePublicationTests(TerenTestApp app) : ApiTestBase(app)
+{
+    private static async Task<bool> HasDemoCodeAsync(DbContext db)
+    {
+        var hash = CredentialTokens.Hash(DemoSeeder.DemoActivationCode);
+        var rows = await db.Database.SqlQueryRaw<int>(
+            """
+            SELECT 1 AS "Value" FROM activation_code
+             WHERE code_hash = {0} AND consumed_at IS NULL AND superseded_at IS NULL
+            """,
+            hash).ToListAsync(TestContext.Current.CancellationToken);
+        return rows.Count > 0;
+    }
+
+    [Fact]
+    public async Task The_published_demo_code_is_not_minted_unless_the_caller_asks_for_it()
+    {
+        // The default, which is what a caller who did not think about it gets. **That is the whole
+        // protection**: a staging host nobody reasoned about seeds a demo worker with no code —
+        // visible at once and fixed from `/company` — rather than a live credential nobody notices
+        // until somebody uses it.
+        await using var db = await app.CreateScratchDatabaseAsync();
+        await DemoSeeder.SeedAsync(db, deviceToken: null, ct: Ct);
+
+        (await HasDemoCodeAsync(db)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task Asking_for_it_mints_it()
+    {
+        await using var db = await app.CreateScratchDatabaseAsync();
+        await DemoSeeder.SeedAsync(db, deviceToken: null, publishDemoCode: true, ct: Ct);
+
+        (await HasDemoCodeAsync(db)).ShouldBeTrue();
+    }
 }

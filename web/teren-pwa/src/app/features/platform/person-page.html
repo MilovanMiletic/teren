@@ -1,0 +1,182 @@
+<div class="screen" *transloco="let t">
+  <app-header [showProfile]="false" [showCompany]="false" />
+
+  <div class="column bar bar--compact">
+    <span class="bar__brand">{{ t('app.name') }}</span>
+    <div class="bar__controls">
+      <app-language-switcher />
+      <app-session-link />
+    </div>
+  </div>
+
+  <header class="column head band-top">
+    <button type="button" class="btn-icon" [attr.aria-label]="t('platform.person.back')" (click)="back()">
+      <app-icon name="chevron-left" [size]="20" />
+    </button>
+
+    <div class="head__text">
+      <h1 class="t-h1 head__title">{{ person()?.displayName ?? t('platform.person.title') }}</h1>
+      @if (person(); as who) {
+        <p class="t-meta head__sub">{{ who.email ?? who.username ?? t('platform.person.noEmail') }}</p>
+      }
+    </div>
+
+    <div class="head__actions">
+      <button
+        type="button"
+        class="btn-icon head__reload"
+        [attr.aria-label]="t('platform.reload')"
+        (click)="load()"
+      >
+        <app-icon name="refresh" [size]="20" />
+      </button>
+    </div>
+  </header>
+
+  <div class="column content">
+    @if (loading()) {
+      <p class="card state t-meta wide" role="status">{{ t('platform.person.loading') }}</p>
+    } @else if (missing()) {
+      <!-- The list came back and he is not in it. A fact, and a different thing from a read that
+           failed — saying "no such account" over a failed request would invent a deletion. -->
+      <div class="card notice notice--warn wide" role="status">
+        <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
+        <div class="notice__text">
+          <span class="notice__title">{{ t('platform.person.missing.title') }}</span>
+          <span class="t-meta">{{ t('platform.person.missing.body') }}</span>
+        </div>
+      </div>
+    } @else {
+      @if (unconfirmed() && reasonKey(); as reason) {
+        <div class="card notice notice--warn wide" role="status">
+          <app-icon name="wifi-off" [size]="20" class="notice__icon" />
+          <div class="notice__text">
+            <span class="notice__title">{{ t('platform.stale.title') }}</span>
+            <span class="t-meta">{{ t(reason) }}</span>
+          </div>
+        </div>
+      }
+
+      @if (person(); as who) {
+        <section class="card detail wide">
+          <span class="chips">
+            @for (chip of chips(); track chip.key) {
+              <span class="chip chip--{{ chip.tone }}">{{ t(chip.key) }}</span>
+            }
+          </span>
+
+          <dl class="facts">
+            <div class="facts__row">
+              <dt class="t-label">{{ t('platform.add.email.label') }}</dt>
+              <!--
+                His address belongs here, not only in the header: `.head__sub` is hidden from 768
+                up (it is a redundant label on the directory, which this stylesheet is copied
+                from), so without this row the email vanished on every screen wider than a phone.
+                Found by looking at the rendered page rather than at the CSS.
+              -->
+              <dd>{{ who.email ?? who.username ?? t('platform.person.noEmail') }}</dd>
+            </div>
+            <div class="facts__row">
+              <dt class="t-label">{{ t('platform.person.role') }}</dt>
+              <dd>{{ t('profile.role.' + who.role) }}</dd>
+            </div>
+            <div class="facts__row">
+              <dt class="t-label">{{ t('platform.people.company') }}</dt>
+              <dd>{{ who.companyName ?? t('platform.person.noCompany') }}</dd>
+            </div>
+            <div class="facts__row">
+              <dt class="t-label">{{ t('platform.person.created') }}</dt>
+              <dd>{{ who.createdAt ? (who.createdAt | date: 'd. M. y.') : t('platform.none') }}</dd>
+            </div>
+            <div class="facts__row">
+              <dt class="t-label">{{ t('platform.person.lastLogin') }}</dt>
+              <!-- Never signed in is not "a long time ago"; an em-dash says the difference. -->
+              <dd>
+                {{ who.lastLoginAt ? (who.lastLoginAt | date: 'd. M. y. HH:mm') : t('platform.none') }}
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="card actions wide">
+          <h2 class="t-label">{{ t('platform.person.actions') }}</h2>
+
+          @if (canInvite()) {
+            <!--
+              Said before the press, not after. Minting retires whatever live link he already has,
+              and for an account that already has a password it is a reset — which is a working
+              way into that account for whoever holds the link (plan §13.6).
+            -->
+            <p class="t-meta">
+              {{
+                who.passwordPending
+                  ? t('platform.person.invite.hint')
+                  : t('platform.person.reset.hint')
+              }}
+            </p>
+            <button
+              type="button"
+              class="btn btn--row btn--tertiary"
+              [disabled]="working()"
+              (click)="invite()"
+            >
+              <app-icon name="copy" [size]="18" />
+              {{
+                working()
+                  ? t('platform.person.working')
+                  : who.passwordPending
+                    ? t('platform.person.invite.action')
+                    : t('platform.person.reset.action')
+              }}
+            </button>
+          } @else {
+            <!-- A foreman's password is unstorable by constraint, so there is no link to mint.
+                 His way back in is a fresh activation code from his own company's admin. -->
+            <p class="t-meta">{{ t('platform.person.worker.hint') }}</p>
+          }
+
+          @if (issued(); as invite) {
+            <div class="issued">
+              <p class="t-label">{{ t('platform.add.link.label') }}</p>
+              <code class="issued__link">{{ invite.url ?? invite.token }}</code>
+              @if (invite.superseded > 0) {
+                <!-- A link already sent has just stopped working. Worth saying out loud rather
+                     than discovering when somebody reports that his link is dead. -->
+                <p class="t-meta">{{ t('platform.person.superseded') }}</p>
+              }
+              <p class="t-meta">{{ t('platform.add.link.hint') }}</p>
+              <button type="button" class="btn btn--row btn--tertiary" (click)="copyLink()">
+                {{ copied() ? t('platform.add.link.copied') : t('platform.add.link.copy') }}
+              </button>
+            </div>
+          }
+
+          <!--
+            A stamp, never a delete: a person who authored evidence stays nameable for as long as
+            that evidence does, and the foreign key would refuse anyway.
+          -->
+          <button
+            type="button"
+            class="btn btn--row btn--tertiary"
+            [disabled]="working()"
+            (click)="setDisabled(!who.disabled)"
+          >
+            {{ who.disabled ? t('platform.person.enable') : t('platform.person.disable') }}
+          </button>
+
+          @if (actionReasonKey(); as reason) {
+            <div class="notice notice--err" role="status">
+              <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
+              <div class="notice__text">
+                <span class="notice__title">{{ t('platform.person.action.failed') }}</span>
+                <span class="t-meta">{{
+                  mustReload() ? t('platform.person.unconfirmed') : t(reason)
+                }}</span>
+              </div>
+            </div>
+          }
+        </section>
+      }
+    }
+  </div>
+</div>

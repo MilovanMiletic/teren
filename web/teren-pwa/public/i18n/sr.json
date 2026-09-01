@@ -878,14 +878,46 @@
       "company": "Firma",
       "state": "Stanje",
       "empty": "Još nema naloga.",
-      "open": "Ljudi"
+      "open": "Ljudi",
+      "openColumn": "Otvori"
     },
     "person": {
       "disabled": "Uklonjen",
       "pending": "Nije se prijavio",
       "active": "Aktivan",
       "noEmail": "Nema adresu",
-      "noCompany": "Bez firme"
+      "noCompany": "Bez firme",
+      "title": "Nalog",
+      "back": "Nazad na ljude",
+      "loading": "Učitavanje naloga…",
+      "open": "Otvori {{name}}",
+      "role": "ULOGA",
+      "created": "DODAT",
+      "lastLogin": "POSLEDNJA PRIJAVA",
+      "actions": "Šta možete da uradite",
+      "working": "U toku…",
+      "invite": {
+        "hint": "Još nije postavio lozinku. Ovim mu pravite link da je izabere.",
+        "action": "Napravi link"
+      },
+      "reset": {
+        "hint": "Već ima lozinku. Novi link omogućava onome ko ga otvori da izabere novu i prijavi se kao on — zato ga pošaljite samo njemu.",
+        "action": "Napravi link za resetovanje"
+      },
+      "worker": {
+        "hint": "Poslovođa nikada nema lozinku. Telefon pridružuje svojim korisničkim imenom i kodom od admina svoje firme."
+      },
+      "superseded": "Svaki link koji je ranije imao upravo je prestao da radi.",
+      "enable": "Vrati u službu",
+      "disable": "Ukloni iz službe",
+      "action": {
+        "failed": "Radnja nije prošla"
+      },
+      "unconfirmed": "Server nije odgovorio, pa se ne zna da li je radnja izvršena. Osvežite pre nego što pokušate ponovo.",
+      "missing": {
+        "title": "Nema takvog naloga",
+        "body": "Možda je uklonjen ili je adresa koju ste otvorili pogrešna."
+      }
     },
     "add": {
       "open": "Dodaj osobu",

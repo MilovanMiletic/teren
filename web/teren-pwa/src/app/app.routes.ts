@@ -217,5 +217,19 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/platform/companies-page').then((m) => m.CompaniesPage),
   },
+  {
+    /**
+     * One account: his link, and the switch that takes him out of service.
+     *
+     * A route rather than a row action, for the reason `/company/worker/:workerId` is one:
+     * re-inviting mints a **working credential** and supersedes whatever live link the person
+     * already had, so the moment a list could show two of them the screen could represent a state
+     * where the founder is one mis-tap from sending the wrong link to the wrong person. One URL,
+     * one man, one link.
+     */
+    path: 'platform/user/:userId',
+    canMatch: [requiresSuperAdmin],
+    loadComponent: () => import('./features/platform/person-page').then((m) => m.PersonPage),
+  },
   { path: '**', redirectTo: '' },
 ];

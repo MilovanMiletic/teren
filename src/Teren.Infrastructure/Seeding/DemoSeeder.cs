@@ -80,8 +80,28 @@ public static class DemoSeeder
     /// </summary>
     private static readonly TimeSpan DemoActivationCodeLifetime = TimeSpan.FromDays(3650);
 
+    /// <param name="publishDemoCode">
+    /// Whether to mint the fixed, **repo-published** demo activation code.
+    ///
+    /// <para>
+    /// <b>Defaults to false, and the default is the point.</b> <see cref="DemoActivationCode"/> is
+    /// written down in this file and in <c>docs/demo-script.md</c>, so it is a real credential to
+    /// the demo company that anyone who can read the repository already holds. On a laptop that
+    /// costs nothing. **The moment this company is behind a public URL, it is a way in** — and
+    /// redeeming it revokes the demo phone until the next seed.
+    /// </para>
+    /// <para>
+    /// So the caller has to ask for it, and only the development host does. Forgetting to pass it
+    /// leaves the demo worker with no code — visible immediately, and fixed by issuing one from
+    /// <c>/company</c>. Defaulting the other way would leave the credential live on a staging box
+    /// nobody remembered to think about, which is the failure that cannot be noticed.
+    /// </para>
+    /// </param>
     public static async Task<int> SeedAsync(
-        DbContext db, string? deviceToken = null, CancellationToken ct = default)
+        DbContext db,
+        string? deviceToken = null,
+        bool publishDemoCode = false,
+        CancellationToken ct = default)
     {
         var inserted = 0;
         var now = DateTime.UtcNow;
@@ -414,7 +434,7 @@ public static class DemoSeeder
         //     success. Raw SQL on this connection is the idiom DemoReset already uses throughout.
         //   * app_user.company_id and device.company_id reference the company row above, which
         //     until the SaveChanges on the line before this one exists only in the change tracker.
-        inserted += await SeedIdentityAsync(db, deviceToken, now, ct);
+        inserted += await SeedIdentityAsync(db, deviceToken, publishDemoCode, now, ct);
 
         return inserted;
     }
@@ -442,7 +462,7 @@ public static class DemoSeeder
     /// </para>
     /// </summary>
     private static async Task<int> SeedIdentityAsync(
-        DbContext db, string? deviceToken, DateTime now, CancellationToken ct)
+        DbContext db, string? deviceToken, bool publishDemoCode, DateTime now, CancellationToken ct)
     {
         var inserted = 0;
 
@@ -491,7 +511,10 @@ public static class DemoSeeder
         // The demo cannot be given without this. F4's canMatch gate sends a browser with no
         // session to /welcome, and there is no admin screen to issue a code from until F6 — so a
         // seeded demo with no live code is a demo that stops at the welcome screen.
-        inserted += await SeedDemoActivationCodeAsync(db, now, ct);
+        if (publishDemoCode)
+        {
+            inserted += await SeedDemoActivationCodeAsync(db, now, ct);
+        }
 
         if (string.IsNullOrWhiteSpace(deviceToken))
         {
