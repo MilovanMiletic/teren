@@ -121,24 +121,57 @@ before being presented as done; gating fixes go back to the implementer and are 
 
 ## Current state (update as it changes)
 
-- **Phase:** ROADMAP **B0–B7 ☑, C3 ◐, identity work in progress** (2026-08-31). The current subject
+- **Phase:** ROADMAP **B0–B7 ☑, C3 ☑, identity work in progress** (2026-08-31). The current subject
   is **profiles and identity** — `plans/profile-and-identity.md` is the approved specification and
   ROADMAP's *Identity and profiles* table is the live increment tracker. **Start there.** Done and
   reviewed: F1, D1, F2, **D2 (accept)**, **D3 (accept-with-fixes, fixes in)**. **F3 was REJECTED**
   on 2026-08-31; its two gating defects were route bugs fixed by **F4b** (built, awaiting review),
-  and its third is a founder action. **F4 — the `canMatch` gate — is next.**
-  **The single most important ordering fact:** a login screen secures nothing while
-  `environment.deviceToken` is still baked into the PWA bundle — anyone can read it from devtools
-  and call the API directly. Emptying it (D7/F9) is what shuts the door, and it must not happen
-  until activation is proven end to end against the real API, or the founder is locked out of his
-  own app with no way back in but editing an environment file.
-- **Activation cannot be proven end to end yet, and the reason is not the screens.** *Nothing in
-  `src/` ever creates a `PasswordToken`* — every site only reads or consumes one. So an admin can
-  never set a password → no company_admin session can exist → `/api/workers/{id}/activation-code`
-  is unreachable → **no activation code can be issued through the product at all.** A super admin
-  is correctly walled out of that surface, so he is not a way round it. Minting the first
-  company_admin password (via D4/D6 or a deliberate bootstrap command) is now the real blocker in
-  front of the token flip.
+  and its third is a founder action. **F4 and F4b are reviewed (accept-with-fixes, code fixes in);
+  F5, F6, D7/F9 and the F7 layout pass are built and green but have never been reviewed at all.**
+  **D4 is done (2026-09-01):** `/api/platform/*` — companies, users, filters, keyset paging, the
+  §9 invite and the audit trail, all behind `PlatformDirectory` so the privacy guard has one type
+  to inspect. **D5 (`app_log` + the health page) and F7 (`/platform` screens) are next.**
+- **The privacy guard has two halves, and the second is the one plan §12 actually asked for.** A
+  reflection walk over `PlatformDirectory` catches a signature that *reaches* `Entry`/`Media`/
+  `Report`; it cannot catch `entry_count`, which is an `int`. So platform DTO **property names** are
+  checked against an evidence vocabulary too. Both were mutation-proven on 2026-09-01 by adding
+  `EntryCount` to the company DTO — two tests went red, revert, green.
+  *`PlatformAuditListResponse` names its rows `actions`, not `entries`: in this product an "entry"
+  is a day of a foreman's work, and the guard caught the collision the moment it was written.*
+- **Validators are registered one by one in `Program.cs` — there is no assembly scan.** Adding
+  `AddEndpointFilter<ValidationFilter<T>>()` and writing the validator is two thirds of the job;
+  miss the third and `GetRequiredService` throws *before the handler*, so **every** POST to that
+  route answers 500, including the malformed ones that should answer 400. It cost six red tests on
+  2026-09-01 before the cause was obvious. `ValidatorWiringTests` now reads both files and fails on
+  the mismatch.
+- **The F7 layout pass is built and green but has never been *seen* (2026-08-31).** The founder's
+  four notes off a 1920 screenshot of `/company` are all answered — `showCompany` kills the dead
+  header button, `ui/session-link.ts` puts the session in the chrome, the crew grid stays two-up
+  above 1023, and Home's expanded grid finally claims the window's height. The agent was to drive a
+  headless browser at 390/768/834/1280/1920 and inspect the screenshots; it died on an API rate
+  limit first, and **no browser driver is installed in the repo**, so every layout claim here rests
+  on specs that read the stylesheet and on reading the diff. Look at the five widths before
+  believing them.
+  *`session-link.ts` renders in **two** places on `/company` — the header, and that screen's own
+  compact bar — because the header is `display: none` below 768 and an admin can reach `/company` on
+  a phone. Delete either one and he is stranded with no way to end a password-backed session.*
+- **D7/F9 — the token flip — is DONE (2026-08-31), and it was the point of the whole exercise.**
+  `environment.deviceToken` is now `''` in **both** environment files. Until it was, a working
+  credential was compiled into the bundle, readable from devtools by anyone, so `usable()` was
+  always true, the gate could not bite, and the login screens were decoration. **Do not restore a
+  value to make a box "demo out of the box" — activate the box instead.** A spec now pins the
+  constant empty, because every other spec would still pass if someone put it back.
+- **Worker activation is PROVEN end to end against the live API** (2026-08-31, port 5099 against
+  the dev database): `POST /auth/activate` with `zoran.jovanovic` + `DEM0-TEST` returns a real
+  `trn_d_…` device token; that token gets 200 from `/api/projects` and the right worker, company
+  and device from `/api/me`; **replaying the same code returns 401**, so single-use holds; and the
+  new activation auto-revoked the worker's previous device, as designed.
+- **The `PasswordToken` blocker is resolved** — `InviteAdminCommand` (`invite-admin`) mints one and
+  prints a single-use link, so an admin password can be set without D4/D6. `create-super-admin`
+  reads its password from stdin, never argv.
+- **`seed` prints what you need to test with:** `username zoran.jovanovic, code DEM0-TEST`. The
+  demo `company_admin` deliberately ships with **no password** — there is no seeded credential
+  anywhere — so use `invite-admin` to get into `/login`.
 - **A route rename is producer-side only — which is why a half-finished one is invisible.**
   `ee37f04` shipped an app that could not be navigated: every consumer was on English paths while
   `app.routes.ts` alone had been hand-restored to Serbian, so only `/` and the three auth routes
@@ -170,15 +203,21 @@ before being presented as done; gating fixes go back to the implementer and are 
   sweeper took it. `StaleProcessingAfter` is **45 min** against a ~21.5 min worst case, and
   `PipelineOptionsTests` recomputes that budget from the shipped defaults — restore a retry count
   and a test fails instead of a foreman's afternoon.
-- **C3 archive + entry detail built (2026-08-29, founder request, pulled ahead of M1)** and its
-  review fixes are in. **Still ◐: there is no read path for media** — no presigned GET, so photos of
-  an entry captured on another device cannot be displayed at all. That is the owner-on-a-tablet
-  case, i.e. the buyer's reason to pay. See ARCHITECTURE §8.
-- **Known defect, in scope for B5:** Home and the archive disagree about an entry's status. Home
-  reads `entry.serverStatus` from Dexie, written **once** at upload time from `/complete`
-  (`received`) and never refreshed; the archive merges live `GET /api/entries`. So Home says
-  "Primljen" while the entry actually sits in `needs_review`. Home is the screen the foreman looks
-  at, so this is how a day's evidence quietly fails to become a report.
+- **C3 is ☑ as of 2026-08-31 — the photo read path is closed, both halves.** The server half
+  (`GET /api/entries/{id}/media/{mediaId}`) had in fact shipped in `52646ba`, marked *WIP* in the
+  commit message; **this file went on saying "there is no read path" for a day after it existed**,
+  which is exactly how a stale note costs an afternoon — check the tree before believing this
+  section. What was genuinely missing was the client, so the screen could only ever *count* the
+  pictures it was not showing. `ArchiveService.getMedia` now fetches the bytes with the bearer —
+  an `<img src>` sends no `Authorization` header, and a presigned GET was refused as a credential
+  to a customer's site photographs that nobody can take back — and local and fetched pictures
+  render in one strip, indistinguishable on purpose. Only `verified` media is requested (anything
+  else is a guaranteed 409); every failure the blob response flattens into one becomes one sentence
+  and a retry. **The owner-on-a-tablet case works.**
+- **B5 fixed the Home-vs-archive status disagreement.** `EntryStatusRefresher` re-reads
+  `GET /api/entries` — the same list the archive merges — and writes the live status back to the
+  Dexie row, so Home no longer says "Primljen" over an entry sitting in `needs_review`. Recorded
+  here because the defect note outlived the fix by two days.
 - **Failure taxonomy (binding for B4+):** terminal = `rejected` (400/404/422, refusing 409),
   `unauthorized`, `not_configured`, `insecure_context`. **All 5xx including 500 are retryable** —
   the entry stays in the outbox and heals unattended after a server-side repair; a terminal 4xx
@@ -218,12 +257,12 @@ before being presented as done; gating fixes go back to the implementer and are 
   **It is a real credential to the demo company published in the repo**, and redeeming it revokes the
   demo phone until the next `seed`. Harmless on a laptop; **needs a decision at B3a**, when that
   company goes behind a public URL.
-- **Suites: 578 PWA specs** and **796 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
+- **Suites: 862 PWA specs** (58 files) and **892 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
   + Testcontainers over real Postgres, ~66 s; PdfPig in tests only, so report assertions read text
   back out of the rendered PDF). `dotnet test` needs Docker running.
   *The figures here were stale before 2026-08-30 (403/447 recorded against an actual 436/476) —
   both were re-measured off the tree, not carried forward.*
-- **Check at session start:** the tree is green (`dotnet build` clean, **796 backend tests, 578 PWA
+- **Check at session start:** the tree is green (`dotnet build` clean, **892 backend tests, 863 PWA
   specs**, both verified by execution 2026-08-31 at session end).
   ***Re-run both suites after every review.*** Twice on 2026-08-31 a reviewer or a stopped implementer
   left its own mutation in the working tree — a typo'd unique-constraint name that turned a duplicate

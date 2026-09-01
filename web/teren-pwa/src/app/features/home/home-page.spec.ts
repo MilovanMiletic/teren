@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
@@ -6,6 +9,7 @@ import { TranslocoTestingModule } from '@jsverse/transloco';
 import { EntryListItemResponse, EntryListResponse } from '../../core/api/api-types';
 import { TerenApiClient } from '../../core/api/teren-api.client';
 import { ARCHIVE_ENTRY_PARAM } from '../../core/archive/archive-route';
+import { STALLED_AFTER_ATTEMPTS } from '../../core/api/api-failure';
 import { EntryStore } from '../../core/db/entry-store';
 import { captureEntry } from '../../testing/capture-fixture';
 import { TEREN_DB, TerenDb } from '../../core/db/teren-db';
@@ -381,6 +385,75 @@ describe('HomePage', () => {
     expect(element.querySelector('.pane--secondary .recent')).not.toBeNull();
   });
 
+  /**
+   * F8 — the revocation surface on the screen the foreman actually looks at.
+   *
+   * The property that matters most here is the one asserted last: **it is a notice, never a
+   * gate.** A revoked phone keeps recording, and it must, because the phone is the source of truth
+   * until the server confirms receipt (PROJECT.md principle 3). Locking the record button over a
+   * credential problem would turn an administrative mistake at 4 p.m. into a lost afternoon of
+   * evidence, which is the trade this product exists to refuse.
+   */
+  describe('when the server stops accepting this phone', () => {
+    async function refusedTimes(attempts: number): Promise<string> {
+      const id = await captureToday();
+      await store.queue(id);
+      // `in_flight` is the only thing that increments the counter, so a row refused eight times
+      // is built the way the sync loop would really have built it.
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        await store.setOutboxState(id, 'in_flight');
+      }
+      await store.setOutboxState(id, 'failed', {
+        failureKind: 'unauthenticated',
+        nextAttemptAt: new Date(Date.now() + 600_000).toISOString(),
+      });
+      return id;
+    }
+
+    it('says nothing over a single refused attempt', async () => {
+      // One 401 is what a token being replaced looks like from here, and the queue heals itself
+      // within the minute. A notice here would be the app crying wolf on its own front door.
+      await refusedTimes(1);
+      const element = await render();
+      await flushLiveQueries();
+      fixture.detectChanges();
+
+      expect(element.textContent).not.toContain('Server ne prihvata ovaj telefon');
+    });
+
+    it('offers the way back in once being refused is the verdict', async () => {
+      await refusedTimes(STALLED_AFTER_ATTEMPTS);
+      const element = await render();
+      await waitUntil(() => element.textContent!.includes('Server ne prihvata ovaj telefon'), {
+        onTick: () => fixture.detectChanges(),
+        describe: 'the reactivation notice to appear',
+      });
+
+      // Both halves, always: nothing is getting through, and nothing has been lost.
+      expect(element.textContent).toContain('Unosi su bezbedni');
+
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+      element.querySelector<HTMLButtonElement>('.notice--err')?.click();
+
+      expect(navigate).toHaveBeenCalledWith(['/activate'], { queryParams: { next: '/' } });
+    });
+
+    it('leaves the record button exactly where it was', async () => {
+      await refusedTimes(STALLED_AFTER_ATTEMPTS);
+      const element = await render();
+      await waitUntil(() => element.textContent!.includes('Server ne prihvata ovaj telefon'), {
+        onTick: () => fixture.detectChanges(),
+        describe: 'the reactivation notice to appear',
+      });
+
+      // The door is never locked. He can go on capturing the day, and should: every entry he
+      // records now goes out the moment the credential is good again.
+      const record = element.querySelector<HTMLButtonElement>('.record__button');
+      expect(record).not.toBeNull();
+      expect(record?.disabled).toBe(false);
+    });
+  });
+
   it('offers every demo site in the picker', async () => {
     const element = await render();
     element.querySelector<HTMLButtonElement>('.picker')?.click();
@@ -388,5 +461,75 @@ describe('HomePage', () => {
 
     expect(element.querySelectorAll('.sheet__option')).toHaveLength(DEMO_PROJECTS.length);
     expect(element.textContent).toContain('Stambena zgrada Vojvode Stepe 212');
+  });
+
+  /**
+   * The expanded layout, read off the shipped stylesheet — a media query has no DOM to interrogate
+   * under jsdom, and `/company`'s own spec already sets this precedent.
+   *
+   * It exists because the founder looked at this screen on a 1920 and said *"use the space"*. The
+   * layout was a 12-column grid that did not claim the window's **height**: the whole screen
+   * finished in the top third and the rest was warm canvas. Both rules below are that fix, and
+   * both are the kind that a later tidy-up deletes without noticing, because nothing renders
+   * differently on the phone the change would be tested on.
+   */
+  describe('expanded layout', () => {
+    const css = readFileSync(
+      join(process.cwd(), 'src', 'app', 'features', 'home', 'home-page.css'),
+      'utf8',
+    );
+    const rules = css.replace(/\/\*[\s\S]*?\*\//g, ' ');
+
+    /**
+     * Every block introduced by `header`, brace-matched.
+     *
+     * `split()` on the header is not enough and is the trap worth naming: a segment runs to the
+     * *next* header, so it carries every rule that follows the block as well — and an assertion
+     * over that is an assertion over most of the stylesheet, which passes for reasons that have
+     * nothing to do with the block it claims to be about.
+     */
+    function mediaBlocks(header: string): string[] {
+      const bodies: string[] = [];
+      for (let at = rules.indexOf(header); at !== -1; at = rules.indexOf(header, at + 1)) {
+        const open = rules.indexOf('{', at);
+        let depth = 0;
+        for (let i = open; i < rules.length; i++) {
+          if (rules[i] === '{') {
+            depth++;
+          } else if (rules[i] === '}' && --depth === 0) {
+            bodies.push(rules.slice(open + 1, i));
+            break;
+          }
+        }
+      }
+      return bodies;
+    }
+
+    const expanded = mediaBlocks('@media (min-width: 1024px)');
+
+    it('claims the height of the window, not just its width', () => {
+      const layout = expanded.find((block) => block.includes('.content {')) ?? '';
+
+      // `.screen` is a 100dvh flex column (styles.css), so these are the two declarations that
+      // make the grid's second row reach the foot of a 1080 px window instead of stopping at its
+      // content. Without them the panes are correctly placed and the page is still two-thirds
+      // empty warm canvas, which is exactly what the founder photographed.
+      expect(layout).toMatch(/\.content \{[^}]*flex-grow: 1/);
+      expect(layout).toMatch(/\.content \{[^}]*align-items: stretch/);
+    });
+
+    it('gives the height it claimed to the one action the screen exists for', () => {
+      const pane = expanded.find((block) => block.includes('.record {')) ?? '';
+
+      // The capture card takes whatever the day card leaves, so the record button is the largest
+      // object on a desktop rather than a phone button that happened to be centred.
+      expect(pane).toMatch(/\.record \{[^}]*flex-grow: 1/);
+      // A floor, so the card never collapses onto the mic on a 1280×720 laptop.
+      expect(pane).toMatch(/\.record \{[^}]*min-height/);
+      // And deliberately **no ceiling**, in either block: a capped card leaves warm canvas under a
+      // white slab, which is the worst of both — the pane either reaches the foot of the window or
+      // it should not have been a pane.
+      expect(rules).not.toMatch(/\.record \{[^}]*max-height/);
+    });
   });
 });

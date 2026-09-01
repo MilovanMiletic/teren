@@ -136,8 +136,10 @@ public static class EntryEndpoints
             GpsAccuracyM = request.GpsAccuracyM,
             // The authenticated device, always — never anything the body claimed. entry.device_id
             // is provenance on an evidence row, and the one thing a phone must not be able to say
-            // is which phone recorded the day.
+            // is which phone recorded the day. The same rule, and the same reason, for the author:
+            // a body that could name its own author could sign a day with another man's name.
             DeviceId = principal.DeviceId,
+            CreatedByUserId = principal.UserId,
             CreatedAt = request.CreatedAt?.UtcDateTime ?? now,
         };
 
@@ -587,6 +589,7 @@ public static class EntryEndpoints
     private static async Task<IResult> ConfirmEntryAsync(
         string id,
         ConfirmEntryRequest request,
+        HttpContext http,
         TerenDbContext db,
         IPipelineQueue pipeline,
         ILogger<Entry> logger,
@@ -714,6 +717,12 @@ public static class EntryEndpoints
         entry.Corrected = corrected;
         entry.Status = EntryStatus.Confirmed;
         entry.ConfirmedAt = DateTime.UtcNow;
+        // Stamped here and nowhere else, so it moves with `confirmed_at`: both record the decision
+        // that changed the entry, and a replay above returns before either is touched. A revision
+        // is a new decision, so a second man revising the first man's answer takes the column —
+        // "who approved what the report says" has to name whoever approved the version that is
+        // about to be sent, not whoever approved a version that was superseded.
+        entry.ConfirmedByUserId = http.GetPrincipal().UserId;
         // Cleared deliberately, and it is what makes "fix the cause and confirm again" the retry
         // path for a report that failed: the sweeper picks up a confirmed, unreported entry only
         // while it carries no failure reason.

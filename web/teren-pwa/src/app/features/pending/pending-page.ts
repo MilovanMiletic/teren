@@ -9,6 +9,7 @@ import { ConnectivityService } from '../../core/connectivity.service';
 import { EntryStore, PendingEntry } from '../../core/db/entry-store';
 import { DayLabel, dayLabel, localDay } from '../../core/db/local-day';
 import { ProjectService } from '../../core/projects/project.service';
+import { RETURN_URL_PARAM } from '../../core/session/return-url';
 import { UploadService } from '../../core/sync/upload.service';
 import { AppHeader } from '../../ui/app-header';
 import { DurationPipe } from '../../ui/duration.pipe';
@@ -123,9 +124,53 @@ export class PendingPage {
     return item.outbox?.state === 'failed' && item.outbox.attempts >= STALLED_AFTER_ATTEMPTS;
   }
 
-  /** Blocked or stalled: the two rows where the foreman has something worth pressing. */
+  /**
+   * The row is not getting through because **this phone's credential is not being accepted**, and
+   * has been told so enough times for that to be a verdict rather than a blip.
+   *
+   * `unauthenticated` is F1's non-terminal 401: the entry stays in the queue and heals unattended
+   * the moment the credential is good again, which is right, because "not accepted *at the
+   * moment*" is what a revoked device, a suspended company and a phone that was never activated
+   * all look like from here. One 401 during a token change is noise. Eight — about half an hour of
+   * trying — is the app being told the same thing over and over, and at that point the foreman
+   * needs to know that waiting will not fix it.
+   *
+   * **Derived, never stored.** There is no "revoked" flag on the phone and there must not be: the
+   * server is the only thing that knows, revocation reaches this device as a 401 on next contact
+   * (plan §7), and a local flag would be a second source of truth that goes stale in a basement.
+   */
+  protected needsReactivation(item: PendingEntry): boolean {
+    return this.isStalled(item) && item.outbox?.failureKind === 'unauthenticated';
+  }
+
+  /**
+   * Blocked or stalled: the two rows where the foreman has something worth pressing.
+   *
+   * **Minus the rows that need a new code**, which get their own action instead. "Pokušaj ponovo"
+   * over a revoked device is a lie — the loop is already retrying it every ten minutes and will go
+   * on doing so — and pressing it would change nothing while looking like it did. That row is not
+   * waiting for another attempt; it is waiting for a credential.
+   */
   protected canRetry(item: PendingEntry): boolean {
-    return this.isBlocked(item) || this.isStalled(item);
+    return (this.isBlocked(item) || this.isStalled(item)) && !this.needsReactivation(item);
+  }
+
+  /** Whether anything at all on this screen is waiting for a credential rather than for a signal. */
+  protected readonly reactivationCount = computed(
+    () => this.pending().filter((item) => this.needsReactivation(item)).length,
+  );
+
+  /**
+   * To the code screen, carrying the way back here.
+   *
+   * `/activate` is deliberately unguarded (plan §10.3) precisely so a phone that still holds a
+   * session can reach it — this is that door. Nothing is signed out on the way: the session stays,
+   * the queue stays, and if he abandons the screen he is exactly where he was.
+   */
+  protected reactivate(): void {
+    void this.router.navigate(['/activate'], {
+      queryParams: { [RETURN_URL_PARAM]: '/pending' },
+    });
   }
 
   /** How many rows he would otherwise have to press one at a time. */

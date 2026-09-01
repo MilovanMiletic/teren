@@ -5,10 +5,12 @@ import en from '../../public/i18n/en.json';
 import sr from '../../public/i18n/sr.json';
 import { FAILURE_KINDS } from './core/api/api-failure';
 import { AUTH_FAILURES } from './core/auth/activation.service';
+import { COMPANY_STATUSES } from './core/company/company.service';
 import { CONFIRM_BANNERS } from './core/confirm/confirm-banner';
 import { CONFIRM_FAILURES } from './core/confirm/confirm.service';
 import { PROFILE_ROLES } from './core/identity/profile.service';
 import { REPORT_FAILURES } from './core/report/report.service';
+import { COMPANY_REASON_KEYS } from './features/company/company-page';
 import { REASON_KEYS } from './features/pending/pending-page';
 import { AVAILABLE_LANGUAGES, DEFAULT_LANGUAGE } from './i18n';
 
@@ -278,6 +280,86 @@ describe('translation dictionaries', () => {
       expect(enKeys, `no English word for '${role}'`).toContain(`profile.role.${role}`);
       expect(srKeys, `no Serbian word for '${role}'`).toContain(`profile.role.${role}`);
     }
+  });
+
+  /**
+   * The same guard for the office (F6) — **the one screen in the product that can hand out a
+   * credential or take a phone away**.
+   *
+   * `CompanyStatus` is deliberately five failures rather than one, because the remedies differ:
+   * signing in again fixes a 401 and can never fix a 403, and "there is no internet" and "the
+   * server refused" send an owner to two different people. Every one of those distinctions is
+   * worth nothing if the sentence behind it is missing or is the catch-all in disguise — the
+   * screen would tell a man whose role forbids the action that the server is merely unwell, and
+   * he would sit there pressing refresh.
+   *
+   * `COMPANY_REASON_KEYS` is a `Record<Exclude<CompanyStatus, 'ok'>, string>` the compiler keeps
+   * complete, and `COMPANY_STATUSES` is kept complete by a `Record<CompanyStatus, true>` beside
+   * the union, so adding a status fails here until both dictionaries can name it.
+   */
+  it('can name every way the company screen is able to fail', () => {
+    expect(COMPANY_STATUSES.length).toBeGreaterThan(0);
+
+    for (const status of COMPANY_STATUSES) {
+      if (status === 'ok') {
+        // "It worked" is not a reason, and the map excludes it by type.
+        expect(COMPANY_REASON_KEYS).not.toHaveProperty(status);
+        continue;
+      }
+
+      const key = COMPANY_REASON_KEYS[status];
+      expect(enKeys, `no English sentence for '${status}'`).toContain(key);
+      expect(srKeys, `no Serbian sentence for '${status}'`).toContain(key);
+
+      // …and it is a sentence about *this* status, not the catch-all wearing a table's clothes.
+      // `company.reason.unavailable` is what the template falls back to when a key resolves to
+      // nothing, so a status mapped onto it is indistinguishable from a status with no mapping.
+      if (status !== 'unavailable') {
+        expect(key, `'${status}' falls back to the generic line`).not.toBe(
+          'company.reason.unavailable',
+        );
+      }
+    }
+  });
+
+  /**
+   * The two sentences the company screen builds by hand rather than from a union, and the reason
+   * they exist at all.
+   *
+   * Issuing a code **supersedes** the one the worker is holding. So an issue that got no verdict
+   * from the server is not a failure the admin may retry — a second press would supersede a code
+   * that already exists and is on its way to a man's phone. `company.code.unconfirmed` is the
+   * sentence that says so, and it must not read as a plain failure or as a read that went wrong.
+   */
+  it('never tells an owner an unanswered issue simply failed', () => {
+    for (const dictionary of [en, sr]) {
+      expect(typeof dictionary.company.code.unconfirmed).toBe('string');
+      expect(typeof dictionary.company.code.issueFailed).toBe('string');
+      // The "we do not know" sentence has to say what to do instead of pressing again.
+      expect(dictionary.company.code.unconfirmed).not.toBe(dictionary.company.code.failed);
+      expect(dictionary.company.code.unconfirmed).not.toBe(dictionary.company.reason.unavailable);
+    }
+
+    expect(en.company.code.unconfirmed).toMatch(/refresh/i);
+    expect(sr.company.code.unconfirmed).toMatch(/osvežite/i);
+  });
+
+  /**
+   * The one sentence on this screen an owner acts on irreversibly, pinned as a property so the
+   * founder's copy pass can rewrite it freely and only the omission is out of bounds.
+   *
+   * Under the shipped client a revoked phone's queue stops getting through until the man
+   * re-activates (`DeviceEndpoints.cs` says the copy must tell him). Both halves matter: leave out
+   * "his day stops being sent" and an owner revokes a phone in the middle of a shift without
+   * knowing; leave out "nothing is deleted" and he does not dare revoke a handset that walked off
+   * site.
+   */
+  it('says what revoking a phone costs, in both languages', () => {
+    expect(sr.company.phones.confirm.body).toMatch(/prestaje da se šalje/i);
+    expect(sr.company.phones.confirm.body).toMatch(/ne briše/i);
+
+    expect(en.company.phones.confirm.body).toMatch(/stops being sent/i);
+    expect(en.company.phones.confirm.body).toMatch(/nothing on the phone is deleted/i);
   });
 
   it('keeps Serbian the default runtime locale', () => {

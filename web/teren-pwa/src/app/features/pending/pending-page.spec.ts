@@ -1,11 +1,13 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { TranslocoTestingModule } from '@jsverse/transloco';
 
+import { STALLED_AFTER_ATTEMPTS } from '../../core/api/api-failure';
 import { ConnectivityService } from '../../core/connectivity.service';
 import { EntryStore } from '../../core/db/entry-store';
 import { TEREN_DB, TerenDb } from '../../core/db/teren-db';
 import { DEMO_PROJECTS } from '../../core/projects/project-source';
+import { RETURN_URL_PARAM } from '../../core/session/return-url';
 import { UploadService } from '../../core/sync/upload.service';
 import { captureEntry } from '../../testing/capture-fixture';
 import { flushLiveQueries, waitUntil } from '../../testing/flush';
@@ -307,6 +309,70 @@ describe('PendingPage', () => {
       expect(element.textContent).toContain('Ovaj telefon nema dozvolu da šalje na server.');
     });
 
+    // ------------------------------------------------------------------ F8: the way back in
+
+    /**
+     * One 401 is a blip; eight is a verdict.
+     *
+     * Below the bar the row must keep the ordinary words, because this is exactly what a token
+     * being replaced looks like from here and the queue heals itself within a minute. Offering "a
+     * new code" over a hiccup would send a foreman to type an eight-character credential with
+     * gloves on for nothing.
+     */
+    it('does not send him for a new code over a single refused attempt', async () => {
+      await failWith('unauthenticated', 'failed', 1);
+      const element = await renderRow();
+
+      expect(element.textContent).not.toContain('Unesi novi kod');
+    });
+
+    /**
+     * Past the bar it stops offering "try again", and this is the substance of F8 rather than a
+     * wording change: the loop is already retrying that row every ten minutes and will go on
+     * doing so, so the button he could press changes nothing. A screen whose only offer is an
+     * action that cannot work is the failure mode this whole screen exists to prevent.
+     */
+    it('offers a new code instead of "try again" once the credential is the verdict', async () => {
+      await failWith('unauthenticated', 'failed', STALLED_AFTER_ATTEMPTS);
+      const element = await renderRow();
+
+      expect(element.textContent).toContain('Unesi novi kod');
+      expect(element.textContent).not.toContain('Pokušaj ponovo');
+      // And never at the price of the promise the row exists to make.
+      expect(element.textContent).toContain('Unos je bezbedan');
+    });
+
+    it('takes him to the code screen, holding the way back to this queue', async () => {
+      await failWith('unauthenticated', 'failed', STALLED_AFTER_ATTEMPTS);
+      const element = await renderRow();
+      const router = TestBed.inject(Router);
+      const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+      [...element.querySelectorAll('button')]
+        .find((button) => button.textContent?.includes('Unesi novi kod'))
+        ?.click();
+
+      // `?next=` and not a bare navigation: he came from here, his queue is here, and the code
+      // screen is a detour rather than a destination.
+      expect(navigate).toHaveBeenCalledWith(['/activate'], {
+        queryParams: { [RETURN_URL_PARAM]: '/pending' },
+      });
+    });
+
+    /**
+     * A stalled row that needs a code is deliberately **not** part of "try all again".
+     *
+     * The sweeping button is documented as acting on exactly the rows that carry their own retry
+     * button, so that the two can never disagree. Leaving a credential row in it would make that
+     * promise false in the one case where pressing it is guaranteed to accomplish nothing.
+     */
+    it('leaves a row that needs a code out of "try all again"', async () => {
+      await failWith('unauthenticated', 'failed', STALLED_AFTER_ATTEMPTS);
+      const element = await renderRow();
+
+      expect(element.textContent).not.toContain('Pokušaj sve ponovo');
+    });
+
     describe('try all again', () => {
       it('is not offered when nothing is stuck', async () => {
         await queueOne(1);
@@ -315,25 +381,43 @@ describe('PendingPage', () => {
         expect(element.querySelector('.retryAll__button')).toBeNull();
       });
 
+      /**
+       * The chore this retires: several rows, several taps, on a screen a foreman opens with muddy
+       * hands because something has already gone wrong.
+       *
+       * **F8 narrowed it, and the revoked row is why.** Releasing a row resets its attempt count
+       * to zero — which is exactly what `needsReactivation` counts. So sweeping a credential row
+       * into "try all again" would fail immediately, and in the process erase the only evidence
+       * that this phone needs a new code: the notice that tells him what to do would vanish from
+       * this screen and from Home, and not come back for another half hour of failures. The one
+       * press would have hidden the answer.
+       */
       it('releases every stuck row in one press, and wakes the loop once', async () => {
-        // The chore this retires: three rows, three taps, on a screen a foreman opens with muddy
-        // hands because something has already gone wrong.
         const blocked = await failWith('rejected', 'blocked');
         const stalled = await failWith('server', 'failed', 8);
-        const revoked = await failWith('unauthenticated', 'failed', 8);
+        const revoked = await failWith('unauthenticated', 'failed', STALLED_AFTER_ATTEMPTS);
         const element = await render(3);
 
         element.querySelector<HTMLButtonElement>('.retryAll__button')!.click();
         await fixture.whenStable();
         await flushLiveQueries();
 
-        for (const entryId of [blocked, stalled, revoked]) {
+        for (const entryId of [blocked, stalled]) {
           expect(await store.getOutboxItem(entryId)).toMatchObject({
             state: 'queued',
             attempts: 0,
             failureKind: null,
           });
         }
+
+        // Untouched, and still carrying the count that makes it say "enter a new code".
+        expect(await store.getOutboxItem(revoked)).toMatchObject({
+          state: 'failed',
+          attempts: STALLED_AFTER_ATTEMPTS,
+          failureKind: 'unauthenticated',
+        });
+        expect(element.textContent).toContain('Unesi novi kod');
+
         // Once, after everything is released — a pass started against a half-released queue would
         // leave the rest until the next tick.
         expect(uploads.wake).toHaveBeenCalledTimes(1);

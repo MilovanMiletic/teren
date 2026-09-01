@@ -18,6 +18,7 @@ using Teren.Api.Contracts;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Teren.Api.Auth;
+using Teren.Api.Platform;
 using Teren.Api.Endpoints;
 using Teren.Api.Maintenance;
 using Teren.Api.Errors;
@@ -107,6 +108,7 @@ builder.Services
     .ValidateDataAnnotations()
     .ValidateOnStart();
 builder.Services.AddScoped<ICredentialAuthenticator, DbCredentialAuthenticator>();
+builder.Services.AddScoped<PlatformDirectory>();
 
 // Session lifetimes, credential TTLs and the rate-limit window. Bound from the same Auth section;
 // every value in it is a security parameter and every one is pinned by a test.
@@ -200,6 +202,7 @@ builder.Services.AddSingleton<IValidator<LoginRequest>, LoginRequestValidator>()
 builder.Services.AddSingleton<IValidator<SetPasswordRequest>, SetPasswordRequestValidator>();
 builder.Services.AddSingleton<IValidator<CreateWorkerRequest>, CreateWorkerRequestValidator>();
 builder.Services.AddSingleton<IValidator<UpdateWorkerRequest>, UpdateWorkerRequestValidator>();
+builder.Services.AddSingleton<IValidator<CreateCompanyRequest>, CreateCompanyRequestValidator>();
 
 // Staging and production put Caddy in front of this process (ARCHITECTURE §13): Caddy owns the
 // certificate and forwards over the private compose network in plain HTTP. Without this, two
@@ -409,6 +412,7 @@ api.MapProjectEndpoints();
 api.MapEntryEndpoints();
 api.MapWorkerEndpoints();
 api.MapDeviceEndpoints();
+api.MapPlatformEndpoints();
 
 // Said once, loudly, rather than discovered as a 401 on a demo phone. An empty Auth:DeviceToken
 // is a legitimate configuration — it is the D7 end state — but on a box that is meant to be

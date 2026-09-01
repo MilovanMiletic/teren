@@ -23,6 +23,9 @@
   "common": {
     "language": "Language",
     "profile": "My account",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "signOutAs": "Sign out — {{name}}",
     "languageName": {
       "sr": "Srpski",
       "en": "English"
@@ -65,6 +68,10 @@
       "few": "{{count}} entries are waiting for you",
       "other": "{{count}} entries are waiting for you",
       "hint": "Check what was understood so the report can go out."
+    },
+    "reactivate": {
+      "title": "The server is not accepting this phone",
+      "hint": "Your entries are safe. Enter a new code to start sending again."
     }
   },
   "entry": {
@@ -203,6 +210,8 @@
     "photos": {
       "none": "This entry has no photos.",
       "onServer": "{{count}} more on the server — not on this phone.",
+      "loading": "Loading photographs…",
+      "retry": "Try again",
       "open": "Open photo {{index}}",
       "position": "{{index}} / {{total}}",
       "previous": "Previous photo",
@@ -413,6 +422,9 @@
   },
   "pending": {
     "title": "Waiting to upload",
+    "action": {
+      "reactivate": "Enter a new code"
+    },
     "offline": {
       "title": "No internet",
       "body": "Entries are safe on your phone and upload automatically when the network returns."
@@ -618,8 +630,6 @@
     "title": "Company",
     "reload": "Refresh",
     "loading": "Loading your people…",
-    "signedInAs": "Signed in as {{name}}",
-    "signOut": "Sign out",
     "workers": {
       "label": "FOREMEN"
     },
@@ -656,6 +666,8 @@
       "label": "JOIN CODE",
       "loading": "Reading the code…",
       "failed": "The code could not be read",
+      "issueFailed": "The code could not be made",
+      "unconfirmed": "The server did not answer, so it is not known whether a new code was made. Refresh before making another one — making one stops the old one working.",
       "expires": "Good until {{date}}",
       "notEmailed": "Nothing was emailed. Read the code to him, or send him the message below.",
       "copy": "Copy code",

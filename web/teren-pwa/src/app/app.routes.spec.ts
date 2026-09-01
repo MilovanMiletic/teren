@@ -171,8 +171,12 @@ function navigationTargets(): { targets: NavigationTarget[]; unresolvable: strin
  * and put one on `ui/profile-link.ts`. The number is unchanged and the app is not: re-counted off
  * the tree rather than assumed, because a coincidence that leaves an assertion green is exactly
  * the kind of thing this pin exists to make somebody look at.
+ *
+ * **32 → 34 at F8**: the revocation surface. Home's notice and the pending row's "Unesi novi kod"
+ * both send him to `/activate` carrying where he was, which is two navigations to a route that
+ * already existed. Counted off the tree.
  */
-const NAVIGATION_COUNT = 32;
+const NAVIGATION_COUNT = 34;
 
 /**
  * The query parameters a navigation may put on the URL, by the name of the constant that holds
@@ -186,11 +190,14 @@ const NAVIGATION_COUNT = 32;
  *
  * **4 → 5 at F6**: `requiresCompanyAdmin` sends a caller who is not signed in to `/login` carrying
  * where he was going, exactly as `requiresDevice` sends an un-activated phone to `/welcome`.
+ *
+ * **5 → 7 at F8**: Home's revocation notice and the pending row's "Unesi novi kod" each carry
+ * `RETURN_URL_PARAM` to `/activate`, so the code screen is a detour rather than a destination.
  */
 const QUERY_PARAM_CONSTANTS = ['ARCHIVE_ENTRY_PARAM', 'RETURN_URL_PARAM'];
 
 /** How many `queryParams: { … }` literals the app writes today. Pinned for the same reason. */
-const QUERY_PARAM_USE_COUNT = 5;
+const QUERY_PARAM_USE_COUNT = 7;
 
 /** Every `queryParams: { … }` object literal written at a navigation call site. */
 function queryParamKeys(): { key: string; source: string; file: string }[] {

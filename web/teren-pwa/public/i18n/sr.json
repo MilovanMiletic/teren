@@ -23,6 +23,9 @@
   "common": {
     "language": "Jezik",
     "profile": "Moj nalog",
+    "signIn": "Prijavi se",
+    "signOut": "Odjavi se",
+    "signOutAs": "Odjavi se — {{name}}",
     "languageName": {
       "sr": "Srpski",
       "en": "English"
@@ -65,6 +68,10 @@
       "few": "{{count}} unosa čekaju na vas",
       "other": "{{count}} unosa čeka na vas",
       "hint": "Proverite šta je sistem razumeo da bi izveštaj mogao da ode."
+    },
+    "reactivate": {
+      "title": "Server ne prihvata ovaj telefon",
+      "hint": "Unosi su bezbedni. Unesite novi kod da bi krenuli."
     }
   },
   "entry": {
@@ -203,6 +210,8 @@
     "photos": {
       "none": "Uz ovaj unos nema fotografija.",
       "onServer": "Još fotografija: {{count}} — na serveru, nisu na ovom telefonu.",
+      "loading": "Učitavanje fotografija…",
+      "retry": "Pokušaj ponovo",
       "open": "Otvori fotografiju {{index}}",
       "position": "{{index}} / {{total}}",
       "previous": "Prethodna fotografija",
@@ -413,6 +422,9 @@
   },
   "pending": {
     "title": "Čeka slanje",
+    "action": {
+      "reactivate": "Unesi novi kod"
+    },
     "offline": {
       "title": "Nema interneta",
       "body": "Unosi su bezbedni na telefonu i šalju se sami čim se mreža vrati."
@@ -618,8 +630,6 @@
     "title": "Firma",
     "reload": "Osveži",
     "loading": "Učitavanje radnika…",
-    "signedInAs": "Prijavljeni ste kao {{name}}",
-    "signOut": "Odjavi se",
     "workers": {
       "label": "POSLOVOĐE"
     },
@@ -656,6 +666,8 @@
       "label": "KOD ZA PRIDRUŽIVANJE",
       "loading": "Čitanje koda…",
       "failed": "Kod nije mogao da se pročita",
+      "issueFailed": "Kod nije mogao da se napravi",
+      "unconfirmed": "Server nije odgovorio, pa se ne zna da li je napravljen novi kod. Osvežite pre nego što napravite još jedan — novi poništava stari.",
       "expires": "Važi do {{date}}",
       "notEmailed": "Ništa nije poslato imejlom. Pročitajte mu kod ili mu pošaljite poruku ispod.",
       "copy": "Kopiraj kod",

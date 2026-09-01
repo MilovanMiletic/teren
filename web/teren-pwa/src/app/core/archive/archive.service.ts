@@ -86,6 +86,35 @@ export class ArchiveService {
       return { status: toRemoteStatus(failure), entry: null, missing: false };
     }
   }
+
+  /**
+   * One photograph or voice note of an entry, as bytes (C3).
+   *
+   * **The read path that makes the archive worth having on a second device.** Everything else this
+   * service returns describes an entry; this returns the evidence itself, and without it an owner
+   * on his office tablet reads a record of a day and sees none of the pictures of it.
+   *
+   * `null` for every failure, and that is the whole policy. The endpoint draws four distinctions —
+   * 404, `media_not_ready`, `media_unavailable`, 503 — and none of them survives the trip: with
+   * `responseType: 'blob'` the problem document arrives as an unreadable `Blob`, so the client has
+   * a status and nothing more. They also do not need to survive. Three of the four are "ask again
+   * later" and the fourth is "this one is not coming", and the screen says the same sentence for
+   * all of them because the man reading it does the same thing either way: he looks at the count
+   * that says the record has more pictures than he can see, and he tries again or he asks.
+   *
+   * The caller decides what to do about a null; this decides nothing except that a missing picture
+   * is never an exception thrown into a screen that is otherwise fine.
+   */
+  async getMedia(entryId: string, mediaId: string): Promise<Blob | null> {
+    if (!this.api.configured) {
+      return null;
+    }
+    try {
+      return await this.api.fetchMedia(entryId, mediaId);
+    } catch {
+      return null;
+    }
+  }
 }
 
 /**

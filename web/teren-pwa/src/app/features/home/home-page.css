@@ -8,26 +8,49 @@
 /*
  * Expanded: a real two-pane application layout on a 12-column grid. Left carries the day and the
  * action that changes it; right carries where the work stands. Neither pane is filler.
+ *
+ * **The layout claims the height as well as the width (F7).** Until then the grid was
+ * `align-items: start` on a content block that did not grow, so on a 1080 px screen the whole
+ * screen finished in the top third and the rest was warm canvas — the founder's "use the space"
+ * note. Now the content block grows to the foot of the viewport and the capture pane grows with
+ * it, which puts the one thing this screen exists for in the middle of a surface the size of the
+ * window instead of at the top of a tall empty page.
  */
 @media (min-width: 1024px) {
   .content {
     display: grid;
     grid-template-columns: repeat(12, 1fr);
-    gap: var(--space-6);
-    align-items: start;
+    /*
+     * Two named rows, and the panes are pinned to the second one. The first carries the storage
+     * warning, which is about the whole app rather than about a pane — and which is absent on
+     * every healthy phone, so it must cost nothing when it is not there. That is why the row gap
+     * is zero and the warning carries its own bottom margin: an empty `auto` row is 0 px, but an
+     * empty row plus a 24 px `row-gap` would silently push the whole screen down.
+     */
+    grid-template-rows: auto 1fr;
+    column-gap: var(--space-6);
+    row-gap: 0;
+    /* The panes are as tall as their row, which is what lets the capture card fill the column. */
+    align-items: stretch;
+    /* `.screen` is a 100dvh flex column, so this is what makes row 2 reach the foot of the window. */
+    flex-grow: 1;
   }
 
   /* The storage warning is about the whole app, not about one pane. */
   .storage-warning {
     grid-column: 1 / -1;
+    grid-row: 1;
+    margin-bottom: var(--space-6);
   }
 
   .pane--primary {
     grid-column: span 7;
+    grid-row: 2;
   }
 
   .pane--secondary {
     grid-column: span 5;
+    grid-row: 2;
   }
 }
 
@@ -200,12 +223,24 @@
 }
 
 /*
- * Expanded: the record action becomes a capture card. It is still the dominant element on the
- * screen — larger, not demoted — but it now sits on a surface instead of floating.
+ * Expanded: the record action becomes a capture *pane*. It is still the dominant element on the
+ * screen — larger, not demoted — and it now takes every pixel the day card leaves it, so the
+ * screen's one primary action is the largest object on a 1920 px canvas rather than a phone
+ * button that happened to be centred.
  */
 @media (min-width: 1024px) {
   .record {
     margin: 0;
+    /* Fills the column under the day card; the button stays centred in whatever height that is. */
+    flex-grow: 1;
+    justify-content: center;
+    /*
+     * A floor for a short window (a 1280×720 laptop), so the card never collapses onto the mic.
+     * There is deliberately **no ceiling**: a capped card leaves warm canvas under a white slab,
+     * which is the worst of both — the pane either reaches the foot of the window or it should not
+     * have been a pane. Tried and rejected at 1920×1080 (F7).
+     */
+    min-height: 340px;
     padding: var(--space-8) var(--space-6);
     gap: var(--space-3);
     border-radius: var(--radius-card-hero);
@@ -214,13 +249,13 @@
   }
 
   .record__button {
-    width: 168px;
-    height: 168px;
+    width: 176px;
+    height: 176px;
   }
 
   .record__button app-icon svg {
-    width: 64px;
-    height: 64px;
+    width: 68px;
+    height: 68px;
   }
 
   .record__label {
@@ -230,6 +265,11 @@
 
   .record__hint {
     display: block;
+  }
+
+  /* The day card keeps its own height; only the capture pane below it is allowed to grow. */
+  .today {
+    flex: none;
   }
 }
 

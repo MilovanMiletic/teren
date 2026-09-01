@@ -4,16 +4,24 @@
     foreman's screens. No back control and no profile control — an admin has no device session, so
     every screen behind those is one the gate would turn him away from. `/company` is where he
     starts and where he stays.
+
+    And no company control: this **is** the office. It rendered here until F7 and did nothing but
+    re-navigate to the screen it was standing on, which is the one thing a control may never do.
+    The session lives in that header instead of in the rail below (`session-link.ts`).
   -->
-  <app-header [project]="companyName()" [showProfile]="false" />
+  <app-header [project]="companyName()" [showProfile]="false" [showCompany]="false" />
 
   <!--
-    Compact only: the wordmark and the language switcher, because below 768 the header does not
-    exist and an admin on a phone would otherwise have no chrome at all.
+    Compact only: the wordmark, the language switcher and the way out, because below 768 the
+    header does not exist and an admin on a phone would otherwise have no chrome at all — and,
+    since F7 moved sign-out off this screen's rail, no way to end his session either.
   -->
   <div class="column bar bar--compact">
     <span class="bar__brand">{{ t('app.name') }}</span>
-    <app-language-switcher />
+    <div class="bar__controls">
+      <app-language-switcher />
+      <app-session-link />
+    </div>
   </div>
 
   <header class="column head band-top">
@@ -119,11 +127,26 @@
                     @if (code.loading) {
                       <p class="t-meta panel__state" role="status">{{ t('company.code.loading') }}</p>
                     } @else if (code.status !== 'ok') {
+                      <!--
+                        A failed *read* and a failed *issue* are not the same failure. A read that
+                        did not answer changed nothing. An issue that did not answer may already
+                        have superseded the code the man is holding — so where the server gave no
+                        verdict this says "reload before making another", never "try again",
+                        because a second press would supersede a code that exists.
+                      -->
                       <div class="notice notice--err panel__notice" role="status">
                         <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
                         <div class="notice__text">
-                          <span class="notice__title">{{ t('company.code.failed') }}</span>
-                          <span class="t-meta">{{ t(reasonFor(code.status) ?? 'company.reason.unavailable') }}</span>
+                          <span class="notice__title">
+                            {{ code.afterIssue ? t('company.code.issueFailed') : t('company.code.failed') }}
+                          </span>
+                          <span class="t-meta">
+                            {{
+                              code.afterIssue && unconfirmedAction(code.status)
+                                ? t('company.code.unconfirmed')
+                                : t(reasonFor(code.status) ?? 'company.reason.unavailable')
+                            }}
+                          </span>
                         </div>
                       </div>
                     } @else if (code.noLiveCode) {
@@ -232,8 +255,19 @@
                             </div>
                           </div>
                         } @else {
-                          <button type="button" class="btn btn--row btn--tertiary" (click)="askReissue()">
-                            {{ t('company.code.issueNew') }}
+                          <!--
+                            Confirming closes the question, so this button is the only thing left
+                            on screen while the issue is in flight — and an idle "make a new code"
+                            over a code that is at that moment being superseded is the screen
+                            saying nothing is happening. It carries the busy state instead.
+                          -->
+                          <button
+                            type="button"
+                            class="btn btn--row btn--tertiary"
+                            [disabled]="codeBusy()"
+                            (click)="askReissue()"
+                          >
+                            {{ codeBusy() ? t('company.code.issuing') : t('company.code.issueNew') }}
                           </button>
                         }
                       </div>
@@ -426,19 +460,12 @@
           <p class="t-meta">{{ t('company.aside.body') }}</p>
         </section>
 
-        @if (session(); as signedIn) {
-          <section class="card account">
-            <span class="t-meta">{{ t('company.signedInAs', { name: signedIn.displayName }) }}</span>
-            <!--
-              The one sign-out in this product. It removes a password-backed credential and not a
-              single row of evidence — see `AdminSessionService.signOut`.
-            -->
-            <button type="button" class="btn btn--row btn--tertiary" (click)="signOut()">
-              <app-icon name="lock" [size]="18" />
-              {{ t('company.signOut') }}
-            </button>
-          </section>
-        }
+        <!--
+          The sign-out card that used to close this rail is gone (F7 item 2): the session is
+          chrome, not content, and it now sits in the header from 768 up and in this screen's own
+          compact bar below that. Nothing here duplicates it — two ways out of one session is two
+          places to look for the one that works.
+        -->
       </div>
     }
   </div>

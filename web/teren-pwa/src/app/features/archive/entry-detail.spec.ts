@@ -7,6 +7,7 @@ import { ArchiveService } from '../../core/archive/archive.service';
 import { EntryStore } from '../../core/db/entry-store';
 import { TEREN_DB, TerenDb } from '../../core/db/teren-db';
 import { ReportResult, ReportService } from '../../core/report/report.service';
+import { DEMO_PROJECTS } from '../../core/projects/project-source';
 import { captureEntry } from '../../testing/capture-fixture';
 import { flushLiveQueries, waitUntil } from '../../testing/flush';
 import en from '../../../../public/i18n/en.json';
@@ -55,7 +56,7 @@ describe('EntryDetail', () => {
   let db: TerenDb;
   let store: EntryStore;
   let fixture: ComponentFixture<EntryDetail>;
-  let archive: { getEntry: ReturnType<typeof vi.fn> };
+  let archive: { getEntry: ReturnType<typeof vi.fn>; getMedia: ReturnType<typeof vi.fn> };
   let reports: { download: ReturnType<typeof vi.fn> };
 
   async function render(entryId: string): Promise<HTMLElement> {
@@ -68,16 +69,43 @@ describe('EntryDetail', () => {
   }
 
   /** Wait for the asynchronous local + server loads to land, then read the DOM. */
-  async function settled(element: HTMLElement, text: string): Promise<void> {
-    await waitUntil(() => element.textContent!.includes(text), {
+  /**
+   * Wait for a sentence to appear — or, with `gone`, to stop being true.
+   *
+   * The second mode is what C3 needs: the interesting moment for a fetched photograph is when the
+   * "not on this phone" line *stops* applying, and polling for an absence from the first frame
+   * would pass before the screen had rendered anything at all.
+   */
+  async function settled(element: HTMLElement, text: string, gone = false): Promise<void> {
+    await waitUntil(() => element.textContent!.includes(text) !== gone, {
       onTick: () => fixture.detectChanges(),
-      describe: `"${text}" to appear on the record`,
+      describe: `"${text}" to ${gone ? 'disappear from' : 'appear on'} the record`,
+    });
+  }
+
+  /**
+   * Wait for the photo strip to hold exactly `count` thumbnails.
+   *
+   * Waiting on the pictures rather than on the "not on this phone" sentence, deliberately: that
+   * sentence is *also* hidden while a fetch is in flight, so waiting for it to go away resolves
+   * during loading and the assertions then run against an empty strip. Found the honest way — the
+   * first version of the retry spec did exactly that and failed.
+   */
+  async function thumbs(element: HTMLElement, count: number): Promise<void> {
+    await waitUntil(() => element.querySelectorAll('.photos__thumb').length === count, {
+      onTick: () => fixture.detectChanges(),
+      describe: `${count} photograph(s) on the strip`,
     });
   }
 
   beforeEach(() => {
     db = new TerenDb(`teren-test-${crypto.randomUUID()}`);
-    archive = { getEntry: vi.fn().mockResolvedValue({ status: 'ok', entry: null, missing: true }) };
+    archive = {
+      getEntry: vi.fn().mockResolvedValue({ status: 'ok', entry: null, missing: true }),
+      // C3's read path. Defaults to "no bytes", so every spec written before it existed keeps
+      // describing a phone that shows only what it holds itself.
+      getMedia: vi.fn().mockResolvedValue(null),
+    };
     reports = {
       download: vi
         .fn()
@@ -223,9 +251,10 @@ describe('EntryDetail', () => {
     await settled(element, 'Podaci sa servera nisu dostupni');
   });
 
-  it('reports photographs the server holds that this phone does not', async () => {
-    // Media bytes never pass through the API and there is no presigned GET, so they cannot be
-    // shown — but a silent zero over an entry with six photographs would be the archive failing.
+  it('reports photographs it could not fetch, rather than showing a silent zero', async () => {
+    // C3 gave this screen a read path, and `getMedia` still answers null here — the server would
+    // not produce the bytes. The count is what is left when fetching has done what it can, and a
+    // silent zero over an entry with six photographs would be the archive failing at its one job.
     archive.getEntry.mockResolvedValue({
       status: 'ok',
       missing: false,
@@ -267,6 +296,154 @@ describe('EntryDetail', () => {
 
     expect(element.querySelectorAll('.photos__thumb')).toHaveLength(0);
     expect(element.textContent).toContain('Snimak je na serveru');
+  });
+
+  /**
+   * A slow local read for the entry you just left must never land on the one you just opened.
+   *
+   * `/entry/:entryId` is a single route, so Angular reuses this component across entries: the
+   * input signal changes, the effect re-runs, and two Dexie reads are now in flight. Without a
+   * freshness guard the slower one wins and paints entry A's site, time and status onto entry B —
+   * confidently and plausibly, on the screen this product exists to be trusted on months later.
+   *
+   * Found by review on 2026-09-01; no spec covered it. Remove the `entryId() !== id` guard in
+   * `entry-detail.ts` and this goes red.
+   */
+  it('never paints the previous entry over the one now on screen', async () => {
+    // Two different sites, because the site name is read straight off `local` and painted on the
+    // card. The photo strip is NOT a witness here — it comes from `watchMedia(entryId)`, keyed on
+    // the current id, so it stays correct even with the race wide open. The first version of this
+    // spec asserted on the strip and passed with the guard removed: vacuous, and caught by
+    // actually running the mutation.
+    const first = await captureEntry(store, { project: DEMO_PROJECTS[0], photoCount: 1 });
+    const second = await captureEntry(store, { project: DEMO_PROJECTS[1], photoCount: 0 });
+    expect(DEMO_PROJECTS[0].name).not.toBe(DEMO_PROJECTS[1].name);
+
+    const entries = TestBed.inject(EntryStore);
+    const real = entries.getEntry.bind(entries);
+
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    // The first entry's local read hangs until we let it go — the ordering that actually happens
+    // when a foreman taps twice on a cold database.
+    vi.spyOn(entries, 'getEntry').mockImplementation(async (id: string) => {
+      if (id === first.id) {
+        await gate;
+      }
+      return real(id);
+    });
+
+    const element = await render(first.id);
+    fixture.componentRef.setInput('entryId', second.id);
+
+    // Poll rather than count turns: these are real Dexie reads on a real IndexedDB, so a fixed
+    // number of ticks is a guess about the machine (the same reasoning `settled` records).
+    await settled(element, DEMO_PROJECTS[1].name);
+
+    // Now the abandoned read comes back and must be dropped on the floor.
+    release();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    await flushLiveQueries();
+    fixture.detectChanges();
+
+    expect(element.textContent).toContain(DEMO_PROJECTS[1].name);
+    expect(element.textContent).not.toContain(DEMO_PROJECTS[0].name);
+  });
+
+  // ------------------------------------------------------- C3: the photographs themselves
+
+  /**
+   * One remote photograph, as the server describes it.
+   *
+   * `upload_status` is the interesting field: only `verified` means `/complete` checked the stored
+   * bytes against what the phone declared, and the endpoint refuses anything else with a 409.
+   */
+  function remotePhoto(id: string, upload_status = 'verified') {
+    return {
+      id,
+      kind: 'photo',
+      content_type: 'image/jpeg',
+      byte_size: 1,
+      sha256: 'x',
+      object_key: `k-${id}`,
+      upload_status,
+    };
+  }
+
+  function serverHolding(...media: ReturnType<typeof remotePhoto>[]): void {
+    archive.getEntry.mockResolvedValue({
+      status: 'ok',
+      missing: false,
+      entry: serverEntry({ media }),
+    });
+  }
+
+  /**
+   * **The case the archive exists for, and the one it could not serve until C3.**
+   *
+   * An owner opens a record on his office tablet. Every photograph of that day was taken on a
+   * foreman's phone, so this device holds none of the bytes — and before the read path landed the
+   * screen could only tell him how many pictures it was not showing him. That is the buyer's
+   * reason to pay, failing.
+   */
+  it('fetches and shows photographs this device never held', async () => {
+    serverHolding(remotePhoto('m1'), remotePhoto('m2'));
+    archive.getMedia.mockResolvedValue(new Blob(['jpeg'], { type: 'image/jpeg' }));
+
+    const element = await render('entry-1');
+    await thumbs(element, 2);
+    expect(archive.getMedia).toHaveBeenCalledWith('entry-1', 'm1');
+    expect(archive.getMedia).toHaveBeenCalledWith('entry-1', 'm2');
+    // Nothing is left over to apologise for, and the "no photographs" line must not appear either.
+    expect(element.textContent).not.toContain('na serveru, nisu na ovom telefonu');
+    expect(element.textContent).not.toContain('Uz ovaj unos nema fotografija');
+  });
+
+  /**
+   * Media the server has not certified is not asked for at all.
+   *
+   * The endpoint answers a non-`verified` id with a 409, so asking is a guaranteed round trip to a
+   * refusal — and the two cases are different sentences anyway. A photograph still on its way is
+   * not a photograph that failed, and on a site connection the difference is most of the time.
+   */
+  it('does not ask for bytes the server has not certified', async () => {
+    serverHolding(remotePhoto('m1', 'pending'), remotePhoto('m2', 'uploaded'));
+
+    const element = await render('entry-1');
+    await settled(element, 'na serveru, nisu na ovom telefonu');
+
+    expect(archive.getMedia).not.toHaveBeenCalled();
+    expect(element.querySelectorAll('.photos__thumb')).toHaveLength(0);
+  });
+
+  /**
+   * A failure leaves the count honest and offers the one thing that might work.
+   *
+   * All four of the endpoint's distinctions — 404, the two 409s, 503 — arrive here as `null`,
+   * because with `responseType: 'blob'` the problem document is unreadable. The screen says one
+   * sentence for all of them, which is also the only sentence it can justify.
+   */
+  it('offers another attempt when a photograph will not come, and takes it', async () => {
+    serverHolding(remotePhoto('m1'));
+    archive.getMedia.mockResolvedValue(null);
+
+    const element = await render('entry-1');
+    await settled(element, 'na serveru, nisu na ovom telefonu');
+    expect(element.querySelectorAll('.photos__thumb')).toHaveLength(0);
+
+    // The server comes back. Pressing again must actually re-ask — the guard that stops a
+    // re-render re-downloading must not also stop the foreman.
+    archive.getMedia.mockResolvedValue(new Blob(['jpeg'], { type: 'image/jpeg' }));
+    [...element.querySelectorAll('button')]
+      .find((button) => button.textContent?.includes('Pokušaj ponovo'))
+      ?.click();
+    await thumbs(element, 1);
+
+    expect(archive.getMedia).toHaveBeenCalledTimes(2);
   });
 
   it('renders the transcript verbatim when the server sends one', async () => {

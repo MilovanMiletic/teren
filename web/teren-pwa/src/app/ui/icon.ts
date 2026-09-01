@@ -29,6 +29,8 @@ export type IconName =
   | 'eye'
   | 'eye-off'
   | 'user'
+  | 'log-in'
+  | 'log-out'
   | 'copy';
 
 /**
@@ -193,6 +195,16 @@ export type IconName =
           <path d="M6.61 6.61A18.15 18.15 0 0 0 1 12s4 8 11 8a9.74 9.74 0 0 0 5.39-1.61" />
           <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
           <line x1="1" y1="1" x2="23" y2="23" />
+        }
+        @case ('log-in') {
+          <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+          <path d="M10 17l5-5-5-5" />
+          <path d="M15 12H3" />
+        }
+        @case ('log-out') {
+          <path d="M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4" />
+          <path d="M16 17l5-5-5-5" />
+          <path d="M21 12H9" />
         }
         @case ('user') {
           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />

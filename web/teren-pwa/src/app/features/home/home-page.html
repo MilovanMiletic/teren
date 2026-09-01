@@ -68,6 +68,31 @@
 
     <!-- Right pane at expanded: where the work stands. -->
     <div class="pane pane--secondary">
+      @if (reactivationCount() > 0) {
+        <!--
+          F8. Above everything else in this pane on purpose: the confirmation gate below stops one
+          entry, this stops the whole queue, and no amount of confirming will move anything while
+          the server is refusing this phone.
+
+          It is a notice and a way forward, never a gate — the record button above is untouched and
+          he can go on capturing the day. That is the point: the phone is the source of truth until
+          the server confirms receipt (PROJECT.md principle 3), so being refused is a reason to
+          keep recording, not to stop.
+        -->
+        <button
+          type="button"
+          class="card card-interactive notice notice--err notice--action"
+          (click)="reactivate()"
+        >
+          <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
+          <span class="notice__text">
+            <span class="notice__title">{{ t('home.reactivate.title') }}</span>
+            <span class="t-meta">{{ t('home.reactivate.hint') }}</span>
+          </span>
+          <app-icon name="chevron-right" [size]="18" class="notice__icon" />
+        </button>
+      }
+
       @if (awaitingCount() > 0) {
         <!--
           The confirmation gate, admitted on the front door. An entry the server has handed back

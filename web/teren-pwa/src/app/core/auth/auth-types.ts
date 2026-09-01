@@ -21,54 +21,46 @@ export interface ActivateRequest {
   device_name: string;
 }
 
-export interface ActivateWorkerResponse {
-  user_id?: string | null;
-  username?: string | null;
-  display_name?: string | null;
-}
-
 export interface ActivateCompanyResponse {
   id?: string | null;
   name?: string | null;
 }
 
 /**
- * **Two shapes, because the two halves of this feature disagree** — found 2026-08-31, while
- * fixing what the founder hit on a real phone.
+ * **One shape. It was two, and the story is worth keeping** — because of how the divergence hid.
  *
- * `plans/profile-and-identity.md` §8 specifies `{device_token, worker, company}` and this client
- * was written to it (F3). The endpoint that shipped (D3, `AuthEndpoints.cs` → `ActivateResponse`
- * in `Contracts/IdentityContracts.cs`) puts the worker's fields at the **top level** instead:
- * `user_id`, `username`, `display_name`, plus `device_name` and `language`. Nothing failed
- * loudly: `toSession` read `response.worker?.user_id`, got `undefined`, refused the half-session
- * exactly as it is designed to, and the screen told the foreman that joining had not worked and
- * that his code was not used up. **Both halves of that sentence were false** — the device row
- * existed and the single-use code was spent — and the founder, believing it, spent a second one.
+ * `plans/profile-and-identity.md` §8 originally specified `{device_token, worker, company}` and
+ * this client was written to it (F3). The endpoint that shipped (D3, `AuthEndpoints.cs` →
+ * `ActivateResponse` in `Contracts/IdentityContracts.cs`) put the worker's fields at the **top
+ * level** instead. Nothing failed loudly: `toSession` read `response.worker?.user_id`, got
+ * `undefined`, refused the half-session exactly as it is designed to, and the screen told the
+ * foreman that joining had not worked and that his code was not used up. **Both halves of that
+ * sentence were false** — the device row existed and the single-use code was spent — and the
+ * founder, believing it, spent a second one.
  *
- * So this type carries both spellings and `toSession` reads whichever arrived. It is not
- * indecision: a client standing between a man and the record button must read what the server
- * actually sends, and tolerating a field in two places costs one `??`. **The divergence itself is
- * a doc question for the founder** — §8 and the endpoint have to be made to agree, and whichever
- * way that lands, this file already speaks it.
+ * The stopgap was to read both spellings. That is gone as of F4's last gating item, in the only
+ * order that was safe: **§8 was amended to the flat shape first, then the serialized field names
+ * were pinned server-side** — `ActivationTests.The_activate_response_carries_exactly_the_field_
+ * names_the_client_reads` asserts the whole property-name set, so a rename or a re-nesting fails
+ * there rather than here. Dropping the tolerance before that pin existed would only have restored
+ * the original failure mode.
+ *
+ * **The lesson, which outlives the fix:** every field below is optional and narrowed before it
+ * becomes a `Session`, so a server that stops sending one produces `null` — a screen asking for a
+ * code — and never a half-credential. That is the right failure, but it is a *silent* one on the
+ * client, which is why the loud half now lives in a backend test.
  */
-export interface ActivateResponse extends ActivateWorkerResponse {
+export interface ActivateResponse {
   device_token?: string | null;
   device_id?: string | null;
   /** What the admin will see in his device list. Echoed back; read by nothing yet. */
   device_name?: string | null;
+  user_id?: string | null;
+  username?: string | null;
+  display_name?: string | null;
   /** The worker's UI language as the server holds it. F5's subject; ignored here. */
   language?: string | null;
-  /** The nested spelling, per plan §8. Absent from what the server sends today. */
-  worker?: ActivateWorkerResponse | null;
   company?: ActivateCompanyResponse | null;
-  /**
-   * Whether the code was emailed. `not_configured` when no relay exists, which is every
-   * environment today (§9) — read by nothing on this screen, kept because the field is part of
-   * the contract and dropping it from the type would hide it from the next reader.
-   *
-   * Not sent by the endpoint that shipped either; optional, so its absence costs nothing.
-   */
-  email_delivery?: string | null;
 }
 
 /**

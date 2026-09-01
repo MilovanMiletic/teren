@@ -6,24 +6,40 @@ import { CompanyLink } from './company-link';
 import { Icon } from './icon';
 import { LanguageSwitcher } from './language-switcher';
 import { ProfileLink } from './profile-link';
+import { SessionLink } from './session-link';
 
 /**
  * The application header, from the medium breakpoint up.
  *
  * A phone gets the artboard's per-screen bar; a tablet and a desktop get one persistent piece of
- * chrome across every screen — wordmark, which site you are on, the date, and the language
- * switcher — because that is what an application looks like on a wide screen and a floating
- * phone column is not.
+ * chrome across every screen — wordmark, which site you are on, the date, the language switcher
+ * and the session — because that is what an application looks like on a wide screen and a
+ * floating phone column is not.
  *
  * Hidden below 768: the compact layout the founder approved is untouched by this component.
  * That is why the profile control it carries is rendered a second time at the foot of Home's
  * scroll — see `profile-link.ts`. A control that lives only here is a control a foreman on a phone
- * does not have.
+ * does not have; `/company` answers the same problem for the session control in its own compact
+ * bar.
+ *
+ * **Nothing here may lead to the screen it is standing on.** Both navigation controls are
+ * switchable off for exactly that reason, and each is switched off by precisely one screen —
+ * `showProfile` by `/profile`, `showCompany` by `/company`. The company link shipped without its
+ * switch and spent a day on `/company` re-navigating to `/company`: a control that visibly does
+ * nothing, which is the founder's F7 item 3.
  */
 @Component({
   selector: 'app-header',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CompanyLink, DatePipe, Icon, LanguageSwitcher, ProfileLink, TranslocoDirective],
+  imports: [
+    CompanyLink,
+    DatePipe,
+    Icon,
+    LanguageSwitcher,
+    ProfileLink,
+    SessionLink,
+    TranslocoDirective,
+  ],
   host: { '(document:visibilitychange)': 'refresh()' },
   template: `
     <header class="header" *transloco="let t">
@@ -67,10 +83,17 @@ import { ProfileLink } from './profile-link';
           The office, for the one person who has one. It renders itself away for everybody else
           (company-link.ts), so this is not a control a foreman ever meets.
         -->
-        <app-company-link class="on-header" />
+        @if (showCompany()) {
+          <app-company-link class="on-header" />
+        }
         @if (showProfile()) {
           <app-profile-link class="on-header" />
         }
+        <!--
+          The office session — out, or back in. It renders itself away for a foreman, who has no
+          sign-in to leave (session-link.ts), so the capture path gains no chrome from it either.
+        -->
+        <app-session-link class="on-header" />
       </div>
     </header>
   `,
@@ -187,6 +210,16 @@ export class AppHeader {
    * are already standing on is noise, and on a 44 px target it is noise a thumb can hit.
    */
   readonly showProfile = input(true);
+
+  /**
+   * Whether to offer the way to the office.
+   *
+   * The same rule and the same default as {@link showProfile}, switched off by `/company` alone.
+   * It arrived a day late: the link rendered unconditionally, so on `/company` an admin had an
+   * icon in his header that navigated to `/company` and therefore did nothing at all — the exact
+   * shape of dead control the profile link had already been given an input to avoid.
+   */
+  readonly showCompany = input(true);
 
   readonly back = output<void>();
   readonly choose = output<void>();

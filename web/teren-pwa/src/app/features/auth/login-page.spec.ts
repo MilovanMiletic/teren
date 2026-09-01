@@ -153,16 +153,46 @@ describe('LoginPage', () => {
    * its way of saying "that worked". The sentence on screen is the honest version, and it lasts
    * exactly as long as the condition does.
    */
-  it('does not navigate on success, because there is nothing yet to navigate to', async () => {
+  it('takes a company admin to his office', async () => {
     type(field('login-email'), 'vlasnik@gradnja.rs');
+    type(field('login-password'), 'lozinka');
+
+    await submit();
+
+    // `/company` and never Home: an admin holds no device credential, so the device gate would
+    // turn him round and land him back on Welcome — the app bouncing him between two screens as
+    // its way of saying "that worked".
+    expect(router.navigate).toHaveBeenCalledWith(['/company']);
+  });
+
+  it('honours where he was going, when the gate sent him here', async () => {
+    render(true, '/company');
+    type(field('login-email'), 'vlasnik@gradnja.rs');
+    type(field('login-password'), 'lozinka');
+
+    await submit();
+
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/company');
+    expect(router.navigate).not.toHaveBeenCalled();
+  });
+
+  it('leaves a super admin standing still, because his screen is not built yet', async () => {
+    // The one role F4 deliberately leaves in place. The credential is stored and good, but
+    // `/platform` is F7 — sending him there would answer a valid sign-in with a 403. The sentence
+    // on screen is the honest version, and it lasts exactly as long as the condition does.
+    activation.login.mockResolvedValue({
+      ok: true,
+      failure: null,
+      role: 'super_admin',
+      displayName: 'Milovan',
+    });
+    type(field('login-email'), 'osnivac@teren.rs');
     type(field('login-password'), 'lozinka');
 
     await submit();
 
     expect(router.navigate).not.toHaveBeenCalled();
     expect(router.navigateByUrl).not.toHaveBeenCalled();
-    // Said out loud on screen, so a man is not left wondering what he is supposed to press.
-    expect(element.textContent).toContain('Ekrani za kancelariju se još prave');
   });
 
   /**

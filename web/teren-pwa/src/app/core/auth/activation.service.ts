@@ -342,18 +342,14 @@ function classify(error: unknown): AuthFailure {
  * asking for a code.
  */
 function toSession(response: ActivateResponse): Session | null {
-  // Nested per plan §8, flat per the endpoint that actually shipped. `auth-types.ts` records the
-  // divergence and why reading both is the client's job rather than a decision it should be
-  // making. All-or-nothing still holds *within* a shape: a response carrying `worker` is read
-  // only from `worker`, so a half-populated nested object cannot be completed from stray
-  // top-level fields.
-  const worker = response.worker ?? response;
-
+  // Flat, and only flat. This read tolerated a nested `worker` object as well until F4's last
+  // gating item closed — see `auth-types.ts` for why that tolerance existed and why removing it
+  // had to wait for the server-side field-name pin.
   const token = text(response.device_token);
   const deviceId = text(response.device_id);
-  const userId = text(worker.user_id);
-  const username = text(worker.username);
-  const displayName = text(worker.display_name);
+  const userId = text(response.user_id);
+  const username = text(response.username);
+  const displayName = text(response.display_name);
   const companyId = text(response.company?.id);
   const companyName = text(response.company?.name);
 

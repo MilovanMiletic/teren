@@ -7,8 +7,14 @@
  *                       project, and a row of small icon buttons is the answer that does not work.
  *   medium    768–1023  the same order on a 640 column, with the worker cards two-up and the open
  *                       one spanning both — a tablet gains proportion rather than a taller phone.
- *   expanded  ≥1024     a 12-column application layout: his men on the left, and on the right the
- *                       aside that adds one, counts them, and signs him out.
+ *   expanded  ≥1024     a 12-column application layout: the crew two-up on the left, and on the
+ *                       right the aside that adds a man, counts them, and explains the codes.
+ *
+ * The crew grid is two-up from 768 all the way up rather than only through the tablet band (F7).
+ * A worker card is a name, a username and two chips; stretched across 780 px of desktop column it
+ * is a 72 px sliver with half a metre of white beside it, and eight of them scroll a laptop for no
+ * reason. Two-up halves the scroll, gives the card a shape, and is the arrangement the founder had
+ * already approved one breakpoint below.
  *
  * **No artboard exists for this screen** — `design/` carries Welcome and Login and nothing for an
  * admin surface. Every shape here is borrowed from something the founder has already approved: the
@@ -17,11 +23,22 @@
  * `design/tokens.md`; there is no raw hex in this file.
  */
 
-/* Compact only: the header does not exist below 768, so the wordmark and the switcher do. */
+/* Compact only: the header does not exist below 768, so the wordmark and the chrome do. */
 @media (min-width: 768px) {
   .bar--compact {
     display: none;
   }
+}
+
+/*
+ * The phone's chrome, as one row: the language switcher and the way out. `.bar` justifies its
+ * children apart, so the two controls are wrapped to keep them together on the right rather than
+ * pushed to opposite edges of a 390 px screen.
+ */
+.bar__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .head {
@@ -424,8 +441,7 @@
 }
 
 .summary,
-.note,
-.account {
+.note {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -453,20 +469,20 @@
   max-width: 52ch;
 }
 
-.account .btn {
-  align-self: flex-start;
-  width: auto;
-  padding: 0 var(--space-5);
-}
+/* ---- Medium and expanded: the crew is a grid, with the open card across both ---------------- */
 
-/* ---- Medium: two-up, with the open card across both ---------------------------------------- */
-
-@media (min-width: 768px) and (max-width: 1023px) {
-  .pane--workers {
+@media (min-width: 768px) {
+  /*
+   * `.pane.pane--workers`, not `.pane--workers`: from 1024 the shared `.pane` object is a flex
+   * column, and this has to outrank it rather than depend on which stylesheet the browser loaded
+   * last. Below 1024 `.pane` is `display: contents` and there is nothing to outrank.
+   */
+  .pane.pane--workers {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-4);
-    align-items: start;
+    /* Rows pack to the top; the cards *within* a row stretch, so a row has one baseline edge. */
+    align-content: start;
   }
 
   .pane--workers .section__label,
@@ -481,10 +497,19 @@
   .worker--open {
     grid-column: 1 / -1;
   }
-}
 
-@media (min-width: 768px) {
+  /*
+   * A closed card fills its row's height, so a man with two chips and a man with none sit on one
+   * line instead of leaving a ragged step down the grid. The summary grows with it and keeps its
+   * content centred, which is why the card becomes a column here and not merely taller.
+   */
+  .worker {
+    display: flex;
+    flex-direction: column;
+  }
+
   .worker__summary {
+    flex-grow: 1;
     padding: var(--space-4) var(--space-5);
   }
 
@@ -494,17 +519,21 @@
 
   .add__form,
   .summary,
-  .note,
-  .account {
+  .note {
     padding: var(--space-5);
   }
 }
 
-/* ---- Expanded: the pane is a column of cards ------------------------------------------------ */
+/* ---- Expanded: the crew grid gets the room, the aside stays reference ----------------------- */
 
 @media (min-width: 1024px) {
-  .pane--workers {
-    gap: var(--space-3);
+  /*
+   * A name read at arm's length off a laptop, not at 300 mm off a phone. The card's height comes
+   * from the row it is in — every closed card in a row is as tall as the tallest — so nothing here
+   * needs to set one.
+   */
+  .worker__name {
+    font-size: var(--text-h2);
   }
 
   /* The code has room to breathe on a desktop, where it is read off the screen to a telephone. */

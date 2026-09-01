@@ -38,6 +38,36 @@ public sealed class Entry
 
     public Guid? DeviceId { get; set; }
 
+    /// <summary>
+    /// The worker whose credential recorded this entry. Provenance, and the point of the whole
+    /// identity model: a site diary that cannot say <em>who</em> recorded a day is weaker than the
+    /// notebook it replaces.
+    /// <para>
+    /// Derived from the bearer, never from the request body — the same rule as
+    /// <see cref="DeviceId"/>, and for a stronger reason: a phone that could name its own author
+    /// could sign a day's evidence with another man's name.
+    /// </para>
+    /// <para>
+    /// <b>Nullable, and every row that existed before D8 keeps a null.</b> There is deliberately
+    /// no backfill: standing the immutability guard down to write a plausible author onto reported
+    /// evidence would be inventing provenance, which is the one thing this column exists to stop.
+    /// Null means "recorded before Teren tracked people", and that is the honest answer.
+    /// </para>
+    /// </summary>
+    public Guid? CreatedByUserId { get; set; }
+
+    /// <summary>
+    /// Who approved what the report would say (PROJECT.md principle 5's gate).
+    /// <para>
+    /// Separate from <see cref="CreatedByUserId"/> because they are separate acts and can be
+    /// separate people — a phone handed over mid-shift, a foreman confirming from a second device.
+    /// Stamped on the confirmation that <em>changes</em> the entry, and left alone by a replay,
+    /// exactly as <see cref="ConfirmedAt"/> is: it records who decided, not whose retry timer
+    /// fired last.
+    /// </para>
+    /// </summary>
+    public Guid? ConfirmedByUserId { get; set; }
+
     /// <summary>When the phone captured it (client clock, UTC).</summary>
     public DateTime CreatedAt { get; set; }
 

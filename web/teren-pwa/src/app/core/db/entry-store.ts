@@ -498,6 +498,34 @@ export class EntryStore {
    * reads as "on its way", and on the one screen a foreman actually looks at, that is the
    * difference between an honest queue and a reassuring one.
    */
+  /**
+   * Live count of entries stuck on **this phone's credential** rather than on the network.
+   *
+   * A strict subset of {@link watchStuckCount}: the same "past `STALLED_AFTER_ATTEMPTS`" bar, plus
+   * the one failure kind that a foreman can personally fix and that "try again" cannot. The
+   * distinction matters because the two need opposite words — an unreachable server is something
+   * to wait out, and a refused credential is something to act on, and the sync row's "not getting
+   * through" tells him to wait in both cases.
+   *
+   * **Derived from the queue, never from a stored flag.** The server is the only thing that knows
+   * a device is revoked; it reaches this phone as a 401 on next contact (plan §7). A local
+   * "revoked" boolean would be a second source of truth that goes stale in a basement, and would
+   * still be saying so after the admin had put it right.
+   */
+  watchReactivationCount(): Observable<number> {
+    return from(
+      liveQuery(async () => {
+        const items = await this.db.outbox.toArray();
+        return items.filter(
+          (item) =>
+            item.state === 'failed' &&
+            item.attempts >= STALLED_AFTER_ATTEMPTS &&
+            item.failureKind === 'unauthenticated',
+        ).length;
+      }),
+    );
+  }
+
   watchStuckCount(): Observable<number> {
     return from(
       liveQuery(async () => {

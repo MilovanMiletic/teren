@@ -58,10 +58,10 @@ export class MockAuthGateway implements AuthGateway {
       throw unauthorized();
     }
 
-    // **The shape the endpoint that shipped actually returns** — flat, not the nested `worker`
-    // object plan §8 specifies (`auth-types.ts` records the divergence). It was the other way
-    // round until 2026-08-31, and that is precisely how a real activation could fail on the
-    // founder's phone while every spec here stayed green: the mock and the client agreed with
+    // **The shape the endpoint actually returns** — flat, and since F4's last gating item plan §8
+    // says flat too, so the divergence `auth-types.ts` records is closed at both ends. It was the
+    // other way round until 2026-08-31, and that is precisely how a real activation could fail on
+    // the founder's phone while every spec here stayed green: the mock and the client agreed with
     // each other and neither agreed with the server. A mock that models the plan instead of the
     // deployed contract is a mock that certifies a broken app.
     return {
@@ -92,6 +92,11 @@ export class MockAuthGateway implements AuthGateway {
       session_token: 'trn_s_mock-session-token',
       expires_at: '2026-09-29T08:00:00.000Z',
       role: 'company_admin',
+      // Required by `toAdminSession`, and omitted here until the token flip caught it: without a
+      // `user_id` the narrowing returns null and a *correct* password came back as `unreadable`.
+      // A stand-in that cannot produce the shape the real server produces is worse than none —
+      // it turns a green suite into evidence of nothing.
+      user_id: '44444444-4444-4444-4444-444444444444',
       display_name: 'Milan Gradnja',
       company: { id: '33333333-3333-3333-3333-333333333333', name: 'Gradnja d.o.o.' },
     };

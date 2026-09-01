@@ -24,10 +24,15 @@ export const environment = {
   apiBaseUrl: '',
 
   /**
-   * The M0 static device token. Deliberately the same throwaway string the API ships in
-   * `appsettings.Development.json`, so a staging box that has not yet had `Auth__DeviceToken`
-   * set still demos. **Set `Auth__DeviceToken` on the server and change this string together**
-   * — the two are one shared secret, and neither is a secret worth protecting until C5.
+   * **Empty, and it must stay empty.** This is the increment the whole identity model was for: a
+   * login screen secures nothing while a working credential is compiled into the bundle, because
+   * anyone can read it out of devtools and call the API directly. With no token here,
+   * `SessionService.token` has nothing to fall back on, `usable()` is false until a device is
+   * activated, and the `canMatch` gate actually redirects.
+   *
+   * Do not restore a value to "make staging demo out of the box". Activate the box instead —
+   * `DemoSeeder` provisions the demo device and prints `zoran.jovanovic` / `DEM0-TEST`.
+   * `deploy/web.Dockerfile` no longer has a token to substitute.
    */
-  deviceToken: 'teren-dev-device-token-not-a-secret',
+  deviceToken: '',
 };

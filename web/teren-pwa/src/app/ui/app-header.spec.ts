@@ -25,7 +25,7 @@ import { AppHeader } from './app-header';
 })
 class DefaultHost {}
 
-/** The profile screen's spelling: the one place the control is deliberately switched off. */
+/** The profile screen's spelling: the one place that control is deliberately switched off. */
 @Component({
   selector: 'app-header-host',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -34,6 +34,17 @@ class DefaultHost {}
 })
 class HeaderHost {
   readonly showProfile = signal(false);
+}
+
+/** `/company`'s spelling: the one place the office link is deliberately switched off. */
+@Component({
+  selector: 'app-header-company-host',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [AppHeader],
+  template: `<app-header [showCompany]="showCompany()" />`,
+})
+class CompanyHost {
+  readonly showCompany = signal(false);
 }
 
 describe('AppHeader', () => {
@@ -82,8 +93,16 @@ describe('AppHeader', () => {
 
     const inner = element.querySelector('.header__inner');
     const controls = Array.from(inner?.children ?? []).map((child) => child.tagName.toLowerCase());
-    // Beside, and after: the switcher is the control the founder named it against.
-    expect(controls.slice(-2)).toEqual(['app-language-switcher', 'app-profile-link']);
+    // Beside, and after: the switcher is the control the founder named it against. F6 put the
+    // office link between the two — it is the admin's way in, and it belongs with the other
+    // navigation rather than after the control that is about the person. F7 put the session last,
+    // outside the navigation group, because leaving is not a place you can go.
+    expect(controls.slice(-4)).toEqual([
+      'app-language-switcher',
+      'app-company-link',
+      'app-profile-link',
+      'app-session-link',
+    ]);
 
     element.querySelector<HTMLButtonElement>('.profile-link')?.click();
     expect(navigate).toHaveBeenCalledWith([profileUrl]);
@@ -102,5 +121,28 @@ describe('AppHeader', () => {
     expect(element.querySelector('app-profile-link')).toBeNull();
     // And the switcher beside it is untouched — this input hides one control, not the chrome.
     expect(element.querySelector('app-language-switcher')).not.toBeNull();
+  });
+
+  /**
+   * The founder's F7 item 3, pinned: *"Header button right now that we have isnt clickable it does
+   * nothing."*
+   *
+   * It was clickable. It navigated to `/company` — from `/company` — which is indistinguishable
+   * from a dead button and is the same defect the profile link had already been given an input to
+   * avoid. The office link shipped without that switch and spent a day being noise on the one
+   * screen an admin actually stands on.
+   *
+   * Asserted through the default host as well, because the *default* is what puts the control on
+   * every other screen: flip `showCompany`'s default to `false` and the first test here goes red
+   * rather than the link silently vanishing from six screens.
+   */
+  it('leaves the office link out on the screen that is the office', () => {
+    render(CompanyHost);
+
+    expect(element.querySelector('app-company-link')).toBeNull();
+    // The other two survive: this input hides one control, not the chrome. The session control in
+    // particular has to stay — `/company` is where an admin signs out from.
+    expect(element.querySelector('app-profile-link')).not.toBeNull();
+    expect(element.querySelector('app-session-link')).not.toBeNull();
   });
 });

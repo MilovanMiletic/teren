@@ -127,13 +127,32 @@
                 </span>
               }
 
-              @if (canRetry(item)) {
+              @if (canRetry(item) || needsReactivation(item)) {
                 <!--
                   A row that is not getting through must say two things at once: this has not
                   been sent, and nothing has been lost. The note is the second half, and it is
                   not optional — "not sent" on its own reads as "gone".
                 -->
                 <span class="t-meta row__safe">{{ t('pending.evidenceSafe') }}</span>
+              }
+
+              @if (needsReactivation(item)) {
+                <!--
+                  Not a retry. This phone's credential is being refused, the loop is already
+                  trying every ten minutes and will keep trying, and another press changes
+                  nothing — so the button says the thing that would actually help. It is never a
+                  locked door: he is still standing on his own queue with every entry intact, and
+                  he can walk away from the code screen and keep recording (plan §10.3).
+                -->
+                <button
+                  type="button"
+                  class="btn btn--tertiary row__retry"
+                  (click)="reactivate()"
+                >
+                  <app-icon name="log-in" [size]="18" />
+                  {{ t('pending.action.reactivate') }}
+                </button>
+              } @else if (canRetry(item)) {
                 <button type="button" class="btn btn--tertiary row__retry" (click)="retry(item)">
                   <app-icon name="upload-cloud" [size]="18" />
                   {{ t('pending.retry') }}

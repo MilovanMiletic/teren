@@ -47,6 +47,13 @@ public sealed class EntryConfiguration : IEntityTypeConfiguration<Entry>
         builder.Property(e => e.GpsAccuracyM).HasColumnName("gps_accuracy_m");
         builder.Property(e => e.SupersedesEntryId).HasColumnName("supersedes_entry_id");
         builder.Property(e => e.DeviceId).HasColumnName("device_id");
+        // D8's two attribution columns. **No foreign key to `app_user`, deliberately** — see the
+        // migration's own comment: `TerenDbContext` migrates *before* `TerenIdentityDbContext`
+        // everywhere the product migrates (`Program.cs`, `DemoResetCommand`), so on a fresh
+        // database `app_user` does not exist yet when this table is altered. The reference is a
+        // uuid the platform surface resolves, not a constraint the database enforces.
+        builder.Property(e => e.CreatedByUserId).HasColumnName("created_by_user_id");
+        builder.Property(e => e.ConfirmedByUserId).HasColumnName("confirmed_by_user_id");
         builder.Property(e => e.CreatedAt).HasColumnName("created_at").IsRequired();
         builder.Property(e => e.ReceivedAt).HasColumnName("received_at");
         builder.Property(e => e.ConfirmedAt).HasColumnName("confirmed_at");

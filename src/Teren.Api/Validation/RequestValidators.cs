@@ -302,3 +302,27 @@ public sealed class UpdateWorkerRequestValidator : AbstractValidator<UpdateWorke
             .When(r => r.Email is not null);
     }
 }
+
+/// <summary>
+/// A customer needs a name and nothing else. Everything about the company that matters — its
+/// projects, its people — arrives afterwards, so demanding more here would only be ceremony
+/// between a founder and a customer he has just signed.
+/// </summary>
+public sealed class CreateCompanyRequestValidator : AbstractValidator<CreateCompanyRequest>
+{
+    /// <summary>Room for "Vodoinstalaterske usluge Petrović i sinovi d.o.o." and not for a paste
+    /// accident.</summary>
+    private const int MaxNameLength = 160;
+
+    public CreateCompanyRequestValidator()
+    {
+        RuleLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(r => r.Name)
+            .NotEmpty()
+            .WithMessage("name is what the customer is called; it cannot be empty.")
+            .Must(name => name!.Trim().Length > 0)
+            .WithMessage("name cannot be blank.")
+            .MaximumLength(MaxNameLength);
+    }
+}

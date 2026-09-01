@@ -845,6 +845,47 @@ code, re-activate, watch the queue drain unattended.
    `sed`. Two files, not one.
 5. **Not in scope:** per-project worker assignment, multi-company users, SSO.
 
+6. **⚠ OPEN FOUNDER DECISION — the invite/reset path lets a super admin become a company admin,
+   and therefore read that company's evidence.** Found by the D4 review, 2026-09-01.
+
+   `POST /api/platform/users/{id}/invite` (and `invite-admin` before it) mints a set-password token
+   for any non-worker account and hands the **plaintext** to the caller. `POST /auth/password` is
+   unauthenticated and validates only the token, so whoever holds it can set that admin's password,
+   sign in as him, and read everything his company has. The four layers of §6 make decision 2 true
+   of the super admin's *own* principal; they say nothing about a **different principal he is able
+   to mint**.
+
+   **So decision 2 as literally worded — "a super admin can never read entries, transcripts, photos
+   or reports" — is not mechanically true, and §14.7's claim that it is should not be repeated to a
+   customer in that form.** What remains true and defensible:
+
+   > Teren staff cannot read a customer's diary *with their own credentials*. Taking a customer's
+   > account requires resetting his password, which locks him out, revokes his sessions, and leaves
+   > an audit row naming the staff member who did it.
+
+   This is not new to D4 — `invite-admin` has done the same from a terminal since D2 — and it is
+   the same power every SaaS support desk holds. What D4 changed is that it is reachable through
+   the product.
+
+   **The forensic signal already exists:** `password_token_issued` carries
+   `{"source": "platform", "purpose": "reset"}`, and `purpose: reset` means the target *already had*
+   a password. Staff minting a reset for a live account is exactly the shape of the dangerous act,
+   and it is distinguishable from an ordinary onboarding invite.
+
+   **The options, for the founder:**
+   - **Accept it and reword decision 2** to the honest sentence above. Costs nothing, and the
+     product keeps its 9 p.m. escape hatch.
+   - **Narrow the route to `invite` only** (refuse when `password_hash IS NOT NULL`). Closes the
+     impersonation path — and takes the actual support case with it, because a *locked-out* admin
+     is by definition one who already has a password. With no SMTP relay he would then have no way
+     back at all.
+   - **Require a second signal for `reset`** — e.g. the customer confirms out of band, or the token
+     is only ever emailed to the account's own address (needs D6, needs a relay).
+
+   Until this is decided, `PlatformDirectory.InviteAsync` and `PlatformContracts.InviteUserResponse`
+   both carry the caveat in their doc comments, so nobody reads the old, false reasoning and
+   believes it.
+
 ---
 
 ## 14. Open questions for the founder

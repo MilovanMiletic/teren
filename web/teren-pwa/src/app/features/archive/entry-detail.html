@@ -266,9 +266,13 @@
 
     <section class="card detail__card">
       <h3 class="t-label detail__card-label">{{ t('archive.section.photos') }}</h3>
-      @if (photos().length > 0) {
+      @if (shownPhotos().length > 0) {
+        <!--
+          Phone-held and fetched pictures in one strip, indistinguishable on purpose (C3). The
+          index the viewer opens on is this list's, so it pages through everything on screen.
+        -->
         <ul class="photos">
-          @for (photo of photos(); track photo.id; let i = $index) {
+          @for (photo of shownPhotos(); track photo.id; let i = $index) {
             <li>
               <button
                 type="button"
@@ -276,20 +280,36 @@
                 [attr.aria-label]="t('archive.photos.open', { index: i + 1 })"
                 (click)="openViewer(i)"
               >
-                <img [src]="photoUrl(photo)" alt="" />
+                <img [src]="photo.url" alt="" />
               </button>
             </li>
           }
         </ul>
       }
-      @if (unshownPhotoCount() > 0) {
-        <!-- Media bytes never pass through the API and there is no presigned GET: say so. -->
+      @if (photosLoading()) {
+        <p class="detail__offsite t-meta" role="status">
+          <app-icon name="image" [size]="16" />
+          <span>{{ t('archive.photos.loading') }}</span>
+        </p>
+      }
+      @if (unshownPhotoCount() > 0 && !photosLoading()) {
+        <!--
+          The remainder, after fetching what could be fetched: pictures still arriving on the
+          server, and pictures that would not come. One sentence for both, because the owner does
+          the same thing about either — and a count with nothing under it is still better than a
+          silent zero on an entry that has six photographs.
+        -->
         <p class="detail__offsite t-meta">
           <app-icon name="image" [size]="16" />
           <span>{{ t('archive.photos.onServer', { count: unshownPhotoCount() }) }}</span>
         </p>
       }
-      @if (photos().length === 0 && unshownPhotoCount() === 0) {
+      @if (photosFailed() && !photosLoading()) {
+        <button type="button" class="btn btn--tertiary" (click)="retryPhotos()">
+          {{ t('archive.photos.retry') }}
+        </button>
+      }
+      @if (shownPhotos().length === 0 && unshownPhotoCount() === 0 && !photosLoading()) {
         <p class="t-meta detail__state-body">{{ t('archive.photos.none') }}</p>
       }
     </section>

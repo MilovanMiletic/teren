@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Net;
 using System.Text.Json.Nodes;
 using Teren.Api.Tests.Infrastructure;
@@ -346,5 +347,59 @@ public sealed class ValidationTests(TerenTestApp app) : ApiTestBase(app)
 
         text.ShouldContain("Voždovac");
         text.ShouldNotContain("\\u017E");
+    }
+}
+
+/// <summary>
+/// The wiring guard: every request body a route validates must have a validator the container can
+/// actually produce.
+/// <para>
+/// <b>Written after this exact defect shipped and was caught by six unrelated tests.</b> Validators
+/// are registered one by one in <c>Program.cs</c> — there is no assembly scan — so adding
+/// <c>AddEndpointFilter&lt;ValidationFilter&lt;T&gt;&gt;()</c> and writing the validator is only two
+/// thirds of the job. Miss the third and <see cref="Teren.Api.Validation.ValidationFilter{T}"/>
+/// calls <c>GetRequiredService</c> on something nobody registered, which throws
+/// <em>before the handler runs</em>: every POST to that route answers <b>500</b>, including the
+/// malformed ones that were supposed to answer 400. Nothing about the symptom points at the cause.
+/// </para>
+/// <para>
+/// Source-scanning rather than resolving from the container, following the house precedent
+/// (<c>IdentityModelTests</c>' allow-list, the PWA's i18n spec): the coupling being guarded is
+/// between two files, so reading both files is the honest check.
+/// </para>
+/// </summary>
+public sealed class ValidatorWiringTests
+{
+    [Fact]
+    public void Every_validated_request_type_has_a_registered_validator()
+    {
+        var program = File.ReadAllText(Path.Combine(SourceTree.Root(), "Teren.Api", "Program.cs"));
+
+        var validated = SourceTree.Files()
+            // Everything except the file that declares the filter, whose own `ValidationFilter<T>`
+            // is the generic parameter rather than a request type. Excluding the declaration by
+            // path rather than by filtering out short names: `T` today, but a rename to
+            // `TBody` would slip straight through a heuristic and leave this guard reporting a
+            // type nobody can register.
+            .Where(path => !path.EndsWith("ValidationFilter.cs", StringComparison.Ordinal))
+            .SelectMany(path => Regex.Matches(
+                SourceTree.CodeOf(path), @"ValidationFilter<(\w+)>"))
+            .Select(match => match.Groups[1].Value)
+            .Distinct()
+            .ToList();
+
+        // A guard on the guard: if the scan ever matches nothing, this file would pass forever
+        // while proving nothing at all.
+        validated.Count.ShouldBeGreaterThan(5);
+
+        var unregistered = validated
+            .Where(type => !program.Contains($"IValidator<{type}>", StringComparison.Ordinal))
+            .ToList();
+
+        unregistered.ShouldBeEmpty(
+            "A route validates a request type whose validator is never registered in Program.cs. "
+            + "ValidationFilter resolves it with GetRequiredService, so every request to that "
+            + "route — valid or not — answers 500 before the handler runs.\n"
+            + string.Join("\n", unregistered));
     }
 }

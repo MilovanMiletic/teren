@@ -35,22 +35,29 @@ describe('SessionService', () => {
   afterEach(() => localStorage.clear());
 
   describe('with no stored session', () => {
-    it('falls back to the build-time token, so every existing install keeps working', () => {
-      // The compatibility hinge of F2. A phone that has never seen an activation screen must send
-      // exactly what it sent before this increment existed, or the distributor's demo breaks on
-      // the morning he opens it.
+    it('has no credential at all, because the build-time fallback is gone', () => {
+      // **This spec is the token flip (D7/F9), and it used to assert the opposite.** Through F2–F6
+      // `token()` fell back to a throwaway compiled into the bundle, so `usable()` was true on
+      // every install and the gate could not bite. That fallback was the compatibility hinge that
+      // kept the demo working while the identity model was built underneath it; it is now retired.
+      //
+      // Emptying `environment.deviceToken` is what turns the login screens from something a
+      // curious person can navigate to into something everyone has to pass, because a credential
+      // compiled into a bundle is readable from devtools by anyone who opens it.
       const sessions = TestBed.inject(SessionService);
 
       expect(sessions.session()).toBeNull();
-      expect(sessions.token()).toBe(environment.deviceToken);
-      // `.toBe(true)`, not `.toBe(environment.deviceToken.length > 0)` — the latter passes for
-      // *any* value of the constant, including the empty string that would mean a demo phone
-      // silently stopped uploading. The point of the fallback is that this phone can still send.
-      expect(sessions.usable()).toBe(true);
-      // …and yet it is **not** activated. The gate asks this question and not `usable()`, which
-      // the fallback above makes true on every install until D7/F9. A gate written on `usable()`
-      // would be inert, and `/welcome` a screen nobody could reach.
+      expect(sessions.token()).toBe('');
+      expect(sessions.usable()).toBe(false);
       expect(sessions.activated()).toBe(false);
+    });
+
+    it('keeps the build constant empty, so the fallback cannot be reintroduced by accident', () => {
+      // Guarding the constant rather than the behaviour: restoring a value here to "make staging
+      // demo out of the box" would silently reopen the door this increment closed, and every other
+      // spec in this file would still pass. Activate the box instead — `DemoSeeder` provisions the
+      // demo device and prints its username and code.
+      expect(environment.deviceToken).toBe('');
     });
   });
 

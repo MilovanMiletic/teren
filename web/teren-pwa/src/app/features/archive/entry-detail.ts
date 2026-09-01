@@ -64,6 +64,18 @@ export type TranscriptState =
   | 'unavailable';
 
 /**
+ * A photograph the strip can display, whichever side it came from.
+ *
+ * The screen deliberately cannot tell a phone-held picture from a fetched one past this point:
+ * both are an id and an object URL. To the owner they are all just photographs of his site, and a
+ * strip that distinguished them would be showing him a detail of the sync model instead.
+ */
+interface ShownPhoto {
+  id: string;
+  url: string;
+}
+
+/**
  * One finished entry, read-only: the archive's whole reason to exist.
  *
  * PROJECT.md §2 is blunt about who this screen is for. The foreman is the user, but the **buyer**
@@ -121,20 +133,53 @@ export class EntryDetail {
   );
 
   /**
-   * Photographs the server holds that are not on this phone.
+   * Photographs the server holds, whatever this phone happens to have.
    *
-   * They cannot be shown: media bytes never pass through the API (ARCHITECTURE §2) and there is
-   * no presigned **GET**, only the PUT the upload path uses. So the record reports how many
-   * photographs the entry has rather than pretending it has none — a silent zero on an entry with
-   * six photographs would be the archive failing at the one job it has.
+   * **This is the case the archive exists for**, and until C3's read path it was the case the
+   * archive could not serve: the owner opens a record on his office tablet, and every photograph
+   * of it was taken on somebody else's phone. A count with no pictures under it was the honest
+   * answer while there was no way to fetch the bytes; it was never a useful one.
    */
-  protected readonly remotePhotoCount = computed(
-    () => this.remote()?.media?.filter((item) => item.kind === 'photo').length ?? 0,
+  private readonly remotePhotos = computed(
+    () => this.remote()?.media?.filter((item) => item.kind === 'photo') ?? [],
   );
 
-  protected readonly unshownPhotoCount = computed(() =>
-    Math.max(0, this.remotePhotoCount() - this.photos().length),
+  protected readonly remotePhotoCount = computed(() => this.remotePhotos().length);
+
+  /**
+   * The ones worth asking for: **verified only**.
+   *
+   * `verified` is the one status meaning `/complete` checked the stored bytes against what the
+   * phone declared. The server refuses to serve anything else with a 409, so asking would be a
+   * guaranteed round trip to a refusal — and, more to the point, the two cases deserve different
+   * words. A photograph still on its way is not a photograph that failed.
+   */
+  private readonly fetchablePhotos = computed(() =>
+    this.remotePhotos().filter((item) => item.upload_status === 'verified'),
   );
+
+  /** Bytes pulled from the server this visit, keyed by media id. */
+  private readonly fetched = signal<ReadonlyMap<string, Blob>>(new Map());
+
+  /** Ids already asked for, so a re-render can never turn into a second download. */
+  private readonly asked = new Set<string>();
+
+  protected readonly photosLoading = signal(false);
+
+  /** At least one fetch came back with something other than the picture. */
+  protected readonly photosFailed = signal(false);
+
+  /**
+   * What this phone does not hold and has not fetched — the honest remainder.
+   *
+   * Counts the ones still arriving as well as the ones that could not be fetched, because from
+   * the owner's side they are the same sentence: this record has more photographs than you are
+   * looking at.
+   */
+  protected readonly unshownPhotoCount = computed(() => {
+    const shown = new Set(this.shownPhotos().map((photo) => photo.id));
+    return this.remotePhotos().filter((item) => !shown.has(item.id)).length;
+  });
 
   /** The server holds a recording this phone does not — same limitation, same honesty. */
   protected readonly audioOffsite = computed(
@@ -243,10 +288,36 @@ export class EntryDetail {
 
   protected readonly transcriptKey = computed(() => `archive.transcript.${this.transcriptState()}`);
 
+  /**
+   * Every photograph this screen can actually put on the glass, phone-held ones first.
+   *
+   * Two sources, one strip. The order is deliberate and not merely stable: the pictures this
+   * phone took are the ones its owner is most likely to be looking for, they need no network, and
+   * they are on screen before the first fetched byte arrives. Fetched ones append as they land
+   * rather than reshuffling what he is already looking at.
+   *
+   * Both kinds go through the same {@link ObjectUrlCache}, so the full-size viewer pages through
+   * local and fetched pictures without knowing which is which — which is the point. To the man
+   * holding the tablet they are all just photographs of his site.
+   */
+  protected readonly shownPhotos = computed<ShownPhoto[]>(() => {
+    const fetched = this.fetched();
+    return [
+      ...this.photos().map((photo) => ({
+        id: photo.id,
+        url: this.urls.get(photo.id, photo.blob),
+      })),
+      ...this.remotePhotos()
+        .map((item) => {
+          const blob = fetched.get(item.id);
+          return blob ? { id: item.id, url: this.urls.get(item.id, blob) } : null;
+        })
+        .filter((photo): photo is ShownPhoto => photo !== null),
+    ];
+  });
+
   /** The strip's object URLs, in the order it shows them — what the full-size viewer pages through. */
-  protected readonly photoUrls = computed(() =>
-    this.photos().map((photo) => this.urls.get(photo.id, photo.blob)),
-  );
+  protected readonly photoUrls = computed(() => this.shownPhotos().map((photo) => photo.url));
 
   protected readonly transcriptState = computed<TranscriptState>(() => {
     if (this.transcript()) {
@@ -465,8 +536,28 @@ export class EntryDetail {
       this.remoteMissing.set(false);
       this.viewerIndex.set(null);
       this.resetReport();
+      // Everything fetched belongs to the record we are leaving. Keeping it would put one entry's
+      // photographs on another entry's screen, which on an evidence product is the worst kind of
+      // wrong: it looks entirely plausible.
+      this.fetched.set(new Map());
+      this.asked.clear();
+      this.photosLoading.set(false);
+      this.photosFailed.set(false);
 
       void this.entries.getEntry(id).then((entry) => {
+        // The same freshness guard the server read below has, and it was missing here until the
+        // D4/F-review of 2026-09-01 — the more dangerous of the two omissions, because this is the
+        // half that paints the header, the site, the time and the status chip.
+        //
+        // `/entry/:entryId` is one route, so Angular reuses this component instance across
+        // entries: only the input signal changes and this effect re-runs. Open entry A, tap entry
+        // B before A's Dexie read resolves — `db.open()` itself settles after first paint, so the
+        // window is real rather than theoretical — and A's row lands on B's screen. Every field
+        // would be confidently, plausibly wrong on the one screen this product exists to be
+        // trusted on months later.
+        if (this.entryId() !== id) {
+          return;
+        }
         this.local.set(entry ?? null);
         this.localLoaded.set(true);
       });
@@ -484,17 +575,88 @@ export class EntryDetail {
       });
     });
 
-    // Mint object URLs for what is on screen and hand back the rest; anything less leaks the
-    // whole photograph into memory for the life of the tab.
+    // Then the pictures this phone does not have (C3). Automatic rather than a "load photographs"
+    // button, deliberately: the man this read path was built for is an owner opening a record of
+    // a day he was not present for, and asking him to press something before a photo card will
+    // show photographs is a step that exists only to save bytes the design already decided are
+    // cheap (~300 KB each, at most 20, and the endpoint's own doc makes that trade explicitly).
     effect(() => {
-      this.urls.retain(this.media().map((item) => item.id));
+      void this.loadRemotePhotos();
+    });
+
+    // Mint object URLs for what is on screen and hand back the rest; anything less leaks the
+    // whole photograph into memory for the life of the tab. **Fetched ids belong in this list too**
+    // — they are minted from the same cache, so leaving them out would revoke the URL of a
+    // photograph still on screen and the owner would watch it turn into a broken image.
+    effect(() => {
+      this.urls.retain([
+        ...this.media().map((item) => item.id),
+        ...this.shownPhotos().map((photo) => photo.id),
+      ]);
     });
 
     inject(DestroyRef).onDestroy(() => this.urls.releaseAll());
   }
 
-  protected photoUrl(item: LocalMedia): string {
-    return this.urls.get(item.id, item.blob);
+  /**
+   * Pull the photographs this phone does not hold, one at a time.
+   *
+   * **Sequential on purpose.** Twenty parallel requests on a site connection is how you turn a
+   * usable page into a stalled one, and each picture appearing as it lands reads as progress in a
+   * way a long blank wait does not. It also keeps the failure honest: one refusal does not cost
+   * the pictures that would have worked.
+   *
+   * Every id is marked asked **before** the first await, so a re-render — and this runs inside an
+   * effect, so there will be several — cannot start a second download of the same bytes.
+   */
+  private async loadRemotePhotos(): Promise<void> {
+    const entryId = this.entryId();
+    const held = new Set(this.photos().map((photo) => photo.id));
+    const wanted = this.fetchablePhotos().filter(
+      (item) => !held.has(item.id) && !this.asked.has(item.id),
+    );
+
+    if (wanted.length === 0) {
+      return;
+    }
+
+    for (const item of wanted) {
+      this.asked.add(item.id);
+    }
+    this.photosLoading.set(true);
+
+    for (const item of wanted) {
+      const blob = await this.archive.getMedia(entryId, item.id);
+
+      // The record on screen may have changed while this was in flight. Dropping the bytes is the
+      // only safe answer: they are evidence, and they belong to one entry.
+      if (this.entryId() !== entryId) {
+        return;
+      }
+
+      if (blob) {
+        this.fetched.update((current) => new Map(current).set(item.id, blob));
+      } else {
+        // One outcome for every failure — `ArchiveService.getMedia` records why that is right.
+        // The count above still says the record has more pictures than are on screen, which is
+        // the honest thing to be showing while one of them will not come.
+        this.photosFailed.set(true);
+      }
+    }
+
+    this.photosLoading.set(false);
+  }
+
+  /**
+   * Ask again for the pictures that did not come.
+   *
+   * Clearing `asked` is the whole of it: the effect above is still live and will re-enter the
+   * moment the set no longer covers what is missing.
+   */
+  protected retryPhotos(): void {
+    this.asked.clear();
+    this.photosFailed.set(false);
+    void this.loadRemotePhotos();
   }
 
   protected audioUrl(): string | null {

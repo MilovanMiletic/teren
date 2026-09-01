@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Teren.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using Teren.Infrastructure.Persistence;
 namespace Teren.Infrastructure.Migrations
 {
     [DbContext(typeof(TerenDbContext))]
-    partial class TerenDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260831182326_EntryAttribution")]
+    partial class EntryAttribution
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

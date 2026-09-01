@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Teren.Core.Entities;
 using Teren.Core.Identity;
 using Teren.Infrastructure.Persistence;
+using Teren.Api.Endpoints;
 
 namespace Teren.Api.Maintenance;
 
@@ -135,65 +136,30 @@ public static class InviteAdminCommand
             }
         }
 
-        // Invite means "this account has never had a password"; reset means "it has one already"
-        // (PasswordTokenPurpose). Derived rather than flagged: it is a fact about the row, and a
-        // flag would only be a way to record it wrongly.
-        var purpose = user.PasswordHash is null
-            ? PasswordTokenPurpose.Invite
-            : PasswordTokenPurpose.Reset;
-
-        var now = DateTime.UtcNow;
-        var token = CredentialTokens.New(CredentialTokens.PasswordPrefix);
-        var expiresAt = now.Add(lifetime);
-
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
-        // THE SUPERSEDE, and unlike an activation code nothing in the database compels it: there
-        // is no ux_password_token_live, so two live tokens for one user are perfectly storable and
-        // POST /auth/password would honour both. Re-running this command must therefore retire the
-        // link it is replacing itself, or a founder who re-issues because "the first one did not
-        // arrive" leaves the first one valid for another 48 hours — in whatever inbox or chat it
-        // did in fact arrive in.
+        // The purpose derivation, THE SUPERSEDE and the audit row all live in
+        // `PasswordTokens.IssueAsync`, shared with `POST /api/platform/users/{id}/invite`.
         //
-        // Expired-but-unconsumed rows are superseded too. They are already unusable
-        // (SetPasswordAsync filters on expires_at), so this is bookkeeping rather than a
-        // withdrawal, and it keeps "live" meaning one thing when reading the table by hand.
-        var superseded = await db.PasswordTokens
-            .Where(t => t.UserId == user.Id && t.ConsumedAt == null && t.SupersededAt == null)
-            .ExecuteUpdateAsync(u => u.SetProperty(t => t.SupersededAt, now), ct);
-
-        db.PasswordTokens.Add(new PasswordToken
-        {
-            Id = Guid.NewGuid(),
-            UserId = user.Id,
-            Purpose = purpose,
-            // Only the SHA-256 is stored. The plaintext exists in this process and on the
-            // founder's terminal and nowhere else, which is what makes the print below a one-off.
-            TokenHash = CredentialTokens.Hash(token),
-            CreatedAt = now,
-            ExpiresAt = expiresAt,
-        });
-
-        db.AdminAudits.Add(new AdminAudit
-        {
-            Id = Guid.NewGuid(),
-            // The subject himself: a console invite has no other actor, and saying so is more
-            // honest than inventing one. Same choice CreateSuperAdminCommand makes.
-            ActorUserId = user.Id,
-            Action = AdminAuditActions.PasswordTokenIssued,
-            SubjectType = "app_user",
-            SubjectId = user.Id,
-            CompanyId = user.CompanyId,
-            Detail = $$"""
-                {"source": "console", "purpose": "{{PasswordTokenPurposeNames.ToWire(purpose)}}", "superseded": {{superseded}}}
-                """,
-            CreatedAt = now,
-        });
+        // They were duplicated here until the D4 review found it. Nothing in the database compels
+        // the supersede — there is no `ux_password_token_live`, so two live tokens for one user
+        // are perfectly storable and `POST /auth/password` would honour both — which makes it
+        // exactly the kind of invariant that must not exist in two copies. Re-running this command
+        // has to retire the link it replaces, or a founder who re-issues because "the first one
+        // never arrived" leaves it valid for another 48 hours, in whatever inbox it did arrive in.
+        //
+        // The actor is the subject himself: a console invite has no other actor, and saying so is
+        // more honest than inventing one (the same choice `CreateSuperAdminCommand` makes). The
+        // platform route passes the signed-in super admin instead, which is what makes staff-issued
+        // links distinguishable in the trail.
+        var issued = await PasswordTokens.IssueAsync(db, user, user.Id, "console", lifetime, ct);
 
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
 
-        Print(output, email, user, company, purpose, token, expiresAt, superseded, appUrl);
+        Print(
+            output, email, user, company, issued.Purpose, issued.Token, issued.ExpiresAt,
+            issued.Superseded, appUrl);
 
         return 0;
     }

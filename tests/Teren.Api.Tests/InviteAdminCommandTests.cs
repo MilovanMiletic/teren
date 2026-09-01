@@ -345,7 +345,13 @@ public sealed class InviteAdminCommandTests(TerenTestApp app) : ApiTestBase(app)
 
         // And it really does mint one, so the assertions above are not passing over a file that
         // stopped doing anything.
-        code.ShouldContain("PasswordTokens.Add");
+        //
+        // It delegates rather than inserting the row itself: the supersede is an invariant nothing
+        // in the database compels, so it lives in `PasswordTokens.IssueAsync` and is shared with
+        // the platform route. This assertion used to look for `PasswordTokens.Add` and moved with
+        // the extraction — which is the guard doing its job rather than a weakening of it, because
+        // a command that stopped minting entirely would still fail here.
+        code.ShouldContain("PasswordTokens.IssueAsync");
     }
 
     // ------------------------------------------------------------------- drivers

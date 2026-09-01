@@ -20,6 +20,7 @@ import { EntryStore } from '../../core/db/entry-store';
 import { DayLabel, dayLabel, localDay } from '../../core/db/local-day';
 import { LocalEntry, Project, needsConfirmation } from '../../core/db/models';
 import { ProjectService } from '../../core/projects/project.service';
+import { RETURN_URL_PARAM } from '../../core/session/return-url';
 import { EntryStatusRefresher } from '../../core/sync/entry-status-refresh.service';
 import { AppHeader } from '../../ui/app-header';
 import { DurationPipe } from '../../ui/duration.pipe';
@@ -107,6 +108,18 @@ export class HomePage {
    * looks at.
    */
   protected readonly stuckCount = toSignal(this.entries.watchStuckCount(), { initialValue: 0 });
+
+  /**
+   * How many of the stuck ones are stuck on **this phone's credential** (F8).
+   *
+   * The one stuck-ness a foreman can fix himself, and the one the sync row's words are wrong
+   * about: "not getting through" invites him to wait, and waiting is exactly what will not work.
+   * A revoked phone still records, still queues and still opens every screen — the door is never
+   * locked (plan §10.3) — so this is a notice and a way forward, never a gate.
+   */
+  protected readonly reactivationCount = toSignal(this.entries.watchReactivationCount(), {
+    initialValue: 0,
+  });
 
   /**
    * Entries the server has handed back to the human (B5).
@@ -197,6 +210,17 @@ export class HomePage {
 
   protected openPending(): void {
     void this.router.navigate(['/pending']);
+  }
+
+  /**
+   * To the code screen, carrying the way back to Home.
+   *
+   * `/activate` is unguarded on purpose (plan §10.3) so a phone that still holds a session can
+   * reach it — this is that door. Nothing is signed out on the way and no evidence is touched: if
+   * he changes his mind, he is back here with his queue exactly as it was.
+   */
+  protected reactivate(): void {
+    void this.router.navigate(['/activate'], { queryParams: { [RETURN_URL_PARAM]: '/' } });
   }
 
   /**

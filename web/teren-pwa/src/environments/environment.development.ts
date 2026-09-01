@@ -12,9 +12,15 @@ export const environment = {
   apiBaseUrl: 'http://localhost:5080',
 
   /**
-   * The token from `src/Teren.Api/appsettings.Development.json` (`Auth:DeviceToken`). Documented
-   * there as a throwaway that "guards nothing but a laptop"; it is committed on both sides so
-   * the stack works out of the box after `docker compose up -d`.
+   * **Empty since the token flip (2026-08-31).** Until then this carried the throwaway from
+   * `appsettings.Development.json`, and `SessionService.token` fell back to it — which meant
+   * `usable()` was always true, the `canMatch` gate never redirected anyone, and the app opened on
+   * Home no matter what. Emptying it is the change that turns the login screens from something you
+   * can navigate to into something you have to pass.
+   *
+   * A laptop now activates the same way a phone does: `zoran.jovanovic` / `DEM0-TEST` against a
+   * seeded database. The API still accepts `Auth:DeviceToken`, but only because `DemoSeeder`
+   * provisions it as a real `device` row — it is the demo phone's credential, not a bypass.
    */
-  deviceToken: 'teren-dev-device-token-not-a-secret',
+  deviceToken: '',
 };

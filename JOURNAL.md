@@ -12,6 +12,146 @@ Entry format:
 
 ---
 
+## 2026-09-01 — D4, the platform surface
+
+**Built — `/api/platform/*`, gated to `super_admin`**
+
+Companies (list, create, suspend, resume), users (filtered by company, role, status and free text),
+the §9 authenticated invite, disable/enable, and the audit trail. Every list pages by keyset.
+
+**All of it behind one named type, `PlatformDirectory`**, and that is not organisation for its own
+sake: plan §12 asks for a reflection guard over the platform surface, and a guard is only possible
+if there *is* a surface. A handler that queried the database directly would be a hole in the proof.
+
+**The privacy guard, and the half the plan's own example needed**
+
+The four mutations §12 names were already covered — the route gate by `RoleGateTests` and
+`MediaDownloadTests`, the null tenant by `Super_admin_reads_no_evidence_even_with_the_route_gate_removed`,
+the closed model and the `IgnoreQueryFilters` allow-list by `IdentityModelTests`. D4 weakened none
+of them, so none needed rewriting.
+
+What was missing is the failure that is *quiet*. Every layer above stops a super admin **reaching**
+evidence; none stops evidence being **carried to him** on a DTO he is entitled to read. Nobody will
+remove the role gate. Somebody will add a count because a dashboard would look better with it.
+
+So there are two guards, and the second exists because the first cannot do what §12 claims:
+
+- a reflection walk over `PlatformDirectory` fails if any parameter or return type transitively
+  mentions `Entry`, `Media` or `Report`;
+- **and platform DTO property *names* are checked against an evidence vocabulary**, because §12's
+  own example — `entry_count` on a company DTO — is an `int`, and no amount of walking a type graph
+  finds `Entry` in an integer.
+
+**Mutation-proven rather than asserted:** adding `int EntryCount` to `PlatformCompanyResponse` turned
+two tests red — the name guard and the field-set assertion on the company row — and reverting turned
+them green. The walk also carries its own bait type, so "no offenders" means it looked and found
+none rather than that it stopped looking.
+
+It caught something immediately: `PlatformAuditListResponse` originally named its rows `entries`.
+Renamed to `actions` — in this product an *entry* is a day of a foreman's work, and naming
+administrative rows after it puts the one noun this surface may never touch in the middle of its own
+payload.
+
+**Two properties worth proving where they actually live**
+
+- **Suspension is proven on the phone, not on the column.** A test that asserted `suspended_at` would
+  pass against a suspension that stopped nothing. The real test suspends the demo company and then
+  makes the worker's client call `/api/projects`: 401, **with no sleep anywhere in the test**. The
+  absence of the sleep is the assertion — a token→principal cache of any duration would make it pass
+  by accident and make revocation "mostly" work in the field.
+- **Keyset paging is proven by the property offset paging cannot have.** Scroll the company list two
+  at a time, insert a company mid-scroll, and assert every company appears exactly once. With
+  `OFFSET` the insert shifts the window and page 2 re-shows the last row of page 1 while one company
+  is never seen at all. A malformed cursor is a 400, never a silent reset to page one — that is how
+  a client loops over page one forever while every request looks healthy.
+
+**The defect the tests found, and the guard it earned**
+
+Six tests failed with 500 on `POST /api/platform/companies`, including the one expecting a 400 for a
+blank name. **Validators are registered one by one in `Program.cs`; there is no assembly scan.** So
+`ValidationFilter<CreateCompanyRequest>` called `GetRequiredService` on something nobody had
+registered and threw *before the handler ran* — every POST to that route answered 500, the malformed
+ones included. Nothing in the symptom points at the cause.
+
+`ValidatorWiringTests` now reads every `ValidationFilter<T>` out of shipped source and fails if
+`Program.cs` does not register `IValidator<T>`. Source-scanning rather than container-resolving,
+following the house precedent: the coupling is between two files, so reading both files is the
+honest check.
+
+**Suites: 892 backend tests (861 → 892) and 862 PWA specs**, both verified green by execution.
+`dotnet test` builds to a scratch `BaseOutputPath` — Visual Studio and a running `Teren.Api` hold the
+output DLLs, which is MSB3027 and never a reason to kill `dotnet.exe`.
+
+
+**Reviewed — both reviewers ran over the whole unreviewed surface (2026-09-01)**
+
+**Frontend: accept-with-fixes.** It installed a throwaway Playwright into its own temp dir and
+actually drove the app at 390/767/768/833/834/1023/1024/1280/1920, so **the F7 layout pass has now
+been seen** — the thing CLAUDE.md has been warning about for two days. No horizontal overflow at any
+width; `session-link` renders in exactly one place at every width (compact bar below 768, header at
+and above it — the "two places" are mutually exclusive by media query, checked at 767 and 768
+specifically); `/company`'s crew grid really is two-up from 768 through 1920; Home's record pane
+really does fill a 1080 viewport. F5, F6, D7/F9 and the F4 leftover: sound.
+
+*Its gating find is a genuine bug and it predates C3.* `entry-detail.ts`'s **local** read had no
+freshness guard, while the server read five lines below it did. `/entry/:entryId` is one route, so
+Angular reuses the component across entries: open A, tap B before A's Dexie read resolves — and
+`db.open()` itself settles after first paint, so the window is real — and A's site, time and status
+paint onto B. On the one screen that exists to be trusted in a dispute, months later. Fixed, and
+**mutation-proven**: the first version of the spec asserted on the photo strip and passed with the
+guard removed, because the strip comes from `watchMedia(entryId)` and was never a witness. Asserting
+on the site name — which is read straight off `local` — makes it fail without the guard and pass
+with it.
+
+**Backend: REJECT.** One critical finding, and it is a real one.
+
+`POST /api/platform/users/{id}/invite` mints a set-password token for any non-worker and returns the
+**plaintext** to the caller. `POST /auth/password` is unauthenticated and validates only the token.
+So Teren staff can take a company admin's account, sign in as him, and read that company's diaries —
+**and plan decision 2 says a super admin can never do exactly that.** The four layers of §6 make it
+true of his *own* principal; nothing stopped him minting a different one.
+
+Two corrections to the reviewer's framing, made after checking: **the capability predates D4** —
+`invite-admin` has done the same from a terminal since D2 — and **the trail does distinguish the
+dangerous case**, because `password_token_issued` carries `{"source": "platform", "purpose":
+"reset"}` and `reset` means the target already had a password. What D4 changed is that it is
+reachable through the product.
+
+What was wrong and is now fixed: **my own doc comment asserted the false reasoning** — "returning
+the token reveals nothing to anyone who could not already act" — which is exactly backwards. Both
+`InviteUserResponse` and `InviteAsync` now carry the real cost, and **§13 of the plan carries it as
+a named, open founder decision** with the three options (accept and reword decision 2; narrow the
+route to `invite` only, which closes the hole and takes the support case with it; or require a
+second signal, which needs D6 and a relay). It is not something to fix by deleting the method — a
+locked-out admin with no relay has no other way back, which is why §9 specifies it.
+
+The reviewer's second finding was also right and is fixed: the **privacy guard could not catch what
+its own doc claimed**. A `string? Summary` on a company DTO, filled with a transcript, passed both
+walks — `string` is opaque to the type walk and the name list had no word for it. `notes` was the
+sharpest miss, since `notes` is the field the verbatim flow puts a foreman's own words in, and §12's
+log-redaction guard already lists it. The word list is now aligned with that vocabulary, and the
+limit is written down: a denylist cannot be completed, so this pair is a tripwire, not a wall. The
+wall is the closed identity model.
+
+Third finding, also fixed: `InviteAdminCommand` still duplicated `PasswordTokens.IssueAsync`
+statement for statement — the exact thing the extraction's own comment warns about. It now
+delegates. Its source-scanning guard moved with it (`PasswordTokens.Add` → `PasswordTokens.IssueAsync`),
+which is the guard working rather than being weakened: a command that stopped minting still fails it.
+
+**Suites after the fixes: 892 backend and 863 PWA**, both verified green by execution.
+**Founder actions**
+- [ ] **Look at `/company` and Home at 1280 and 1920.** The F7 layout pass is green and has never
+      been seen at any width.
+- [ ] Serbian copy pass on the new strings: `pending.action.reactivate`, `home.reactivate.*`,
+      `archive.photos.loading` / `.retry`.
+- [ ] Still owed: an SMTP relay, and the 1280 artboards for the three auth screens.
+
+**Next**
+1. **D5** — `app_log`, the Serilog sink with its property allow-list, exception scrubbing, the
+   retention job, the source-scanning redaction test, and `/api/platform/health`. This is where
+   `Project` finally enters the identity model, for site names on the health page.
+2. **F7** — the `/platform` screens. The log viewer's compact layout is the hard part.
+3. The review debt: eight increments have never been through a reviewer.
 ## 2026-08-31 — The three gates ran, and main had been undemoable since the last commit
 
 **Talked about**
@@ -210,6 +350,154 @@ suites after every review, and never assume a stopped agent left the tree as it 
 
 **Suites: 796 backend and 578 PWA**, both builds clean, all verified by execution after the repairs
 — then **806 backend** once the two decisions above landed (ten new tests), re-verified by execution.
+
+**Built — D7/F9, the token flip, which was the point of the whole exercise**
+
+`environment.deviceToken` is now `''` in **both** environment files. Until it was, a working
+credential was compiled into the bundle and readable from devtools by anyone: `usable()` was always
+true, the `canMatch` gate could not bite, and the login screens were decoration. A spec now pins the
+constant empty, because every other spec would still pass if someone put it back. **Do not restore a
+value to make a box "demo out of the box" — activate the box instead.**
+
+Four PWA specs broke on the flip and only one of them was the flip's own doing; the other three were
+pre-existing work-in-progress breakage the baked-in token had been hiding. The one that matters:
+`MockAuthGateway.login()` omitted `user_id`, so `toAdminSession` narrowed to null and a **correct**
+password came back as `unreadable`. A stand-in that cannot produce the shape the real server produces
+turns a green suite into evidence of nothing.
+
+**Built — company-admin specs (+230), and the three defects they found**
+
+`/company` had been built and never specified. Writing `company.service.spec.ts` and
+`company-page.spec.ts` against it turned up three real defects, all on the code-issuing path:
+
+- `issueCode` could **throw** on the path where the code has already been minted — a `.catch()` only
+  ever sees a rejected promise, so a gateway that throws before returning one escaped the method
+  entirely and left the screen stuck on "issuing" over a code the worker's previous one is already
+  dead against. Now a `try`, proven by a spec that throws outright rather than rejecting.
+- An unanswered **issue** reported itself as a failed **read**. The two are not the same failure: a
+  read that did not answer changed nothing, while an issue that did not answer may already have
+  superseded the code the man is holding. "Try again" invites a second press that supersedes a live
+  code, so the screen now says *reload before making another one*.
+- Re-issue had no busy state, so the one control left on screen sat idle while the code behind it
+  was being replaced.
+
+**Built — F7, the founder's four layout notes from a screenshot of `/company` at 1920**
+
+1. **The dead header button.** `app-company-link` rendered unconditionally, so on `/company` an
+   admin had an icon that navigated to `/company` — indistinguishable from a dead control, and the
+   exact defect `showProfile` had already been invented to prevent. The header gained `showCompany`,
+   the mirror input, and both are now pinned by spec in both directions: switched off on the one
+   screen that is the destination, and defaulted on everywhere else.
+2. **The session moved into the chrome.** New `ui/session-link.ts` is one control with three states
+   — sign out when there is an admin session, sign in when there is none, **nothing at all for a
+   foreman**, who has no password by construction (`ck_app_user_worker_has_no_password`) and whose
+   `/login` the device gate would bounce him straight back out of. The sign-out card at the foot of
+   `/company`'s rail is gone; nothing duplicates it.
+   *The constraint that shaped it:* the app header is `display: none` below 768 and decision 9 puts
+   `/company` on every device, so a header-only sign-out would strand an admin on a phone with no way
+   to end a password-backed session on the device most likely to be lost. It therefore renders twice
+   — in the header, and in that screen's own compact bar — in two pieces of chrome that are never
+   both visible. A spec pins both.
+3. **`/company` at ≥1024.** The crew grid is two-up from 768 **upward** rather than expiring at 1023.
+   A worker card is a name, a username and two chips; stretched across a 780 px desktop column it is
+   a 72 px sliver with half a metre of white beside it, and eight of them scroll a laptop for no
+   reason. The spec asserts the media block's *header*, not just its contents, so re-binding it to
+   the tablet band goes red instead of quietly returning a desktop to single file.
+4. **Home at ≥1024.** The grid placed its panes correctly and never claimed the window's *height*:
+   the screen finished in the top third and the rest was warm canvas. The content block now grows to
+   the foot of the viewport and the capture pane grows with it, so the record button is the largest
+   object on a 1920 canvas rather than a phone button that happened to be centred. A floor for a
+   1280×720 laptop, and deliberately **no ceiling** — a capped card leaves warm canvas under a white
+   slab, which is the worst of both.
+
+**Honest about what this increment is not**
+
+- **It was never looked at.** The agent building it was to drive a headless browser at 390/768/834/
+  1280/1920 and inspect the screenshots; it hit an API session rate limit partway through Home and
+  died before doing so. No driver is installed in the repo, so the layouts are proven by spec and by
+  reading, and **not one of the five widths has been seen**. That is the founder's first check.
+- Its own new specs were stale against its own refactor when it stopped — two in `company-page.spec.ts`
+  asserted a sign-out sentence it had just moved into the chrome and a media band it had just widened
+  — and `session-link.ts` shipped with **no spec at all**. Both repaired here, +18 specs.
+- One test-shaped lesson worth keeping: under zoneless OnPush a plain `fixture.detectChanges()` over
+  a view nothing has invalidated refreshes **nothing**, so a control whose answer comes from the
+  clock rather than from a signal cannot be tested by mutating a fake and re-detecting. The realistic
+  trigger is the interaction itself — an expired admin pressing the stale sign-out — which both makes
+  the view dirty and is the moment the app actually finds out.
+
+**Suites: 851 PWA specs across 58 files, verified green by execution**, `ng build` clean, backend
+untouched at 855. Two whole-source-scanning specs (`i18n.spec.ts`, `app.routes.spec.ts`) timed out at
+5 s on one run under memory pressure and passed in isolation in 289 ms — the documented load flake,
+not a regression; a clean run afterwards was 851/851.
+
+**Built — the small increments before the super admin (founder: "start with the small ones")**
+
+- **F4's last gating item closed.** The client's dual-shape read of `/auth/activate` is gone. The
+  order was the whole point and is worth keeping: §8 amended to the flat shape **first**, then the
+  serialized field names pinned exhaustively server-side, and only then the tolerance deleted.
+  Dropping it before the pin existed would have restored the original failure — a renamed field
+  reaching the founder as "joining failed, and your code is not used up", both halves false, and a
+  second single-use code spent proving it. A new spec asserts the nested shape is now *refused*, so
+  nobody can quietly re-add `?? response` and have every test stay green.
+- **D8 — attribution.** `entry.created_by_user_id` and `confirmed_by_user_id`, both from the bearer
+  and from nothing else; there is no field in either request that names a person and there must
+  never be one. Confirming stamps the approver, a replay writes nothing, and a revision moves the
+  stamp — the column records who approved *the version about to be sent*, not whoever approved a
+  version that was superseded. Demo entries get attribution free, because the seeder only inserts.
+  **No FK to `app_user`, deviating from plan §4 deliberately:** `TerenDbContext` migrates before
+  `TerenIdentityDbContext` everywhere, so on a fresh database `app_user` does not exist when `entry`
+  is altered. Nothing is lost today — no path in `src/` deletes a user — but the constraint has to
+  arrive with D4, in the identity history, which runs second and can see both tables.
+- **F8 — the revocation surface.** A stalled row whose failure is `unauthenticated` offers
+  "Unesi novi kod" rather than "Pokušaj ponovo", and Home carries a notice above the confirmation
+  gate. Derived from the queue past `STALLED_AFTER_ATTEMPTS`, never a stored flag: the server is the
+  only thing that knows a device is revoked, and a local boolean goes stale in a basement. **Never a
+  locked door** — the record button is untouched and a spec pins that, because a revoked phone is
+  precisely a phone that should keep recording.
+  *One deliberate narrowing:* "Pokušaj sve ponovo" no longer sweeps credential rows. Releasing a row
+  resets the attempt count that **is** the notice, so the single press would fail instantly and
+  erase the only thing telling him what to do, for another half hour. An existing spec asserted the
+  old behaviour; it was rewritten with the reason rather than deleted.
+
+**Built — C3's photo read path, which closes C3**
+
+`CLAUDE.md` said flatly that there was no read path for media. **It was wrong by a day**: the server
+half shipped in `52646ba` marked *WIP* in the commit message, and it is thorough — checksum-verified
+bytes, `verified`-only, `private, immutable` with `Vary: Authorization`, 404/409/409/503 all
+distinguished. Checking the tree instead of the note is what found it. The genuinely missing half
+was the client, so the archive could only ever *count* the photographs it was not showing.
+
+`ArchiveService.getMedia` now fetches the bytes with the bearer — an `<img src>` sends no
+`Authorization` header, and a presigned GET was refused as a credential to a customer's site
+photographs that nobody can take back. Local and fetched pictures merge into one strip, deliberately
+indistinguishable: to the man holding the tablet they are all just photographs of his site. Only
+`verified` media is requested, because anything else is a guaranteed 409 and "still arriving" is not
+"failed". Sequential rather than parallel — twenty requests on a site connection is how a usable
+page becomes a stalled one — and every failure the blob response flattens together becomes one
+sentence and one retry.
+
+**The owner-on-a-tablet case works. That is the buyer's reason to pay, and it had never worked.**
+
+**A test-shaped lesson worth keeping:** the first version of the retry spec waited for the "not on
+this phone" line to disappear. That line is *also* hidden while a fetch is in flight, so the wait
+resolved during loading and the assertions ran against an empty strip. Wait for the thing you
+actually mean — the thumbnails — not for a sentence that is absent for two different reasons.
+
+**The environment, which cost more than the code**
+
+The machine ran out of **disk** (C: at 0 bytes free) and briefly out of memory. It surfaced as three
+different-looking faults: `ENOSPC` killing ten spec files mid-run, a node fatal error, and the Docker
+engine hanging so completely that `docker version` returned nothing in five minutes — so the backend
+suite could not run at all. `%LOCALAPPDATA%\Temp` held **10 GB**, of which 5.7 GB was two abandoned
+Visual Studio Installer extraction directories. The founder cleared it; free space went 875 MB →
+13.3 GB and the PWA suite went green immediately. *Docker was still not answering afterwards and
+needs a restart.*
+
+**Suites: 862 PWA specs across 58 files and 861 backend tests, both verified green by execution**
+(the founder freed the disk, then restarted a Docker engine that stayed hung after it). `ng build`
+clean. D8 added six of those backend tests. `dotnet test` had to build to a scratch `BaseOutputPath`
+— Visual Studio and a running `Teren.Api` hold the output DLLs, which is MSB3027 and never a reason
+to kill `dotnet.exe`.
 
 **Founder actions**
 - [ ] **Look at `/welcome`, `/login` and `/activate` at 1280.** No 1280 artboard exists for any of

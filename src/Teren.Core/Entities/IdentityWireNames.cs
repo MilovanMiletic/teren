@@ -63,6 +63,28 @@ public static class AdminAuditActions
 
     public const string SuperAdminCreated = "super_admin_created";
 
+    public const string CompanyCreated = "company_created";
+
+    /// <summary>Teren staff withdrew a customer's access. Every credential belonging to that
+    /// company stops authenticating on next contact — which is why it is audited and why the
+    /// screen that does it has to say so.</summary>
+    public const string CompanySuspended = "company_suspended";
+
+    public const string CompanyResumed = "company_resumed";
+
+    /// <summary>
+    /// Distinct from <see cref="WorkerDisabled"/>, and not merely for tidiness.
+    /// <para>
+    /// A company admin disabling one of his own foremen and Teren staff disabling *any* account
+    /// are different acts with different reach, and the audit trail is read to answer "who did
+    /// this to me". Collapsing them would make the customer's own action and the platform's
+    /// indistinguishable in the one record that exists to tell them apart.
+    /// </para>
+    /// </summary>
+    public const string UserDisabled = "user_disabled";
+
+    public const string UserEnabled = "user_enabled";
+
     /// <summary>A set-password link was minted (invite or reset). Distinguished from
     /// <see cref="PasswordSet"/> because "who was invited and never completed it" and "who
     /// actually has a password" are different questions, and only the pair answers either.</summary>

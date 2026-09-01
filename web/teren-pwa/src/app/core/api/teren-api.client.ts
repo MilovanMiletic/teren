@@ -226,6 +226,52 @@ export class TerenApiClient {
   }
 
   /**
+   * Fetch one photograph or voice note of an entry
+   * (`GET /api/entries/{entryId}/media/{mediaId}`).
+   *
+   * **This method exists because `<img src>` cannot carry a bearer token.** The route is
+   * deliberately not a presigned URL — a presigned URL is a credential to a customer's site
+   * photograph that nobody can take back, and it would sit in browser history and in every
+   * referrer (PROJECT.md §11, ruling 5, the same ruling the report download obeys). So the app
+   * fetches the bytes with its own credential and renders the blob.
+   *
+   * Errors are left alone here, exactly as {@link downloadReport} leaves them: what a 404 or a
+   * 409 *means* for a photograph is policy, and policy belongs to the screen that has the rest of
+   * the entry in front of it. Note that with `responseType: 'blob'` an error body arrives as a
+   * `Blob`, so the server's problem document cannot be read as JSON downstream — which is fine and
+   * is this API's standing rule since B3: a 409 is settled by re-reading the entry, never by
+   * parsing prose. The status alone carries every distinction the client needs.
+   *
+   * The per-event stall budget is the report's, not the whole-request timeout: a photograph on a
+   * site connection can legitimately take a long time in total while never actually stopping, and
+   * killing that transfer would be the app giving up on evidence the man is watching arrive.
+   */
+  async fetchMedia(entryId: string, mediaId: string): Promise<Blob> {
+    const request = new HttpRequest(
+      'GET',
+      this.url(
+        `/api/entries/${encodeURIComponent(entryId)}/media/${encodeURIComponent(mediaId)}`,
+      ),
+      { headers: this.authHeaders(), responseType: 'blob' as const },
+    );
+
+    const response = await firstValueFrom(
+      this.http.request<Blob>(request).pipe(
+        timeout({ first: API_TIMEOUT_MS, each: REPORT_STALL_MS }),
+        filter((event): event is HttpResponse<Blob> => event.type === HttpEventType.Response),
+      ),
+    );
+
+    if (!response.body) {
+      // A 200 with no body is not a photograph. Treated as a failure rather than rendered as an
+      // empty image, which would look to the owner exactly like evidence that is not there.
+      throw new Error(`media ${mediaId} came back empty`);
+    }
+
+    return response.body;
+  }
+
+  /**
    * Put one file where the server said to put it.
    *
    * `required_headers` is echoed back **verbatim and instead of** anything derived from the blob.

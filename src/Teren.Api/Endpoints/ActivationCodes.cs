@@ -187,7 +187,15 @@ internal static class ActivationCodes
     /// prints both medians on every run and fails when they separate.
     /// </para>
     /// </summary>
-    private const int IssueStatementCost = 6;
+    private const int IssueStatementCost = 3;
+
+    // Recalibrated 2026-08-31, from 6. At 6 the compensation *overshot*: medians were
+    // 21.6 ms for the branch that writes nothing against 13.5 ms for the branch that supersedes,
+    // inserts and audits — a ratio of 1.60 against a tolerance of 1.35. The oracle was still
+    // there, with its sign inverted: the fastest answer meant "this username exists AND has an
+    // address on file", which is the one fact §10.3 exists to hide. Left as a warning that this
+    // number is empirical: it is right when the test says the medians have not separated, and at
+    // no other time.
 
     /// <summary>
     /// One statement that matches nothing and costs what the real supersede costs.

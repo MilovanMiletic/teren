@@ -253,10 +253,17 @@ export class CompanyService {
       return { status: 'unavailable', code: null, shareText: null, noLiveCode: false };
     }
 
-    const message = await this.gateway
-      .shareText(workerId)
-      .then((response) => text(response.text))
-      .catch(() => null);
+    // `try`, not `.catch()`. A `.catch()` only ever sees a *rejected* promise, and a gateway that
+    // throws before it returns one — any non-`async` implementation, a decorator, a double —
+    // would escape this method entirely. The code has already been issued at this point, so a
+    // throw here would leave the screen stuck on "issuing" over a code the worker's previous one
+    // is already dead against. Proven by the spec that throws outright rather than rejecting.
+    let message: string | null = null;
+    try {
+      message = text((await this.gateway.shareText(workerId)).text);
+    } catch {
+      // The code in hand is the thing that matters; a message that did not arrive costs nothing.
+    }
 
     return { status: 'ok', code: issued, shareText: message, noLiveCode: false };
   }

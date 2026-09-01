@@ -9,6 +9,7 @@ import { SessionService } from '../session/session.service';
 import { UploadService } from '../sync/upload.service';
 import { ActivationService, AuthFailure, describeDevice } from './activation.service';
 import { AUTH_GATEWAY, AuthGateway } from './auth-gateway';
+import { ActivateResponse } from './auth-types';
 import { MockAuthGateway } from './mock-auth-gateway';
 
 /** A gateway whose every route fails the same way, for the classification table. */
@@ -161,19 +162,52 @@ describe('ActivationService', () => {
     });
 
     /**
-     * The defect the founder met on a real phone on 2026-08-31, in spec form.
+     * The defect the founder met on a real phone on 2026-08-31, and how it was finally closed.
      *
-     * `plans/profile-and-identity.md` §8 specifies a nested `worker` object; the endpoint that
-     * shipped (D3) puts those fields at the top level. This client was written to the plan and the
-     * mock modelled the plan too, so every spec was green while a real activation could not
-     * possibly succeed: `toSession` read `response.worker?.user_id`, got `undefined`, and refused
-     * the session. The screen then told him joining had failed and that his code was **not** used
-     * up — both false — and he spent a second single-use code proving it.
+     * `plans/profile-and-identity.md` §8 originally specified a nested `worker` object; the
+     * endpoint that shipped (D3) puts those fields at the top level. This client was written to
+     * the plan and the mock modelled the plan too, so every spec was green while a real activation
+     * could not possibly succeed: `toSession` read `response.worker?.user_id`, got `undefined`,
+     * and refused the session. The screen then told him joining had failed and that his code was
+     * **not** used up — both false — and he spent a second single-use code proving it.
      *
-     * `MockAuthGateway` now models the endpoint that exists. This is the other shape, pinned so
-     * that whichever way the founder settles the divergence, the client already speaks it.
+     * The stopgap was to read both spellings. F4's last gating item removed it, in the only order
+     * that was safe: §8 amended to the flat shape, then the serialized names pinned server-side by
+     * `ActivationTests.The_activate_response_carries_exactly_the_field_names_the_client_reads`,
+     * which asserts the whole property-name set. A re-nesting now fails there — loudly, in a
+     * backend test naming the field — instead of here, silently, as a refused session.
      */
-    it('reads the worker whether the server nests him or not', async () => {
+    it('reads the flat shape the endpoint actually sends', async () => {
+      const activation = configure({
+        ...failingWith(null),
+        activate: () =>
+          Promise.resolve({
+            device_token: 'trn_d_flat',
+            device_id: '44444444-4444-4444-4444-444444444444',
+            user_id: '22222222-2222-2222-2222-222222222222',
+            username: 'zoran.jovanovic',
+            display_name: 'Zoran Jovanović',
+            company: { id: '33333333-3333-3333-3333-333333333333', name: 'Gradnja d.o.o.' },
+          }),
+      });
+
+      const result = await activation.activate('zoran.jovanovic', 'XKD47HMP');
+
+      expect(result.ok).toBe(true);
+      expect(result.session?.displayName).toBe('Zoran Jovanović');
+      expect(TestBed.inject(SessionService).token()).toBe('trn_d_flat');
+    });
+
+    /**
+     * And the tolerance is gone deliberately, which is worth an assertion of its own.
+     *
+     * Without one, someone re-adding `response.worker ?? response` to "be safe" would change
+     * nothing that any spec could see, and the client would drift back to accepting a shape the
+     * server is now pinned against. Refusing outright is the correct behaviour here: a nested body
+     * means the server changed under us, and a half-read session is the failure mode that cost the
+     * founder a code in the first place.
+     */
+    it('no longer reads the nested shape, now that the server is pinned to the flat one', async () => {
       const activation = configure({
         ...failingWith(null),
         activate: () =>
@@ -186,20 +220,25 @@ describe('ActivationService', () => {
               display_name: 'Zoran Jovanović',
             },
             company: { id: '33333333-3333-3333-3333-333333333333', name: 'Gradnja d.o.o.' },
-          }),
+          } as unknown as ActivateResponse),
       });
 
       const result = await activation.activate('zoran.jovanovic', 'XKD47HMP');
 
-      expect(result.ok).toBe(true);
-      expect(result.session?.displayName).toBe('Zoran Jovanović');
-      expect(TestBed.inject(SessionService).token()).toBe('trn_d_nested');
+      expect(result.ok).toBe(false);
+      // `unreadable`, never `unknown`: the server answered 200, so the code is spent, and the
+      // sentence for `unknown` ends "the code is not used up".
+      expect(result.failure).toBe('unreadable');
+      expect(result.session).toBeNull();
+      expect(TestBed.inject(SessionService).token()).toBe('');
     });
 
     it('never adopts half a session, however good the status code was', async () => {
       const activation = configure({
         ...failingWith(null),
-        activate: () => Promise.resolve({ device_token: 'trn_d_x', worker: { username: 'zoran' } }),
+        // A token and a username and nothing else: the shape the server really sends, missing the
+        // fields that make the session describable. Every field or nothing.
+        activate: () => Promise.resolve({ device_token: 'trn_d_x', username: 'zoran' }),
       });
 
       const result = await activation.activate('zoran', 'XKD47HMP');
@@ -209,8 +248,6 @@ describe('ActivationService', () => {
       // for `unknown` ends "the code is not used up", and on this path that sentence is what cost
       // the founder a second single-use code.
       expect(result.failure).toBe('unreadable');
-      // All-or-nothing holds *within* a shape: a response carrying `worker` is read from `worker`
-      // alone, so a half-populated nested object is never completed from stray top-level fields.
       expect(result.session).toBeNull();
       // The app must not believe it is activated in a way it cannot describe. A stored bearer
       // with no company would fail later, on the upload path, as a 401 nobody could explain.

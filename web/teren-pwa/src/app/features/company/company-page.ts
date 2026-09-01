@@ -1,6 +1,5 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { Router } from '@angular/router';
 import { TranslocoDirective } from '@jsverse/transloco';
 
 import {
@@ -15,6 +14,7 @@ import { AdminSessionService } from '../../core/session/admin-session.service';
 import { AppHeader } from '../../ui/app-header';
 import { Icon } from '../../ui/icon';
 import { LanguageSwitcher } from '../../ui/language-switcher';
+import { SessionLink } from '../../ui/session-link';
 
 /**
  * Why the company could not be read, in the words this screen is allowed to use.
@@ -42,6 +42,16 @@ interface CodeState {
   shareText: string | null;
   /** The server answered plainly that there is nothing he could type. Information, not failure. */
   noLiveCode: boolean;
+  /**
+   * This state is the result of an **issue**, not of a read.
+   *
+   * The two failures are not the same failure and must not share a sentence. A read that did not
+   * answer changed nothing, so "the code could not be read" is the truth. An issue that did not
+   * answer **may already have superseded the code the man is holding** — telling the admin it
+   * failed invites him to press again, and the second press supersedes a code that exists. So the
+   * screen has to know which act it is reporting on. {@link serverAnswered} decides the rest.
+   */
+  afterIssue: boolean;
 }
 
 /** What was just put on the clipboard, so the screen can confirm the right one. */
@@ -101,17 +111,13 @@ const NO_PHONES: readonly Phone[] = [];
 @Component({
   selector: 'app-company-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AppHeader, DatePipe, Icon, LanguageSwitcher, TranslocoDirective],
+  imports: [AppHeader, DatePipe, Icon, LanguageSwitcher, SessionLink, TranslocoDirective],
   templateUrl: './company-page.html',
   styleUrl: './company-page.css',
 })
 export class CompanyPage {
-  private readonly router = inject(Router);
   private readonly company = inject(CompanyService);
   private readonly admins = inject(AdminSessionService);
-
-  /** Who is signed in, from the credential itself — no network, and true before the first paint. */
-  protected readonly session = this.admins.session;
 
   protected readonly loading = signal(true);
   protected readonly workers = signal<Worker[]>([]);
@@ -149,7 +155,12 @@ export class CompanyPage {
   protected readonly addFailure = signal<CompanyStatus | null>(null);
   protected readonly addConflict = signal<'username' | 'email' | null>(null);
 
-  protected readonly companyName = computed(() => this.session()?.companyName ?? null);
+  /**
+   * The company he administers, read off the credential itself — no network, and true before the
+   * first paint. It is the only thing this screen still takes from the session: signing out moved
+   * into the chrome at F7 (`session-link.ts`), and the admin's own name went with it.
+   */
+  protected readonly companyName = computed(() => this.admins.session()?.companyName ?? null);
 
   /** The list could not be confirmed with the server, so it is not a list of his company. */
   protected readonly unconfirmed = computed(() => !this.loading() && this.status() !== 'ok');
@@ -235,6 +246,7 @@ export class CompanyPage {
       code: null,
       shareText: null,
       noLiveCode: false,
+      afterIssue: false,
     });
 
     const result = await this.company.readCode(worker.id);
@@ -252,6 +264,7 @@ export class CompanyPage {
       code: result.code,
       shareText: result.shareText,
       noLiveCode: result.noLiveCode,
+      afterIssue: false,
     });
   }
 
@@ -305,6 +318,7 @@ export class CompanyPage {
       code: result.code,
       shareText: result.shareText,
       noLiveCode: false,
+      afterIssue: true,
     });
 
     if (result.status === 'ok') {
@@ -460,6 +474,7 @@ export class CompanyPage {
       code: result.code,
       shareText: null,
       noLiveCode: result.code === null,
+      afterIssue: false,
     });
 
     if (result.code) {
@@ -472,18 +487,5 @@ export class CompanyPage {
         );
       }
     }
-  }
-
-  /**
-   * Sign out of the office.
-   *
-   * **The one sign-out in this product, and it deletes no evidence.** A worker has none
-   * (PROJECT.md principle 3: a day of unsent entries outranks a wrong name on a screen); an admin
-   * session is a password-backed credential on what is often a shared office tablet, guards
-   * nothing local, and removing it touches exactly one `localStorage` row — never Dexie.
-   */
-  protected signOut(): void {
-    this.admins.signOut();
-    void this.router.navigate(['/login']);
   }
 }

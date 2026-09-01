@@ -268,9 +268,15 @@ public static class DemoSeeder
                 Longitude = 20.47858,
                 GpsAccuracyM = 9.5,
                 DeviceId = DemoDeviceId,
+                // The demo gets attribution for free, and without breaking D8's no-backfill rule:
+                // this seeder only ever *inserts* rows that are missing, so the value is written
+                // at insert time and no reported row is ever updated. `reset-demo` deletes and
+                // re-seeds, so it lands there too. No immutability guard is touched either way.
+                CreatedByUserId = WorkerId,
                 CreatedAt = captured,
                 ReceivedAt = captured.AddSeconds(95),
                 ConfirmedAt = captured.AddMinutes(24),
+                ConfirmedByUserId = WorkerId,
                 ReportedAt = captured.AddMinutes(26),
             });
             inserted++;
@@ -339,9 +345,11 @@ public static class DemoSeeder
                 Longitude = 20.47871,
                 GpsAccuracyM = 12.0,
                 DeviceId = DemoDeviceId,
+                CreatedByUserId = WorkerId,
                 CreatedAt = captured,
                 ReceivedAt = captured.AddSeconds(70),
                 ConfirmedAt = captured.AddMinutes(31),
+                ConfirmedByUserId = WorkerId,
             });
             inserted++;
         }
@@ -388,6 +396,7 @@ public static class DemoSeeder
                 Longitude = 20.47844,
                 GpsAccuracyM = 8.0,
                 DeviceId = DemoDeviceId,
+                CreatedByUserId = WorkerId,
                 CreatedAt = captured,
                 ReceivedAt = captured.AddSeconds(60),
             });
