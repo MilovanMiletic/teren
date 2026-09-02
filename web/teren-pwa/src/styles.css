@@ -713,15 +713,20 @@ app-table-pager {
 
 /*
  * Below 768 there is no table to hang a header off, so the same controls travel as a row of pills
- * above the list. It scrolls sideways inside itself rather than wrapping to three lines on a
- * 390 px screen — the page itself never scrolls sideways at any width.
+ * above the list — **one row, and it does not scroll** (founder, 2026-09-02: "remove the scroll",
+ * then "it needs to be in one row"). The first cut scrolled sideways inside the bar, so every phone
+ * drew a scrollbar track under the pills and hid part of the third one. The budget is the office
+ * screen on a 360 px Samsung: its three pills (`Osoba` sorted, `Stanje`, `Aktivnost`) are about
+ * 300 px of content against a 312 px bar, so the bar's side padding is `space-2` rather than the
+ * table's 18 px and the pill's own padding and type were trimmed in `column-menu.ts`. `wrap` stays
+ * as the fallback for anything narrower than that: a second row beats a clipped pill.
  */
 .column-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-3) 18px;
-  overflow-x: auto;
+  padding: var(--space-3) var(--space-2);
   background: var(--color-canvas);
 }
 

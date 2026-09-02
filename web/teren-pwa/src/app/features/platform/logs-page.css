@@ -123,7 +123,7 @@
   padding: var(--space-5);
 }
 
-/* Inside the filter card the pill bar keeps its sideways scroll but not the card's own padding. */
+/* Inside the filter card the pill bar (one wrapping row, nothing scrolls) drops the card's own padding. */
 .filters__pills {
   padding: 0;
 }

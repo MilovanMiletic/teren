@@ -37,16 +37,26 @@
   }
 }
 
+/*
+ * The head row: the title, and the action cluster.
+ *
+ * **Below 768 the cluster goes under the title, not beside it.** This screen's cluster is the
+ * widest in the product — five 44 px controls and four gaps, 252 px — and the compact column at
+ * 390 is 358 px wide, so one line left the title 92 px and "Platforma" ran under the icons
+ * (founder screenshot, 2026-09-02). `/company` fits on one line because it has one control fewer;
+ * this screen does not, and a title the reader cannot read is not a layout.
+ */
 .head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
+  gap: var(--space-3) 14px;
   padding-top: var(--space-4);
   padding-bottom: var(--space-4);
 }
 
 .head__text {
-  flex-grow: 1;
+  flex: 1 1 100%;
   min-width: 0;
 }
 
@@ -64,8 +74,14 @@
 
 @media (min-width: 768px) {
   .head {
+    flex-wrap: nowrap;
     padding-top: var(--space-6);
     padding-bottom: 0;
+  }
+
+  /* On the 640 column and wider the title and the cluster share one line again. */
+  .head__text {
+    flex: 1 1 0;
   }
 
   /* The app header already names the product; repeating it here is chrome twice. */
@@ -106,7 +122,9 @@
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* `minmax(0, 1fr)`, not `1fr`: a `1fr` track's floor is its content, so one long label could
+     widen its tile and push the third one off the card. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0;
   overflow: hidden;
 }
@@ -115,8 +133,26 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding: var(--space-4) 18px;
+  padding: var(--space-4) var(--space-3);
   border-right: 1px solid var(--color-card-line);
+}
+
+/*
+ * The number sits on the tile's floor. At 390 a tile is about 95 px inside its padding and "NIJE
+ * ZAVRŠENO" takes two lines where its neighbours take one, so a number placed straight under its
+ * label sat a line lower than the two beside it — three figures meant to be read as one row, drawn
+ * on two baselines. The grid stretches the tiles to one height; `margin-top: auto` puts every
+ * number at the bottom of it. Written as `.stats .stats__value` because `.stats dd { margin: 0 }`
+ * above outranks a lone class — the first cut lost to it and measured 17 px apart.
+ */
+.stats .stats__value {
+  margin-top: auto;
+}
+
+@media (min-width: 768px) {
+  .stats__cell {
+    padding: var(--space-4) 18px;
+  }
 }
 
 .stats__cell:last-child {

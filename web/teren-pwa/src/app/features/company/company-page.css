@@ -98,7 +98,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: var(--space-4) 18px;
+  padding: var(--space-4) var(--space-3);
   /* Only the internal seams: a divider on the card's own edge would be a border on a card. */
   border-right: 1px solid var(--color-card-line);
 }
@@ -115,6 +115,23 @@
 .stats__value {
   font-size: var(--text-h1);
   font-weight: 700;
+}
+
+/*
+ * The number sits on the tile's floor. At 360–430 "AKTIVNI TELEFONI" and "KODOVI ČEKAJU" take two
+ * lines where "POSLOVOĐE" takes one, so the first number sat 17 px above the other two — three
+ * figures meant to be read as one row, on two baselines (review of the `/platform` fix,
+ * 2026-09-02: same defect, on the screen the owner uses more). Written `.stats .stats__value`
+ * because `.stats dd { margin: 0 }` above outranks a lone class.
+ */
+.stats .stats__value {
+  margin-top: auto;
+}
+
+@media (min-width: 768px) {
+  .stats__cell {
+    padding: var(--space-4) 18px;
+  }
 }
 
 /* ---- The people card ---------------------------------------------------------------------- */

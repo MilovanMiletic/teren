@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 
 import { ACTION_VOCABULARY, ACTIONS } from './core/telemetry/actions';
 import { isAction } from './core/telemetry/client-event';
@@ -49,7 +49,10 @@ function sourceFiles(dir = join(process.cwd(), 'src', 'app')): { path: string; t
 
 /** `src/app/features/home/home-page.html`, so a failure names the file the way a person would. */
 function shortPath(path: string): string {
-  return relative(join(process.cwd(), 'src', 'app'), path);
+  // Forward slashes whatever the host: `relative` answers with backslashes on Windows, and every
+  // entry in DECLARED and RECORDED is written the way a person writes a path. Without this the
+  // two hand-written checks failed at their first entry on the founder's machine (2026-09-02).
+  return relative(join(process.cwd(), 'src', 'app'), path).split(sep).join('/');
 }
 
 /** One `data-log="…"` declaration, with the tag it sits on. */

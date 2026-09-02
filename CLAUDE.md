@@ -334,7 +334,7 @@ before being presented as done; gating fixes go back to the implementer and are 
   *Two traps found while doing it: `/platform/companies` had an icon named **Ljudi** on a screen with
   a column headed **Ljudi** (it is "Idi na ljude" now — a spec pressed the wrong one and looked like
   a broken sort), and the menu must be `position: fixed`, because the table sits in a horizontal
-  scroller and the phone's pill bar is another one — absolutely positioned, a **two-row** table
+  scroller (the phone's pill bar was one too until 2026-09-02, when it became a single fixed row) — absolutely positioned, a **two-row** table
   clipped it, and two rows is what the founder's screenshots show.*
   ***A fixed menu must be placed every frame, not once.*** The reviewer's two gating finds were the
   same mistake seen twice: measured at open, the filter box landed **56 px below the fold** on a
@@ -371,6 +371,26 @@ before being presented as done; gating fixes go back to the implementer and are 
   `GREŠKE`/`UPOZORENJA` counts tappable as filters, because the question a founder asks a phone is
   "is anything wrong", not "show me line #444". The medium class had never been pinned: every table
   spec passed `render(true, true)`, so all of them were really testing expanded.*
+- **A head cluster has a width, and `/platform`'s is the widest (2026-09-02, late).** Five 44 px
+  controls and four gaps are 252 px; the compact column at 390 is 358 px; so "Platforma" ran under
+  the icons in the founder's screenshot. Below 768 that screen's `.head` **wraps**, title on the
+  first line and the cluster under it; from 768 up it is one line as before. Any screen that grows a
+  fifth head control needs the same rule — `/company` has three, `/platform/companies` four, and both fit. *Same fix, second trap:
+  bottom-aligning the stat numbers with `margin-top: auto` did nothing under `.stats__value` alone,
+  because `.stats dd { margin: 0 }` outranks a lone class. The Playwright measurement caught it
+  (bottoms 298/298/315); the eye would not have on a laptop. The review found the identical defect
+  on `/company`'s tiles; both screens carry the same two rules now.*
+  ***The compact pill bar is one row, and it does not scroll*** (founder, same evening: "remove the
+  scroll", then "it needs to be in one row"). `.column-bar` no longer has `overflow-x: auto`; the
+  budget that had to fit is the office bar on a **360 px Samsung** — `Osoba` sorted, `Stanje`,
+  `Aktivnost`, 20 px too wide — found in the bar's side padding (`space-2`), the pill's padding
+  (`space-2`/`space-1`) and the pill label at `text-label`, never in the 44 px hit areas. Ten px to
+  spare at 360; `flex-wrap: wrap` remains as the fallback below that. Any new column word longer than
+  `Aktivnost` re-opens this.
+- **The PWA suite was red on Windows before 2026-09-02 and every "1575 green" was measured from a
+  Linux shell.** `action-wiring.spec.ts` built its file map with `relative()`, which answers with
+  backslashes here, so both hand-written checks failed at their first entry. `shortPath` normalises
+  `sep` now. *If a spec fails only on one OS, suspect the path separator before the code.*
 - **Suites: 1575 PWA specs** (81 files) and **991 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
   + Testcontainers over real Postgres, ~66 s; PdfPig in tests only, so report assertions read text
   back out of the rendered PDF). `dotnet test` needs Docker running.

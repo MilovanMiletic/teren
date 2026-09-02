@@ -452,14 +452,20 @@ export type ColumnKind = 'text' | 'date' | 'state' | 'number';
      * tap on the word (sort) and one on the funnel (filter) exactly as the header has.
      */
     :host(.column--pill) {
-      padding: 0 var(--space-2) 0 var(--space-4);
+      /* space-2 / space-1, not space-4 / space-2: three pills must share one row on a 360 phone
+         (founder, 2026-09-02: "in one row please"). The office bar is the budget — Osoba sorted,
+         Stanje, Aktivnost — and this is 12 px per pill of the 20 it was short. The funnel keeps its
+         44 px hit area; it overhangs the pill by 4 px on the right. */
+      padding: 0 var(--space-1) 0 var(--space-2);
       border-radius: var(--radius-pill);
       background: var(--color-card);
       box-shadow: var(--shadow-card);
     }
 
     :host(.column--pill) .sort {
-      font-size: var(--text-meta);
+      /* text-label, the chips' size, not text-meta: the last of the 20 px the office bar was short
+         of one row at 360. Not uppercase — these are words the finger sorts by, not captions. */
+      font-size: var(--text-label);
       letter-spacing: 0;
       text-transform: none;
     }

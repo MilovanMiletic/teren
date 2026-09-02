@@ -12,6 +12,92 @@ Entry format:
 
 ---
 
+## 2026-09-02 (late) — `/platform` on a phone: the title under the buttons
+
+**Talked about**
+
+The founder, off a screenshot of `/platform` at about 450 px: *"Fix this screen for smaller
+devices."* Two things in the picture: the word **Platforma** ran underneath the head cluster, and
+the third stat tile's label `NIJE ZAVRŠENO` wrapped, so its `0` sat a line lower than the `1` and
+the `2` beside it.
+
+**Built**
+
+- `platform-page.css` only. The head cluster on this screen is the widest in the product — five
+  44 px controls and four gaps, 252 px on a 358 px column — so below 768 the `.head` wraps and the
+  title takes the whole first line with the cluster under it; from 768 up it is `nowrap` and one
+  line, exactly as before. `/company` is not touched: one control fewer, and it fits.
+- The three numbers: `repeat(3, minmax(0, 1fr))`, `--space-3` cell padding below 768, and
+  `.stats .stats__value { margin-top: auto }` so every number sits on its tile's floor whether or
+  not its label wrapped. *The first cut was `.stats__value` alone and did nothing — `.stats dd
+  { margin: 0 }` outranks a lone class; the measurement, not the eye, caught it (bottoms 298/298/315).*
+
+- Then, off a second crop — the grey scrollbar track under the `Osoba / Firma / Stanje` pills:
+  *"remove the scroll. We don't need it, right?"* Right. `.column-bar` in `styles.css` (the shared
+  pill bar below 768 on all three directories) was `overflow-x: auto`, and three pills overflow a
+  360 column, so a phone drew a track and hid part of the third pill. Nothing scrolls sideways now.
+- Then, one message later: *"It needs to be in one row please, it's better UI."* Wrapping to two
+  rows was the first answer and it was not the one he wanted. The budget is the **office** screen on
+  a 360 px Samsung — `Osoba` sorted, `Stanje`, `Aktivnost` — which was 20 px too wide for one row.
+  Found without touching the 44 px hit areas: the bar's side padding `space-3 → space-2`, the pill's
+  padding `space-4/space-2 → space-2/space-1`, and the pill label at `text-label` (12 px, the chips'
+  size) instead of `text-meta`. One row at 360/390/430 on `/company`, `/platform` and
+  `/platform/companies`, with 10 px to spare on the tightest; `wrap` stays as the fallback below 360.
+- **The full PWA suite was red on this machine before any of this, and nobody knew.** Two
+  `action-wiring.spec.ts` checks failed at their *first* entry: `shortPath` used `relative()`, which
+  answers with backslashes on Windows, so `features/capture/capture-recording-page.ts` was "missing"
+  from a map that held it under `features\capture\…`. Every earlier "1575 green" was measured on a
+  Linux shell. It normalises `sep` to `/` now.
+- **Review (accept-with-fixes), both gating items closed:** `/company`'s stat tiles had the identical
+  baseline defect — `AKTIVNI TELEFONI` and `KODOVI ČEKAJU` wrap, `POSLOVOĐE` does not, so the first
+  number sat 17 px above the other two — fixed the same way and measured `[261, 261, 261]` at
+  360/390/430 under a company-admin session; and `logs-page.css` said the pill bar "keeps its
+  sideways scroll", which was no longer true. Notes carried, not acted on: the compact cluster sits
+  **left** under the title where the rest of the product's compact controls hug the right
+  (`margin-left: auto` if the founder prefers); the `14px` head gap and `18px` cell padding are
+  off-grid in all five heads; `person-page.css` carries dead `.stats` rules; at **320 px** the
+  language switcher plus session link overflow the page by 7 px on both platform screens.
+- **Migrations applied to the dev database** (`migrate`, built to a scratch output path so the
+  running API's locked binaries were not touched): both histories complete, `AppLog` included,
+  `app_log` present with 0 rows. *The API on 5080 was started before the table existed; if the log
+  screen stays empty after use, that process needs restarting — the founder's process, not ours.*
+
+**Verified by execution**
+
+Throwaway Playwright in the scratchpad against the running `ng serve`, API mocked, at
+360/390/430/767/768/1024/1280: no title/cluster overlap, no clipped title, cluster below the title
+under 768 and beside it from 768, the three stat baselines equal at every width, pill bar
+`scrollWidth <= clientWidth`, no horizontal page overflow. Platform specs 166/166, `ng build`
+clean. *Still no browser driver in the repo.*
+
+**Review status**
+
+Frontend reviewer: **accept-with-fixes**, both gating items closed and re-measured (above). A delta
+review of the fixes and of the one-row pill trims was requested; its verdict is in the commit
+message if it landed before the commit, and in the next entry otherwise.
+
+**Founder, closing the round**
+
+*"Mostly stuff with pages is done. We will have few more corrections but I am totally happy with the
+things we've done. Commit when you are done and push. Now, we want to build a dev server."*
+Committed and pushed from this session on his instruction — the standing rule that the founder
+commits himself is set aside for this one commit, not changed.
+
+**Next**
+
+**The dev server (B3a for real).** `deploy/README.md` §2 is the shopping list and it still holds:
+domain, Hetzner CX22, one A record, Hetzner Object Storage, an SMTP relay (still the open veto item —
+Mailpit on the box until then), the Azure Speech key, the Anthropic key. **One thing in the deploy
+machinery predates identity and will break the first remote build:** `deploy/web.Dockerfile` greps
+for the old device-token placeholder in `environment.ts` and stops with `FATAL` if it is absent — and
+D7/F9 made that constant `''`. `deploy.sh` also *requires* `TEREN_DEVICE_TOKEN` and warns when it is
+the committed default. The token is now server-side only (the demo device's credential, provisioned
+by `seed`), so the substitution has to go before the first `deploy.sh` against a host. Then: the
+`DEM0-TEST` demo code and the D4 hatch are the two decisions that were parked "until B3a", and B3a
+is now.
+
+---
+
 ## 2026-09-02 (evening) — ten rows a page, and a fix that was worse than the defect
 
 **Talked about**
