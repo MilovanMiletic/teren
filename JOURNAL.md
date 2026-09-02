@@ -405,8 +405,19 @@ plus one demo staff account, Milica Nikolić — the founder's own super admin i
 throwaway passwords for local dev accounts — the same class as the published demo code, and the
 same decision due if this ever points at a host.*
 **Both remaining agents were cut off mid-sentence by the session limit** — the demo one while
-improving the title cards, the motion reviewer before its delta verdict. The film and the fixes are
-finished; **the motion delta review is unrun** and is the first thing the next session owes.
+improving the title cards, the motion reviewer before its delta verdict.
+
+**Motion delta — coordinator's own read, in place of the review that was cut off.** Verified by
+execution: build clean at 463.08 kB, **1672/1672**, CI green on `94d5956` and `cb546f1`. Verified by
+reading: `withViewTransitions()` is gone from `app.config.ts` and the only two `view-transition`
+strings left in `styles.css` are the comment recording *why*; `.screen`'s animation is **opacity
+only** with `backwards` fill, so it leaves no persistent transform — which matters because a
+transform there would make every screen the containing block for the fixed column menu, and opacity
+creates only a stacking context, which does not move a fixed element. `min-height: 100dvh` on
+`.screen` is pre-existing and is not the `height: 100dvh` mistake this file records. **Not
+independently verified: the capture hand-off** (`ArrivalHandoff`) end to end with a real microphone —
+it is pinned by two specs and two mutation proofs, and the delta reviewer was asked to drive it
+before being cut off. That is the one thing still owed on this increment.
 
 **Frontend fix increment — delta review: ACCEPT, whole increment now accept.** All three mutations
 re-run in the reviewer's isolated copy: exactly 1, 3 and 3 red as claimed; 1636/1636 and a clean build
