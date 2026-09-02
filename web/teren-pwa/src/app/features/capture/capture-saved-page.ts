@@ -20,6 +20,7 @@ import { ActionLogService } from '../../core/telemetry/action-log.service';
 import { ACTIONS } from '../../core/telemetry/actions';
 import { AppHeader } from '../../ui/app-header';
 import { DurationPipe } from '../../ui/duration.pipe';
+import { ArrivalHandoff } from '../../ui/arrival';
 import { Icon } from '../../ui/icon';
 import { ObjectUrlCache } from '../../ui/object-url-cache';
 import { PluralService } from '../../ui/plural.service';
@@ -56,6 +57,14 @@ export class CaptureSavedPage {
    */
   private readonly actions = inject(ActionLogService);
   protected readonly plural = inject(PluralService);
+  /**
+   * The one-shot that carries this entry id across the navigation to Home (`ui/arrival.ts`).
+   *
+   * Home is rebuilt by the router, so its own diff cannot tell the entry he has just recorded from
+   * the four that were already there — the first list it sees contains all five. Naming it here is
+   * what makes the row rise into place on the screen he lands on.
+   */
+  private readonly arrivals = inject(ArrivalHandoff);
 
   /** Route parameter, bound by `withComponentInputBinding()`. */
   readonly entryId = input.required<string>();
@@ -153,6 +162,10 @@ export class CaptureSavedPage {
   }
 
   protected async leave(): Promise<void> {
+    // Before the navigation, not after: Home is created during it, and it reads this in its own
+    // constructor. Announced on every way out of this screen — "Gotovo" and the plain leave — so
+    // an entry that was already queued still rises when he lands back on Home.
+    this.arrivals.announce(this.entryId());
     await this.router.navigate(['/'], { replaceUrl: true });
   }
 }

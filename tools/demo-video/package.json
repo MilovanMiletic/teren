@@ -1,0 +1,17 @@
+{
+  "name": "teren-demo-video",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Records a narrated-by-motion video demo of the Teren PWA on three device classes.",
+  "scripts": {
+    "prepare-demo": "node prepare.mjs",
+    "record": "node record.mjs",
+    "stitch": "node stitch.mjs",
+    "serve": "node serve.mjs",
+    "demo": "node prepare.mjs && node record.mjs && node stitch.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.62.1"
+  }
+}

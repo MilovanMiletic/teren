@@ -402,7 +402,7 @@ export type ColumnKind = 'text' | 'date' | 'state' | 'number';
        * different things and do not fight: the inline pair is the fixed position, the keyframe
        * moves it 8 px relative to that and ends at zero.
        */
-      animation: teren-pop-in var(--motion-base) var(--ease-standard) both;
+      animation: teren-pop-in var(--motion-base) var(--ease-standard) backwards;
     }
 
     /*
@@ -410,7 +410,7 @@ export type ColumnKind = 'text' | 'date' | 'state' | 'number';
      * takes clicks sits over the very rows the reader is going back to.
      */
     .menu--out {
-      animation: teren-pop-out var(--motion-base) var(--ease-exit) both;
+      animation: teren-pop-out var(--motion-base) var(--ease-exit) forwards;
       pointer-events: none;
     }
 

@@ -1,3 +1,5 @@
+import { Injectable } from '@angular/core';
+
 /**
  * Which rows in a list are **new since the last time it was drawn** — a pure function, so the one
  * case that matters can be tested rather than discovered on a phone.
@@ -56,17 +58,33 @@ export const NOTHING_PAINTED: Arrival = {
  *
  * @param previous what {@link arrivals} returned last time, or {@link NOTHING_PAINTED}.
  * @param ids the ids the list holds now, in any order.
+ * @param seed ids to treat as fresh **on the first paint only** — the one case a diff cannot see.
+ *   Home is destroyed and rebuilt by the router, so the entry a foreman has just recorded is in
+ *   the very first list this fold receives and would be adopted silently. The screen names it
+ *   instead (`ArrivalHandoff`). Anything in the seed that is not in the list is ignored, so a
+ *   stale hand-off cannot leave a phantom id in `fresh` for ever.
  *
  * Returns `previous` unchanged when nothing has changed at all — which is the ordinary case, since
  * Home re-reads the server's statuses every twenty seconds and the list itself usually has not
  * moved. A component holding this in a signal therefore does not repaint on every poll.
  */
-export function arrivals(previous: Arrival, ids: Iterable<string>): Arrival {
+export function arrivals(
+  previous: Arrival,
+  ids: Iterable<string>,
+  seed: Iterable<string> = [],
+): Arrival {
   const known = new Set(ids);
 
   if (!previous.painted) {
-    // The first list is adopted whole: opening a screen is not twelve entries arriving.
-    return { known, fresh: new Set<string>(), painted: true };
+    // The first list is adopted whole: opening a screen is not twelve entries arriving. Whatever
+    // the caller could *name* as having just arrived is the exception — see the `seed` parameter.
+    const seeded = new Set<string>();
+    for (const id of seed) {
+      if (known.has(id)) {
+        seeded.add(id);
+      }
+    }
+    return { known, fresh: seeded, painted: true };
   }
 
   const fresh = new Set<string>();
@@ -85,6 +103,24 @@ export function arrivals(previous: Arrival, ids: Iterable<string>): Arrival {
   return { known, fresh, painted: true };
 }
 
+/**
+ * The same list, with nothing new about it any more.
+ *
+ * For a list that stops being drawn and is then drawn again from scratch — the archive below 1024,
+ * where opening a record removes the list entirely (`@if (showList())`) and coming back rebuilds
+ * every row. Without this the ids still sitting in `fresh` animate a **second** time, on rows the
+ * reader has already seen, which is the noise this whole mechanism exists to avoid.
+ *
+ * Returns the same value when there is nothing to clear, so a component may call it on every
+ * change without repainting.
+ */
+export function settle(previous: Arrival): Arrival {
+  if (previous.fresh.size === 0) {
+    return previous;
+  }
+  return { known: previous.known, fresh: new Set<string>(), painted: previous.painted };
+}
+
 /** Whether this row should be drawn arriving. */
 export function isFresh(arrival: Arrival, id: string): boolean {
   return arrival.fresh.has(id);
@@ -100,4 +136,48 @@ function sameSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
     }
   }
   return true;
+}
+
+/**
+ * The one fact a diff cannot discover: **which entry was just recorded.**
+ *
+ * Home is destroyed and rebuilt by the router — there is no reuse strategy in this app — so the
+ * screen a foreman returns to after a capture has no memory of the list it showed a minute ago. Its
+ * fold starts at {@link NOTHING_PAINTED}, the first list it receives already contains the new entry,
+ * and by the rule that the first paint animates nothing, the row he came back to see is adopted in
+ * silence. That was measured after the motion pass first shipped: one row on screen, zero animating,
+ * at 390 and at 1280.
+ *
+ * So the capture flow **names** it on the way out and Home takes the name on the way in.
+ *
+ * ## Why a service and not router state
+ *
+ * Router state is history state: it survives a reload and a back navigation, so the same row would
+ * rise again every time the foreman came back to Home through the browser’s own buttons, hours
+ * later, as though something had just happened. A one-shot in memory says exactly what is true —
+ * *this happened in this session, once* — and a reload correctly forgets it.
+ *
+ * It holds an **id and nothing else**: no evidence, no text, nothing a log or a screenshot could
+ * leak. And it is deliberately not in `EntryStore`; that service owns what survives the phone being
+ * switched off, and this is the opposite of that.
+ */
+@Injectable({ providedIn: 'root' })
+export class ArrivalHandoff {
+  private id: string | null = null;
+
+  /** Called by the screen that is navigating away: the entry it just finished. */
+  announce(entryId: string): void {
+    this.id = entryId;
+  }
+
+  /**
+   * Called once by the screen that has just been created. **Reading clears it**, which is the whole
+   * point: a row rises the first time Home is painted after a capture and never again, however many
+   * times that Home is rebuilt afterwards.
+   */
+  take(): string[] {
+    const id = this.id;
+    this.id = null;
+    return id === null ? [] : [id];
+  }
 }

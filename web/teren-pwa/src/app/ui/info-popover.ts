@@ -135,7 +135,7 @@ import { Icon } from './icon';
         0 10px 28px rgba(26, 26, 26, 0.09);
       text-align: left;
       /* The app's one "something opened" gesture: 8 px up and a fade (styles.css §Arriving). */
-      animation: teren-pop-in var(--motion-base) var(--ease-standard) both;
+      animation: teren-pop-in var(--motion-base) var(--ease-standard) backwards;
     }
 
     /*
@@ -144,7 +144,7 @@ import { Icon } from './icon';
      * row underneath it.
      */
     .pop--out {
-      animation: teren-pop-out var(--motion-base) var(--ease-exit) both;
+      animation: teren-pop-out var(--motion-base) var(--ease-exit) forwards;
       pointer-events: none;
     }
 

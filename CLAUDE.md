@@ -405,6 +405,18 @@ before being presented as done; gating fixes go back to the implementer and are 
   substitution fails on both targets), the seal/confirm race in `EntryReporter.SealAsync`, a real
   `/health`, the unauthenticated `/auth/activation-code` that destroys a code and mails nothing, a
   partial index on `report(status='sending')`, and a 401 that never clears the admin session.
+- **View transitions were tried and REMOVED, and the measurement is the reason (2026-09-02).**
+  `withViewTransitions()` suppresses input for the **whole lifetime** of the transition — twelve real
+  `page.mouse.click` runs at 1 ms, 300 ms and 1000 ms fades: the tap is swallowed every time, and
+  `::view-transition { pointer-events: none }` on the pseudo tree changes nothing. On saved → Home
+  that made the **record button dead for a third of a second**. Screens fade themselves instead
+  (`.screen { animation: teren-screen-in }`, **opacity only** — a transform there would make every
+  screen the containing block for the fixed column menu). *Do not reintroduce view transitions
+  without re-running that measurement with a real mouse click; `element.click()` skips hit-testing
+  and reports success either way.*
+- **There is a demo film now: `tools/demo-video/`, `npm run demo`.** Six scenes, ~6 min, phone +
+  tablet + desktop, driven against a production build proxying the dev API. **Recording it revokes
+  the founder's own Zoran session** (single-use code); the run re-mints `DEM0-TEST`.
 - **The founder's disk is at 98 % and it took Docker down once (2026-09-02).** A full backend run
   makes ~a thousand scratch databases inside Docker's VHDX, which grows and gives space back only when
   the distro stops; C: hit 31 MB free mid-review, the engine died, and the founder's Postgres, MinIO

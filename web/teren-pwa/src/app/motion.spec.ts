@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Router, RouterOutlet, provideRouter, withViewTransitions } from '@angular/router';
+import { Router, RouterOutlet, provideRouter } from '@angular/router';
 import { join, relative, sep } from 'node:path';
 
 /**
@@ -218,15 +218,6 @@ describe('reduced motion', () => {
       ).toBe(true);
     }
   });
-
-  /**
-   * The router's snapshots are pseudo-elements on the document, not elements, so the wildcard
-   * cannot reach them — the one animation in the app that needs naming twice.
-   */
-  it('collapses the route cross-fade as well as the elements', () => {
-    expect(rule).toContain('::view-transition-old(root)');
-    expect(rule).toContain('::view-transition-new(root)');
-  });
 });
 
 describe('keyframes', () => {
@@ -378,13 +369,22 @@ describe('overlay exits', () => {
 });
 
 /**
- * The route cross-fade, and the fallback that matters more than it does.
+ * **A screen arriving — and the browser feature that is deliberately not used to do it.**
  *
- * `withViewTransitions()` is provided in `app.config.ts`. In this suite — and in Firefox, and in
- * older Safari — `document.startViewTransition` does not exist, and Angular is supposed to run an
- * ordinary navigation instead. A cosmetic feature that could break navigation where it is
- * unsupported would be an unacceptable trade in a product whose whole job is to work on whatever
- * phone the foreman has, so it is pinned rather than assumed.
+ * `withViewTransitions()` was in `app.config.ts` when this pass first shipped, and it was taken out
+ * after a measurement: a view transition suppresses input for its entire lifetime. A real pointer
+ * tap landing during the fade is dropped, not mis-targeted — twelve runs in Chromium, clicking an
+ * archive row at several delays into the fade, and the correlation was exact:
+ * `document.getAnimations()` non-empty ⇒ the tap never arrived, empty ⇒ it did. At a 1 s fade the
+ * dead window was a second. On saved → Home the record button was dead for a third of a second.
+ *
+ * That is a breach of design/tokens.md §Motion, and it is not fixable from a stylesheet:
+ * `pointer-events: none` on `::view-transition` **and** on every descendant pseudo changed nothing.
+ * So the arriving screen fades on its own — an ordinary element animation on `.screen`, which costs
+ * no interactivity whatever.
+ *
+ * These specs pin the **absence**, because putting the line back is a one-word edit and the price is
+ * invisible until somebody measures it again.
  */
 @Component({ selector: 'app-motion-a', template: 'A' })
 class MotionA {}
@@ -392,45 +392,86 @@ class MotionA {}
 @Component({ selector: 'app-motion-b', template: 'B' })
 class MotionB {}
 
-@Component({ selector: 'app-motion-shell', imports: [RouterOutlet], template: '<router-outlet />' })
+@Component({
+  selector: 'app-motion-shell',
+  imports: [RouterOutlet],
+  template: '<router-outlet />',
+})
 class MotionShell {}
 
-describe('withViewTransitions', () => {
-  it('is what the application actually provides', () => {
-    const config = readFileSync(join(SRC, 'app', 'app.config.ts'), 'utf8');
-    const providers = withoutComments(config);
+describe('a screen arriving', () => {
+  it('is animated by the stylesheet, on every routed screen', () => {
+    const stylesheet = withoutComments(readFileSync(GLOBAL_STYLESHEET, 'utf8'));
+    const rule = stylesheet.slice(stylesheet.indexOf('.screen {'));
 
-    expect(providers).toContain('withViewTransitions()');
-    // The other two options are load-bearing and easy to lose in a one-line edit to this call.
-    expect(providers).toContain('withComponentInputBinding()');
+    expect(rule.slice(0, 200)).toContain('animation: teren-screen-in var(--motion-slow)');
+
+    // Opacity only. A transform on `.screen` would make it the containing block for every fixed
+    // descendant — the modals, the column menus, the project sheet — which is the exact thing
+    // `ui/menu-placement.ts` computes viewport coordinates to avoid.
+    const keyframes = stylesheet.slice(stylesheet.indexOf('@keyframes teren-screen-in'));
+    expect(keyframes.slice(0, 160)).not.toContain('transform');
   });
 
-  it('styles the cross-fade from the tokens, on both snapshots', () => {
+  /**
+   * Every routed screen carries the class, or the animation is a per-screen accident. Eighteen
+   * templates today; the assertion is about the property, not the number.
+   */
+  it('is on every routed template, not on some of them', () => {
+    // Its own walk, and not `styleSources()`: that helper returns stylesheets and components and
+    // skips `.html` altogether, so the first version of this test iterated nothing, found nothing
+    // missing, and passed for entirely the wrong reason.
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((item) => {
+        const path = join(dir, item.name);
+        return item.isDirectory() ? walk(path) : item.name.endsWith('.html') ? [path] : [];
+      });
+
+    const missing = walk(join(SRC, 'app', 'features')).filter(
+      (path) => !/class="screen/.test(readFileSync(path, 'utf8')),
+    );
+
+    // The one partial that is not a routed screen in its own right: it renders inside the
+    // archive's second pane, which already has one.
+    expect(missing.map(shortPath).sort()).toEqual(['app/features/archive/entry-detail.html']);
+  });
+
+  /**
+   * The feature that must stay out. A view transition would reintroduce a dead input window on
+   * every navigation, the capture path included.
+   */
+  it('never asks the browser for a view transition', () => {
+    // Line comments stripped as well as block ones: the comment in that file that explains why the
+    // feature is absent names the feature, and a scan that read prose would fail on the
+    // documentation of its own subject.
+    const config = withoutComments(readFileSync(join(SRC, 'app', 'app.config.ts'), 'utf8')).replace(
+      /^\s*\/\/.*$/gm,
+      ' ',
+    );
+
+    expect(
+      config,
+      'withViewTransitions suppresses input for the whole fade; see the comment in app.config.ts',
+    ).not.toContain('withViewTransitions');
+    // The rest of the router configuration is load-bearing and easy to lose in the same edit.
+    expect(config).toContain('withComponentInputBinding()');
+  });
+
+  it('leaves no view-transition rule behind in the stylesheet', () => {
     const stylesheet = withoutComments(readFileSync(GLOBAL_STYLESHEET, 'utf8'));
 
-    expect(stylesheet).toContain('::view-transition-old(root)');
-    expect(stylesheet).toContain('::view-transition-new(root)');
-    expect(stylesheet).toContain('animation-duration: var(--motion-slow)');
-    expect(stylesheet).toContain('animation-timing-function: var(--ease-standard)');
+    expect(stylesheet).not.toContain('::view-transition-old');
+    expect(stylesheet).not.toContain('::view-transition-new');
   });
 
-  it('navigates normally where the browser cannot animate a route change', async () => {
-    // The premise of the test, asserted rather than assumed: if a future jsdom grows the function,
-    // this stops being a fallback test and somebody should know.
-    expect(
-      (document as Document & { startViewTransition?: unknown }).startViewTransition,
-      'jsdom has grown startViewTransition; this spec no longer pins the fallback',
-    ).toBeUndefined();
-
+  /** And navigation itself still works, which is the only thing that was ever really at risk. */
+  it('navigates between screens with nothing but its own animation', async () => {
     TestBed.configureTestingModule({
       providers: [
-        provideRouter(
-          [
-            { path: 'a', component: MotionA },
-            { path: 'b', component: MotionB },
-          ],
-          withViewTransitions(),
-        ),
+        provideRouter([
+          { path: 'a', component: MotionA },
+          { path: 'b', component: MotionB },
+        ]),
       ],
     });
 
@@ -441,8 +482,6 @@ describe('withViewTransitions', () => {
     fixture.detectChanges();
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('A');
 
-    // The second navigation is the one that would hang or reject if the fallback were missing:
-    // the first has no outgoing screen to snapshot.
     expect(await router.navigateByUrl('/b')).toBe(true);
     fixture.detectChanges();
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('B');

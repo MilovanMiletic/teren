@@ -30,7 +30,7 @@
   background: var(--color-card);
   box-shadow: var(--shadow-card);
   color: var(--color-ok-icon);
-  animation: teren-pop-in var(--motion-base) var(--ease-standard) both;
+  animation: teren-pop-in var(--motion-base) var(--ease-standard) backwards;
 }
 
 .saved__body {

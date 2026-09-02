@@ -182,6 +182,23 @@ Dexie 4 over IndexedDB, plain CSS on the design-token custom properties (Tailwin
 deliberately dropped at B2 — the token contract is the styling system), Transloco for
 localisation.
 
+### Motion (2026-09-02)
+
+`design/tokens.md` §Motion is binding: three durations (120/200/300 ms), a pulse and a meter, two
+curves, and one rule above the table — **nothing on the capture path may add latency to the
+thirty-second entry.** Motion overlaps work, it never precedes it. A screen fades itself in on
+arrival (`.screen`, opacity only); controls dip on press; lists show a pulsing skeleton while they
+load rather than claiming to be empty; a row absent from the previous list rises in, never on first
+paint; modals slide up on compact and rise in place above it. `prefers-reduced-motion` collapses all
+of it, with no exceptions.
+
+**Angular view transitions were tried and removed.** `withViewTransitions()` suppresses input for the
+whole lifetime of the transition — measured with real mouse clicks at three fade durations, and no
+pseudo-element styling shortens it — which left the record button dead for ~330 ms after the saved
+screen. A per-screen opacity animation is what replaced it. A transform on `.screen` is forbidden:
+it would make every screen the containing block for the fixed column menu that `menu-placement.ts`
+positions in viewport coordinates.
+
 ### Adaptive layout — a founder rule (2026-08-29)
 
 **A desktop layout is designed, not inherited. A screen without a deliberate ≥1024 layout is not

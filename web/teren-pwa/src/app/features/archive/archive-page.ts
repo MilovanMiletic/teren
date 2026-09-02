@@ -13,7 +13,11 @@ import { TranslocoDirective } from '@jsverse/transloco';
 import { map, of, startWith, switchMap } from 'rxjs';
 
 import { EntryListItemResponse } from '../../core/api/api-types';
-import { ArchiveRow, groupArchiveRowsByDay, mergeArchiveRows } from '../../core/archive/archive-rows';
+import {
+  ArchiveRow,
+  groupArchiveRowsByDay,
+  mergeArchiveRows,
+} from '../../core/archive/archive-rows';
 import { ARCHIVE_ENTRY_PARAM } from '../../core/archive/archive-route';
 import { ArchiveService, RemoteStatus } from '../../core/archive/archive.service';
 import { ConnectivityService } from '../../core/connectivity.service';
@@ -22,7 +26,7 @@ import { DayLabel, dayLabel, localDay } from '../../core/db/local-day';
 import { LocalEntry, canRevise } from '../../core/db/models';
 import { ProjectService } from '../../core/projects/project.service';
 import { AppHeader } from '../../ui/app-header';
-import { NOTHING_PAINTED, arrivals, isFresh } from '../../ui/arrival';
+import { NOTHING_PAINTED, arrivals, isFresh, settle } from '../../ui/arrival';
 import { DurationPipe } from '../../ui/duration.pipe';
 import { entryStatusKey, entryStatusTone } from '../../ui/entry-status';
 import { Icon } from '../../ui/icon';
@@ -225,6 +229,18 @@ export class ArchivePage {
       }
       const ids = this.rows().map((row) => row.id);
       this.listArrival.update((previous) => arrivals(previous, ids));
+    });
+
+    // **Below 1024 the list is removed when a record is opened** (`@if (showList())`), and coming
+    // back rebuilds every row from scratch. Ids still sitting in `fresh` would therefore animate a
+    // second time, on rows the reader has already seen — the noise this mechanism exists to avoid,
+    // arrived at from the other direction. A list that stops being drawn has been seen or missed;
+    // either way it is no longer arriving. `settle` returns the same value when there is nothing to
+    // clear, so this cannot loop.
+    effect(() => {
+      if (!this.showList()) {
+        this.listArrival.update(settle);
+      }
     });
 
     // Re-read whenever the site changes or the network comes back. Both are moments where what

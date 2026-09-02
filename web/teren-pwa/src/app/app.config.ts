@@ -9,7 +9,7 @@ import {
   provideAppInitializer,
   provideBrowserGlobalErrorListeners,
 } from '@angular/core';
-import { provideRouter, withComponentInputBinding, withViewTransitions } from '@angular/router';
+import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { provideServiceWorker } from '@angular/service-worker';
 import { provideTransloco } from '@jsverse/transloco';
 
@@ -29,17 +29,14 @@ registerLocaleData(localeSrLatn, LOCALE_BY_LANGUAGE.sr);
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
-    // The route cross-fade (styles.css §Route changes). `withViewTransitions` asks the browser for
-    // a snapshot of the screen being left and the one arriving; the stylesheet says the two fade
-    // over --motion-slow, and nothing else about a navigation moves.
-    //
-    // **It cannot break navigation where it is unsupported.** Angular checks for
-    // `document.startViewTransition` and runs an ordinary navigation without it — which is Firefox,
-    // older Safari, and every spec in this suite, because jsdom has no such function. The screen
-    // simply changes. `motion.spec.ts` pins that — it navigates with this provider and without the
-    // function — because a fade nobody sees is a cosmetic loss and a navigation that never
-    // completes is the product.
-    provideRouter(routes, withComponentInputBinding(), withViewTransitions()),
+    // **No `withViewTransitions()`, and that is a decision with a measurement behind it.** It was
+    // in this file and was taken out: a view transition suppresses input for its whole lifetime, so
+    // a real tap landing during the fade is dropped — on saved → Home the record button was dead
+    // for a third of a second, which no product with a thirty-second entry can carry. Nothing in a
+    // stylesheet fixes it. The arriving screen fades on its own instead (styles.css, `.screen`),
+    // which costs no interactivity at all. `motion.spec.ts` pins the absence, because re-adding one
+    // line here is easy and the cost is invisible until somebody measures it again.
+    provideRouter(routes, withComponentInputBinding()),
     provideHttpClient(withFetch()),
     // B3: the site list now comes from `GET /api/projects`, cached locally, with the built-in
     // demo list as the last resort. Nothing above this line changed with it — which is what the

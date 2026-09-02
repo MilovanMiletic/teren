@@ -350,6 +350,64 @@ the founder's: free real space on C:, and run one suite at a time.
   and follows its trigger, overlays in and out, reduced motion collapses. *One judgement call, named:*
   Home's project picker animates, on the capture path — it gates nothing.
 
+**Motion pass — reviewer: accept-with-fixes, four gating.** Build clean at 463.83 kB; suite
+1658/1661 with three load-flake timeouts that pass alone; four of five mutations red as claimed, the
+archive one **survived** (the spec's `mockResolvedValue` settles before Dexie, so the `remoteLoaded()`
+half of the guard is never needed). The gating finds, in order of weight: **(1) the route cross-fade
+swallows taps for ~330 ms after every navigation** — `document.elementFromPoint` returns `HTML` while
+Chrome's `::view-transition` pseudo-tree hit-tests, so on saved → Home the record button is dead for
+a third of a second, a breach of the pass's own binding rule; fix is `::view-transition
+{ pointer-events: none }`. (2) A query-param change on the archive at ≥1024 cross-fades the whole
+screen per click. (3) **Home's arrival fold fires only in the wrong case and never in the right
+one** — Home is re-created on navigation, so the entry he just recorded is adopted silently
+(measured `arriving: 0`), while switching site and back animates every row. (4) The archive spec
+does not exercise the order it describes. Non-gating: `both` fill leaves a persistent transform
+(containing block for future fixed descendants); modal exit is click-through by design, so a tap
+~100 ms after "X" now reaches what sits under the scrim; bundle 450.7 → 463.8 kB over three
+increments, about six more at this rate. Sent back.
+
+**Motion pass — round two (implementer), and the prescribed fix was wrong.** `::view-transition
+{ pointer-events: none }` did **not** restore taps: twelve real `page.mouse.click` runs at 1, 300 and
+1000 ms fades showed the tap swallowed for exactly the transition's *lifetime*, whatever the pseudo
+tree is styled — a view transition suppresses input while it runs and no stylesheet shortens that.
+**So `withViewTransitions()` is gone.** The arriving screen fades itself instead, `.screen
+{ animation: teren-screen-in }`, **opacity only** — a transform on `.screen` would make it the
+containing block for the fixed column menu that `menu-placement.ts` positions in viewport
+coordinates. One rule covers all eighteen routed templates, a spec walks them, and gating 2
+dissolved with it (a query-param change re-creates nothing; measured zero animations on `/diary →
+/diary?entry=`). Gating 3: `ArrivalHandoff`, a one-shot **in memory** — not router state, which
+survives reloads and would replay the row hours later — announced by the saved screen on the way out
+and read once by Home at construction; the fold resets when the site changes. *The implementer's own
+first spec for that passed with the reset removed: it waited for "no rows", which the skeleton also
+shows.* Gating 4: the reviewer's M5 is red. **1672/1672**, build 463.08 kB clean. Not driven in a
+browser: the hand-off — delta review asked to do exactly that with the fake mic. *Two environment
+incidents: `node_modules/@angular` vanished mid-session and was reinstalled from the lock file; the
+disk touched 99 % and one suite run died with `ENOSPC`.*
+
+**Commits and CI, end of the evening:** `c97c0e1` (platform on a phone) → `c30f4ee` (pipeline) →
+`70fb60c` (review notes) → `6b92329` (recorder fixes) → `07d2f09` (backend fixes) → `94d5956`
+(motion). **CI green on `6b92329`, `07d2f09` and `94d5956`** — the middle one ran the new
+1020-test suite over Testcontainers Postgres on the runner, the last the 1661 specs; `Deploy dev` ran
+after each and exited green, dormant.
+Founder: *"Commit and push all these changes. After this I have a task for you"* — the motion pass
+was pushed with its review still running, on his instruction; fixes, if any, follow.
+
+**The demo film — built, recorded, delivered.** `tools/demo-video/`: `prepare` (build the PWA, seed,
+mint the company admin's invite, create the staff account) → `record` (serve the **production**
+build on 4310 proxying to the founder's API, drive it) → `stitch` (letterboxed 1920×1080, 30 fps).
+**`out/teren-demo.mp4`, 11.2 MB, six scenes, 6 min 16 s:** the phone joining once (23 s), thirty
+seconds of real Serbian site audio through a fake microphone (59 s), his words beside what the
+system understood (35 s), the archive on a tablet (28 s), Petar's office on a tablet (1 min 56 s),
+and the platform, customers and log on a desktop (1 min 55 s). Every name on screen is the seed's,
+plus one demo staff account, Milica Nikolić — the founder's own super admin is never touched.
+*Two things written into the README: recording scene 1 **takes Zoran's phone away from the founder**
+(the code is single use; the run ends with a fresh `DEM0-TEST`), and `config.mjs` carries two
+throwaway passwords for local dev accounts — the same class as the published demo code, and the
+same decision due if this ever points at a host.*
+**Both remaining agents were cut off mid-sentence by the session limit** — the demo one while
+improving the title cards, the motion reviewer before its delta verdict. The film and the fixes are
+finished; **the motion delta review is unrun** and is the first thing the next session owes.
+
 **Frontend fix increment — delta review: ACCEPT, whole increment now accept.** All three mutations
 re-run in the reviewer's isolated copy: exactly 1, 3 and 3 red as claimed; 1636/1636 and a clean build
 reproduced. On not disabling *Otkaži* during `stopping`: *"accept the outcome, not the stated reason"*

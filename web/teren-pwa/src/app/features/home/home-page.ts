@@ -25,7 +25,7 @@ import { EntryStatusRefresher } from '../../core/sync/entry-status-refresh.servi
 import { ActionLogService } from '../../core/telemetry/action-log.service';
 import { ACTIONS } from '../../core/telemetry/actions';
 import { AppHeader } from '../../ui/app-header';
-import { NOTHING_PAINTED, arrivals, isFresh } from '../../ui/arrival';
+import { ArrivalHandoff, NOTHING_PAINTED, arrivals, isFresh } from '../../ui/arrival';
 import { DurationPipe } from '../../ui/duration.pipe';
 import { StatusTone, entryStatusKey, entryStatusTone } from '../../ui/entry-status';
 import { Icon } from '../../ui/icon';
@@ -118,14 +118,20 @@ export class HomePage {
     toObservable(this.projectId).pipe(
       switchMap((id) =>
         id
-          ? this.entries
-              .watchRecentEntries(id)
-              .pipe(map((rows) => ({ loaded: true, rows: rows as LocalEntry[] })))
+          ? this.entries.watchRecentEntries(id).pipe(
+              map((rows) => ({ loaded: true, rows: rows as LocalEntry[] })),
+              // **Inside the switchMap, so it fires on every site change and not only on the
+              // first subscription.** Without it, choosing another site left the previous site’s
+              // rows on screen with `loaded: true` until Dexie answered — so the arrival fold
+              // adopted one site’s list and then saw the other’s as five things arriving, and
+              // five rows bounced on every switch (measured). A different site is a read that
+              // has not happened yet, which is what the skeleton says.
+              startWith({ loaded: false, rows: [] as LocalEntry[] }),
+            )
           : // No site chosen is not a pending read: there is nothing to wait for, so the empty
             // state is the truth immediately.
             of({ loaded: true, rows: [] as LocalEntry[] }),
       ),
-      startWith({ loaded: false, rows: [] as LocalEntry[] }),
     ),
     { initialValue: { loaded: false, rows: [] as LocalEntry[] } },
   );
@@ -138,12 +144,32 @@ export class HomePage {
   /**
    * Which recent rows arrived while he was looking at this screen (`ui/arrival.ts`).
    *
-   * This is the founder's *"when some new entry was added"*, and Home is the screen where it
-   * actually happens: he finishes a capture, the router brings him back here, and the row for the
-   * entry he has just recorded appears in a list he is already reading. It rises and fades in over
-   * `motion-base`; the twelve rows that were already there do not move.
+   * This is the founder’s *"when some new entry was added"*. It has two halves, and the first cut
+   * of this shipped with the wrong one:
+   *
+   * - **The entry he has just recorded.** A diff cannot find it. Home is destroyed and rebuilt by
+   *   the router, so this fold starts from nothing and the new entry is in the very first list it
+   *   sees — adopted silently by the rule that a first paint animates nothing. The capture flow
+   *   therefore *names* it on its way out ({@link ArrivalHandoff}) and it is seeded into the first
+   *   fold below. Without that seed the feature fired in no real case at all: measured after the
+   *   pass shipped as one row on screen and none animating.
+   * - **A day that lands while he stands there.** That one is a plain diff: the sweeper finishes,
+   *   `EntryStatusRefresher` re-reads, a row appears.
+   *
+   * And one case must animate *nothing*: **changing site**. The returning site’s rows are not
+   * arriving, they are being read for the first time — so the fold is reset when the project
+   * changes, and `recentState` reports an unanswered read until Dexie answers for the new one.
    */
   private readonly recentArrival = signal(NOTHING_PAINTED);
+
+  /**
+   * The entry the capture flow named on its way here, read **once**, at construction.
+   *
+   * Read here rather than inside the fold because the fold runs many times — on every poll, every
+   * status refresh — and `take()` clears the hand-off. Read there, the second run would find it
+   * empty and which run got the id would depend on the order of two effects.
+   */
+  private readonly justRecorded = inject(ArrivalHandoff).take();
 
   protected readonly pendingCount = toSignal(this.entries.watchPendingCount(), { initialValue: 0 });
 
@@ -196,18 +222,34 @@ export class HomePage {
     //
     // **It does not fold until the store has answered**, and that guard is not defensive — without
     // it the skeleton *creates* the defect it was added to fix. The loading frame is an empty list,
-    // so the fold would adopt *that* as the first paint and then see the foreman's five real
+    // so the fold would adopt *that* as the first paint and then see the foreman’s five real
     // entries as five arrivals, animating the whole list on every load. The unanswered state is not
     // a list, and it is not adopted as one.
+    //
+    // **And it starts over when the site changes.** A different site’s entries are a first read,
+    // not five arrivals; diffed against the site he came from, every row of the one he came back to
+    // is "new". That was the state this shipped in.
+    let folding: string | null | undefined;
     effect(() => {
+      const project = this.projectId();
       const state = this.recentState();
+
+      if (project !== folding) {
+        folding = project;
+        this.recentArrival.set(NOTHING_PAINTED);
+      }
+
       if (!state.loaded) {
         return;
       }
+
       this.recentArrival.update((previous) =>
         arrivals(
           previous,
           state.rows.map((entry) => entry.id),
+          // Seeded on the first paint only, and ignored if the entry is not in the list. This is
+          // the entry he has just recorded, named by the screen he came from.
+          this.justRecorded,
         ),
       );
     });

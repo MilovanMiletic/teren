@@ -103,7 +103,7 @@ import { Icon } from './icon';
        * The scrim arrives on its own, a shade faster than the panel, so the screen behind darkens
        * before the sheet lands on it rather than with it (design/tokens.md §Motion).
        */
-      animation: teren-fade-in var(--motion-fast) var(--ease-standard) both;
+      animation: teren-fade-in var(--motion-fast) var(--ease-standard) backwards;
     }
 
     /*
@@ -124,7 +124,7 @@ import { Icon } from './icon';
      * (No backticks in this block: it is a template literal.)
      */
     :host(.modal--leaving) {
-      animation: teren-pop-out var(--motion-base) var(--ease-exit) both;
+      animation: teren-pop-out var(--motion-base) var(--ease-exit) forwards;
       pointer-events: none;
     }
 
@@ -147,7 +147,7 @@ import { Icon } from './icon';
        * — the sheet owns the whole screen, so a panel that faded in place would have no direction
        * at all and a panel that dropped from the top would fight the thumb that opened it.
        */
-      animation: teren-sheet-up var(--motion-base) var(--ease-standard) both;
+      animation: teren-sheet-up var(--motion-base) var(--ease-standard) backwards;
     }
 
     .modal__panel:focus-visible {
@@ -192,7 +192,7 @@ import { Icon } from './icon';
          * A centred box is not anchored to an edge, so it takes the app's ordinary "something
          * opened" gesture — 8 px up and a fade — instead of the sheet's slide.
          */
-        animation: teren-pop-in var(--motion-base) var(--ease-standard) both;
+        animation: teren-pop-in var(--motion-base) var(--ease-standard) backwards;
       }
     }
   `,

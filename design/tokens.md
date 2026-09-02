@@ -118,7 +118,7 @@ same way no component invents a hex.
 |---|---|---|
 | `motion-fast` | `120ms` | Press feedback, hover tint, a status chip changing value, an arrow turning over |
 | `motion-base` | `200ms` | Something arriving or leaving: a card, a list row, a modal, a popover, a column menu |
-| `motion-slow` | `300ms` | A whole screen changing — the route cross-fade, and nothing else |
+| `motion-slow` | `300ms` | A whole screen arriving — the `.screen` fade, and nothing else |
 | `motion-pulse` | `1200ms` | The two things that repeat: the recording dot, and a loading skeleton |
 | `motion-meter` | `90ms` | The live audio meter only. Faster than `fast` on purpose: it tracks a signal in real time, it is not feedback for a gesture |
 
@@ -135,6 +135,28 @@ on a transition, and the record button, the photo button and "Gotovo" are never 
 The recording screen keeps exactly one animation (the pulsing dot, which is information: it says
 the microphone is live) and the saved screen keeps exactly one (the success mark arriving). That is
 the whole budget for that flow, and it is spent.
+
+### A screen change is animated by the screen, never by a view transition
+
+The router's `withViewTransitions()` shipped in the motion pass and was **removed the same day it
+was measured**. A view transition suppresses input for its entire lifetime: a real pointer tap
+landing during the fade is dropped — not mis-targeted, dropped. Twelve runs in Chromium, clicking an
+archive row at several delays into the fade, and the correlation was exact —
+`document.getAnimations()` non-empty meant the tap never arrived, empty meant it did. At a
+one-second fade the dead window was a second. Coming back from the saved screen to Home it made the
+**record button dead for a third of a second**.
+
+That is the rule above broken by the decoration meant to serve it, and no stylesheet fixes it:
+`pointer-events: none` on `::view-transition` **and** on every one of its descendant pseudos changed
+nothing, because the snapshots are not what blocks. Shortening the fade only shortens the window.
+
+So the arriving screen fades itself — one rule on `.screen`, an ordinary element animation, every
+control hit-testable at its final position from the first frame. **Opacity only, never a
+transform**: a transform on a screen makes it the containing block for every `position: fixed`
+descendant it holds, which is precisely what the column menu computes viewport coordinates to
+avoid. And because it runs when a screen is *created*, a query parameter animates nothing —
+`/diary` and `/diary?entry=<id>` are one route, so selecting a record moves only the pane that
+changed.
 
 ### Reduced motion
 

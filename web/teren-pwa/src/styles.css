@@ -263,6 +263,8 @@ button {
   display: flex;
   flex-direction: column;
   padding-bottom: env(safe-area-inset-bottom);
+  /* A screen arriving fades up; see §A screen arriving below for what this replaced and why. */
+  animation: teren-screen-in var(--motion-slow) var(--ease-standard) backwards;
 }
 
 /*
@@ -692,8 +694,19 @@ button {
  * race over which one ships. One definition, two screens naming it, and the two lists therefore
  * move identically — which is the point, since a foreman sees both.
  */
+/*
+ * `backwards`, not `both`, on every enter in the app — and this one is not a detail.
+ *
+ * `both` keeps the last keyframe applied for ever, so a finished enter leaves a `transform` on the
+ * element permanently. A transformed element is a **containing block for its fixed descendants**,
+ * which is the exact mechanism that would drag `ui/column-menu.ts`’s fixed panel out of the
+ * viewport coordinates its placement loop computes. `backwards` applies the *from* frame before the
+ * animation starts — which is all an enter needs, since its last frame is the element’s natural
+ * state — and releases everything the moment it finishes. Exits keep `forwards`: their last frame
+ * is `opacity: 0` and they must hold it until the node is removed.
+ */
 .row-arriving {
-  animation: teren-row-in var(--motion-base) var(--ease-standard) both;
+  animation: teren-row-in var(--motion-base) var(--ease-standard) backwards;
 }
 
 @keyframes teren-row-in {
@@ -756,11 +769,11 @@ button {
  * (up from the bottom edge on a phone, in place at 768) and that cannot be one class.
  */
 .overlay-scrim {
-  animation: teren-fade-in var(--motion-fast) var(--ease-standard) both;
+  animation: teren-fade-in var(--motion-fast) var(--ease-standard) backwards;
 }
 
 .overlay-sheet {
-  animation: teren-sheet-up var(--motion-base) var(--ease-standard) both;
+  animation: teren-sheet-up var(--motion-base) var(--ease-standard) backwards;
 }
 
 /*
@@ -768,7 +781,7 @@ button {
  * panel that still takes clicks sits over the very rows the reader is going back to.
  */
 .overlay-out {
-  animation: teren-pop-out var(--motion-base) var(--ease-exit) both;
+  animation: teren-pop-out var(--motion-base) var(--ease-exit) forwards;
   pointer-events: none;
 }
 
@@ -1059,26 +1072,48 @@ app-table-pager {
   }
 }
 
-/* ---- Route changes -------------------------------------------------------------------------
+/* ---- A screen arriving ----------------------------------------------------------------------
  *
- * One cross-fade for the whole app, and it is the only thing `motion-slow` is spent on.
+ * Every routed screen in this app is a `.screen`, so one rule covers every navigation: the arriving
+ * screen fades up over `--motion-slow`. That is what `--motion-slow` is for and the only thing it
+ * is spent on.
  *
- * `withViewTransitions()` (app.config.ts) hands the browser a snapshot of the old screen and the
- * new one; these two rules say how they trade places. A fade and nothing else, deliberately: a
- * slide has a direction, a direction implies a hierarchy, and this app's navigation is not a stack
- * — Home reaches the archive, the archive reaches a confirmation gate, and the gate goes back to
- * Home. Any slide would be lying about half of those.
+ * ## Why this and not `withViewTransitions()`
  *
- * `startViewTransition` does not exist in every browser (Safari and Firefox arrived late) or in
- * jsdom. Angular's router **falls back to an ordinary navigation** when it is missing — the screen
- * changes with no animation, which is exactly the outcome these rules describe anyway. That
- * fallback is pinned in `app.routes.spec.ts`, because a broken navigation is a broken product and a
- * missing fade is not.
+ * The router’s view-transition integration shipped in this pass and was **removed after it was
+ * measured**. A view transition suppresses input for its entire lifetime: a real pointer tap landing
+ * during the fade is dropped — not mis-targeted, dropped — and the correlation is exact. Twelve runs
+ * in Chromium, clicking an archive row at several delays into the fade: `document.getAnimations()`
+ * non-empty ⇒ the tap never arrived; empty ⇒ it did. At a 1 s fade the window was a second. On
+ * saved → Home that made the **record button dead for a third of a second**, which is a straight
+ * breach of design/tokens.md §Motion — no animation may have to finish before a tap takes effect —
+ * and it is not fixable from a stylesheet: `pointer-events: none` on `::view-transition` and on
+ * every one of its descendant pseudos changed nothing, because the snapshots are not what is
+ * blocking. Shortening the fade only shortens the window; it cannot remove it.
+ *
+ * An ordinary element animation has none of that. It is composited beside the live document, every
+ * control is hit-testable at its final position from the first frame, and the press feedback and
+ * arriving rows in this file already prove it.
+ *
+ * ## Opacity only, and why that is not laziness
+ *
+ * No transform. A transform on `.screen` would make it the containing block for every
+ * `position: fixed` descendant — the modals, the column menus, Home’s project sheet — for as long as
+ * it was applied, which is the exact mechanism `ui/menu-placement.ts` computes viewport coordinates
+ * to avoid. Opacity creates a stacking context and no containing block.
+ *
+ * **And a query parameter animates nothing, structurally rather than by a rule.** `/diary` and
+ * `/diary?entry=<id>` are one route, so selecting a record does not re-create the component and
+ * this animation cannot run: the fade happens exactly when a screen is created, which is the
+ * definition the token table wants. There is no route comparison to keep correct.
  */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation-duration: var(--motion-slow);
-  animation-timing-function: var(--ease-standard);
+@keyframes teren-screen-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* ---- Reduced motion -------------------------------------------------------------------------
@@ -1101,11 +1136,5 @@ app-table-pager {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     transition-delay: 0.001ms !important;
-  }
-
-  /* The router's snapshots are not elements, so the wildcard above cannot reach them. */
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
-    animation-duration: 0.001ms !important;
   }
 }

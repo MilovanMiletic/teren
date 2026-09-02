@@ -20,6 +20,7 @@ import { SESSION_STORAGE_KEY } from '../../core/session/session';
 import { describeClick } from '../../core/telemetry/action-descriptor';
 import { ActionLogService } from '../../core/telemetry/action-log.service';
 import { ACTIONS } from '../../core/telemetry/actions';
+import { ArrivalHandoff } from '../../ui/arrival';
 import { routeUrlFor } from '../../testing/route-table';
 import { ProfilePage } from '../profile/profile-page';
 import en from '../../../../public/i18n/en.json';
@@ -177,6 +178,81 @@ describe('HomePage', () => {
     expect(arriving.length, 'exactly the new row animates, not the list').toBe(1);
     // The newest entry is first in the list, which is the row that should be moving.
     expect(element.querySelectorAll('.recent__row')[0].classList).toContain('row-arriving');
+  });
+
+  /**
+   * **The case the feature is actually for, and the case the first cut of it missed entirely.**
+   *
+   * Home is destroyed and rebuilt by the router — there is no reuse strategy — so after a capture
+   * the fold starts from nothing and the entry he came back to see is in the very first list it
+   * receives. By the rule that a first paint animates nothing, it was adopted in silence: measured
+   * after the pass shipped as one row on screen and zero animating, at 390 and at 1280. The capture
+   * flow names it on the way out (`ui/arrival.ts`) and this is that path, end to end.
+   */
+  it('rises the entry he has just recorded into place', async () => {
+    const project = DEMO_PROJECTS[0];
+    const now = Date.now();
+    await captureEntry(store, { project, capturedAt: new Date(now - 60_000).toISOString() });
+    const recorded = await captureEntry(store, {
+      project,
+      capturedAt: new Date(now).toISOString(),
+    });
+
+    // What `capture-saved-page.ts` does on its way to Home.
+    TestBed.inject(ArrivalHandoff).announce(recorded.id);
+
+    const element = await render();
+    await waitUntil(() => element.querySelectorAll('.recent__row').length === 2, {
+      onTick: () => fixture.detectChanges(),
+      describe: 'both recent rows',
+    });
+
+    const arriving = element.querySelectorAll('.row-arriving');
+    expect(arriving.length, 'the row he came back to see does not move').toBe(1);
+    // The one he just recorded is the newest, so it is the first row.
+    expect(element.querySelectorAll('.recent__row')[0].classList).toContain('row-arriving');
+  });
+
+  /**
+   * And the case that must animate **nothing** — which the first cut got exactly backwards.
+   *
+   * Switching site and coming back diffed the returning site’s rows against the ones he had left,
+   * so every row of the site he returned to was "new" and the whole list bounced, on every switch.
+   * A different site is a first read, not five arrivals.
+   */
+  it('animates nothing when he switches site and comes back', async () => {
+    const [site, other] = DEMO_PROJECTS;
+    const now = Date.now();
+    await captureEntry(store, { project: site, capturedAt: new Date(now - 60_000).toISOString() });
+    await captureEntry(store, { project: site, capturedAt: new Date(now).toISOString() });
+
+    const element = await render();
+    await waitUntil(() => element.querySelectorAll('.recent__row').length === 2, {
+      onTick: () => fixture.detectChanges(),
+      describe: 'the site’s two rows',
+    });
+
+    const projects = TestBed.inject(ProjectService);
+    projects.select(other.id);
+    // **The empty-state sentence, not "no rows".** Zero rows is also what the skeleton shows while
+    // the store is being read, so waiting for that would let the spec go on before the other
+    // site’s list had ever reached the fold — which is precisely the step that has to happen for
+    // the reset to matter. This sentence only appears once the read has answered.
+    await waitUntil(() => element.textContent!.includes('Za ovo gradilište još nema unosa'), {
+      onTick: () => fixture.detectChanges(),
+      describe: 'the other site’s answered, empty list',
+    });
+
+    projects.select(site.id);
+    await waitUntil(() => element.querySelectorAll('.recent__row').length === 2, {
+      onTick: () => fixture.detectChanges(),
+      describe: 'the first site’s rows again',
+    });
+
+    expect(
+      element.querySelectorAll('.row-arriving').length,
+      'the rows he left are not arriving because he came back to them',
+    ).toBe(0);
   });
 
   it('shows a truthful pending count, read from the store', async () => {

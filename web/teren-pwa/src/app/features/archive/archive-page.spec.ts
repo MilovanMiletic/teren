@@ -130,23 +130,68 @@ describe('ArchivePage', () => {
   /**
    * The trap the arrival fold was written around.
    *
-   * This list is a **merge**: the phone's rows paint first and the server's land a moment later. A
-   * naive "animate anything that was not in the previous render" would therefore treat the server's
+   * This list is a **merge**: the phone’s rows paint first and the server’s land a moment later. A
+   * naive "animate anything that was not in the previous render" would therefore treat the server’s
    * whole archive as newly arrived and bounce every row of it, on every single load — the exact
    * noise the mechanism exists to prevent, delivered by the mechanism itself. So the first
    * *complete* list is adopted silently (`archive-page.ts`, `ui/arrival.ts`).
+   *
+   * **The server answer is held open on purpose, and the first cut of this spec did not do that.**
+   * A `mockResolvedValue` settles in a microtask — before Dexie has answered — so the merge was
+   * already complete on the first fold and the `remoteLoaded()` half of the guard was never needed:
+   * deleting it left this green (found in review). Here the phone’s row is on screen *first*, with
+   * the server still owing an answer, so the fold genuinely has to wait for the second half.
    */
   it('does not animate the server’s rows landing behind the phone’s', async () => {
     await captureEntry(store, { project: PROJECT });
-    archive.listEntries.mockResolvedValue({
+
+    let answer!: (value: unknown) => void;
+    archive.listEntries.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+
+    const element = await render();
+    // The phone’s one row, painted while the server is still owing its list.
+    await waitForRows(element, 1);
+
+    answer({
       status: 'ok',
       items: [listItem({ id: 'srv-1' }), listItem({ id: 'srv-2', entry_date: '2026-08-19' })],
     });
-
-    const element = await render();
     await waitForRows(element, 3);
 
     expect(element.querySelectorAll('.row-arriving')).toHaveLength(0);
+  });
+
+  /**
+   * **Below 1024 the list is removed when a record is opened**, and coming back rebuilds every row.
+   * Ids still sitting in the fold would animate a second time, on rows the reader has already seen
+   * — the same noise from the other direction. A list that stops being drawn has been seen or
+   * missed; either way it is no longer arriving (`settle`, ui/arrival.ts).
+   */
+  it('does not replay an arrival when the compact list is rebuilt', async () => {
+    await captureEntry(store, { project: PROJECT });
+    const element = await render();
+    await waitForRows(element, 1);
+
+    // A second day lands while he is looking at the list: that row is arriving.
+    await captureEntry(store, { project: PROJECT, capturedAt: '2026-08-19T08:00:00.000Z' });
+    await waitForRows(element, 2);
+    expect(element.querySelectorAll('.row-arriving').length).toBe(1);
+
+    // He opens a record — on a phone that removes the list entirely — and comes back.
+    await router.navigate(['/diary'], { queryParams: { [ARCHIVE_ENTRY_PARAM]: 'x' } });
+    fixture.detectChanges();
+    await router.navigate(['/diary']);
+    fixture.detectChanges();
+    await waitForRows(element, 2);
+
+    expect(
+      element.querySelectorAll('.row-arriving').length,
+      'a row he has already seen animates again on the way back from a record',
+    ).toBe(0);
   });
 
   it('says the list is partial rather than letting it look short', async () => {
