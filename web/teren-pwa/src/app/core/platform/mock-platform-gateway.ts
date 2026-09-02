@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 
+import { ACTIONS } from '../telemetry/actions';
 import { PlatformGateway } from './platform-gateway';
 import {
   CreateAdminRequest,
@@ -8,6 +9,10 @@ import {
   InviteSentResponse,
   PlatformCompanyListResponse,
   PlatformCompanyResponse,
+  PlatformLogExport,
+  PlatformLogListResponse,
+  PlatformLogQuery,
+  PlatformLogResponse,
   PlatformUserListResponse,
   PlatformUserResponse,
 } from './platform-types';
@@ -110,6 +115,116 @@ export class MockPlatformGateway implements PlatformGateway {
       password_pending: true,
     },
   ];
+
+  /**
+   * A day of the server's log, newest first — the order the endpoint returns rows in.
+   *
+   * Deliberately not uniform. There is an error with a stack trace, a warning with properties, an
+   * ordinary information line, a row belonging to no company (the platform's own), and two client
+   * events with `source` beginning `web.` — because the screen has to be legible when a founder is
+   * looking at a foreman's presses and a Hangfire failure in the same list, which is the whole
+   * reason the two live in one table.
+   */
+  private logs: PlatformLogResponse[] = [
+    {
+      id: '80425',
+      at: '2026-09-02T18:14:02.004Z',
+      level: 'Information',
+      source: 'web.capture',
+      // The vocabulary itself, not a copy of it. A slug spelled out here is a slug that can drift
+      // from the one the app really sends, and this row exists to look like a real one.
+      template: ACTIONS.captureSend,
+      message: `Zoran Jovanović pressed ${ACTIONS.captureSend} on /record`,
+      properties: { route: '/record', outcome: 'ok', duration_ms: 31200 },
+      exception: null,
+      company_id: MockPlatformGateway.VODOINSTAL_ID,
+      entry_id: '8f0d3a4e-1b2c-4d5e-8f90-0a1b2c3d4e5f',
+      correlation: 'c1a1f0e2-0000-4000-8000-000000000001',
+    },
+    {
+      id: '80424',
+      at: '2026-09-02T18:13:44.910Z',
+      level: 'Information',
+      source: 'web.nav',
+      template: 'nav.route.enter',
+      message: 'Entered /record',
+      properties: { route: '/record' },
+      exception: null,
+      company_id: MockPlatformGateway.VODOINSTAL_ID,
+      entry_id: null,
+      correlation: 'c1a1f0e2-0000-4000-8000-000000000002',
+    },
+    {
+      id: '80423',
+      at: '2026-09-02T18:12:03.221Z',
+      level: 'Error',
+      source: 'Teren.Infrastructure.Reporting.EntryReporter',
+      template: 'Report {ReportId} delivery failed after {Attempts} attempts',
+      message: 'Report 3f2a1c delivery failed after 3 attempts',
+      properties: { ReportId: '3f2a1c', Attempts: 3 },
+      exception:
+        'System.Net.Sockets.SocketException: Connection refused\n' +
+        '   at Teren.Infrastructure.Mail.SmtpSender.SendAsync(MailMessage message)\n' +
+        '   at Teren.Infrastructure.Reporting.EntryReporter.DeliverAsync(Guid reportId)',
+      company_id: MockPlatformGateway.VODOINSTAL_ID,
+      entry_id: '8f0d3a4e-1b2c-4d5e-8f90-0a1b2c3d4e5f',
+      correlation: 'c1a1f0e2-0000-4000-8000-000000000003',
+    },
+    {
+      id: '80422',
+      at: '2026-09-02T17:58:10.010Z',
+      level: 'Warning',
+      source: 'Teren.Api.Pipeline.EntryProcessor',
+      template: 'Entry {EntryId} parked in needs_review: {Reason}',
+      message: 'Entry 8f0d3a parked in needs_review: extraction_not_configured',
+      properties: { EntryId: '8f0d3a', Reason: 'extraction_not_configured' },
+      exception: null,
+      company_id: MockPlatformGateway.ELEKTRO_ID,
+      entry_id: '1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f',
+      correlation: 'c1a1f0e2-0000-4000-8000-000000000004',
+    },
+    {
+      id: '80421',
+      at: '2026-09-02T09:00:00.000Z',
+      level: 'Information',
+      source: 'Teren.Api.Hosting.Startup',
+      template: 'Teren API started on {Urls}',
+      message: 'Teren API started on http://localhost:5080',
+      properties: { Urls: 'http://localhost:5080' },
+      exception: null,
+      // No company: this is the platform talking about itself, not about a customer.
+      company_id: null,
+      entry_id: null,
+      correlation: null,
+    },
+    {
+      id: '80420',
+      at: '2026-09-01T22:15:00.000Z',
+      level: 'Debug',
+      source: 'Teren.Api.Jobs.RetentionSweeper',
+      template: 'Deleted {Rows} log rows older than {Days} days',
+      message: 'Deleted 1284 log rows older than 14 days',
+      properties: { Rows: 1284, Days: 14 },
+      exception: null,
+      company_id: null,
+      entry_id: null,
+      correlation: null,
+    },
+  ];
+
+  /**
+   * Replace the fixture's day of log with a longer one.
+   *
+   * The fixture is six legible lines, not a load test, so keyset paging never engages on its own
+   * and a ten-row pager has nothing to page. A spec that needs a real stream hands one over here
+   * rather than stubbing `listLogs`, which would take the keyset arithmetic — the very thing under
+   * test on that screen — out of the picture. **Newest first, ids descending**, exactly as the
+   * endpoint returns them; a caller that hands over rows in another order is describing a server
+   * that does not exist.
+   */
+  useLogs(rows: PlatformLogResponse[]): void {
+    this.logs = rows;
+  }
 
   async listCompanies(query: { q?: string } = {}): Promise<PlatformCompanyListResponse> {
     const q = (query.q ?? '').trim().toLowerCase();
@@ -220,6 +335,76 @@ export class MockPlatformGateway implements PlatformGateway {
     return { email: user.email ?? null, emailed: true };
   }
 
+  /**
+   * One keyset page of the log, filtered the way the server filters it.
+   *
+   * The rules are copied rather than approximated, because a mock that is more permissive than the
+   * server certifies a screen that cannot work: `q` searches the message **and the template** and
+   * **never the exception** — an operator hunting for a word must not be able to fish in a stack
+   * trace — `source` is a contains, `to` is exclusive where `from` is inclusive, and the cursor is
+   * keyset over `(at DESC, id DESC)` rather than an offset.
+   */
+  async listLogs(query: PlatformLogQuery = {}): Promise<PlatformLogListResponse> {
+    const matching = this.logs.filter((row) => matchesLogQuery(row, query));
+    const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
+    const start = query.cursor ? matching.findIndex((row) => row.id === query.cursor) + 1 : 0;
+    const page = matching.slice(start, start + limit);
+    const nextIndex = start + page.length;
+
+    return {
+      logs: page,
+      // Null on the last page, and only there. A cursor that pointed past the end would make the
+      // screen offer a "load more" that answers with nothing.
+      next_cursor: nextIndex < matching.length ? (page[page.length - 1].id ?? null) : null,
+    };
+  }
+
+  /**
+   * The same query as a CSV file, with the columns and the BOM the contract names.
+   *
+   * The BOM is not decoration: without it Excel renders `č`, `ć` and `š` as mojibake, and the
+   * founder opens this in Excel.
+   *
+   * **It refuses a cursor or a limit rather than ignoring one**, exactly as contract §2 says the
+   * export does: the whole point of the file is that it is not the page on screen, and a client
+   * that sent `limit=50` would be asking for a download of the fifty lines he is already looking
+   * at. The server only *appears* to tolerate it today because its parse for those two sits inside
+   * the paged branch — a mock that copied the tolerance rather than the contract would certify a
+   * client that breaks the day the parse moves.
+   */
+  async exportLogs(query: PlatformLogQuery = {}): Promise<PlatformLogExport> {
+    if (query.cursor !== undefined || query.limit !== undefined) {
+      throw badRequest('The export takes the filters only — no cursor and no limit.');
+    }
+
+    const rows = this.logs.filter((row) => matchesLogQuery(row, query));
+    const header =
+      'at,level,source,message,template,company_id,entry_id,correlation,properties,exception';
+    const body = rows
+      .map((row) =>
+        [
+          row.at,
+          row.level,
+          row.source,
+          row.message,
+          row.template,
+          row.company_id,
+          row.entry_id,
+          row.correlation,
+          row.properties ? JSON.stringify(row.properties) : '',
+          row.exception,
+        ]
+          .map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`)
+          .join(','),
+      )
+      .join('\n');
+
+    return {
+      body: new Blob([`\uFEFF${header}\n${body}\n`], { type: 'text/csv; charset=utf-8' }),
+      contentDisposition: 'attachment; filename="teren-logs-20260902-1812.csv"',
+    };
+  }
+
   async disableUser(userId: string): Promise<PlatformUserResponse> {
     return this.setDisabled(userId, new Date().toISOString());
   }
@@ -270,4 +455,46 @@ function conflict(detail: string): HttpErrorResponse {
 
 function notFound(detail: string): HttpErrorResponse {
   return problem(404, 'Not Found', detail);
+}
+
+/**
+ * The server's own filter rules, restated.
+ *
+ * A mock that is more permissive than the server certifies a screen that cannot work — the
+ * discipline this feature learned when plan §8 and `/auth/activate` disagreed and a foreman paid
+ * for it. Three of these clauses are the ones a screen would otherwise get wrong:
+ *
+ * - `q` covers the message **and the template**, so a founder can search for the shape of a line
+ *   (`Report {ReportId} delivery failed`) as well as for one instance of it;
+ * - `q` **never** covers the exception. An operator searching for a word must not be able to fish
+ *   in a stack trace, and that is a privacy rule rather than a performance one;
+ * - `to` is exclusive where `from` is inclusive, so two adjacent ranges cannot show one row twice.
+ */
+function matchesLogQuery(row: PlatformLogResponse, query: PlatformLogQuery): boolean {
+  if (query.levels && query.levels.length > 0 && !query.levels.includes(row.level ?? '')) {
+    return false;
+  }
+  if (query.source && !contains(row.source, query.source)) {
+    return false;
+  }
+  if (query.q && !contains(row.message, query.q) && !contains(row.template, query.q)) {
+    return false;
+  }
+  if (query.companyId && row.company_id !== query.companyId) {
+    return false;
+  }
+  if (query.entryId && row.entry_id !== query.entryId) {
+    return false;
+  }
+  if (query.from && (row.at ?? '') < query.from) {
+    return false;
+  }
+  if (query.to && (row.at ?? '') >= query.to) {
+    return false;
+  }
+  return true;
+}
+
+function contains(haystack: string | null | undefined, needle: string): boolean {
+  return (haystack ?? '').toLowerCase().includes(needle.toLowerCase());
 }

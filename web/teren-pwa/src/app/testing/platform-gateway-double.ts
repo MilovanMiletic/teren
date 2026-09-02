@@ -9,6 +9,9 @@ import {
   InviteSentResponse,
   PlatformCompanyListResponse,
   PlatformCompanyResponse,
+  PlatformLogExport,
+  PlatformLogListResponse,
+  PlatformLogQuery,
   PlatformUserListResponse,
   PlatformUserResponse,
 } from '../core/platform/platform-types';
@@ -71,6 +74,17 @@ export class KnobbedPlatformGateway implements PlatformGateway {
   resumeError: unknown = null;
   usersError: unknown = null;
   createAdminError: unknown = null;
+  logsError: unknown = null;
+  exportError: unknown = null;
+
+  /**
+   * An export that answers 200 with nothing in it.
+   *
+   * Worth a knob of its own because an empty CSV looks to a founder exactly like a log with
+   * nothing in it — the one wrong conclusion this screen must never invite — and no error path
+   * exercises it.
+   */
+  emptyExport = false;
 
   /**
    * Whether the server has a mail relay to invite anybody with.
@@ -86,12 +100,24 @@ export class KnobbedPlatformGateway implements PlatformGateway {
 
   /** Held open, a call lets a spec look at the screen while the request is still in flight. */
   usersGate: PlatformDeferred | null = null;
+  logsGate: PlatformDeferred | null = null;
+  exportGate: PlatformDeferred | null = null;
   createAdminGate: PlatformDeferred | null = null;
   suspendGate: PlatformDeferred | null = null;
 
   /** How many times each list was actually asked for, so a reload can be told from a repaint. */
   companyListings = 0;
   userListings = 0;
+
+  /**
+   * Exactly what the log stream and the export were asked for, in order.
+   *
+   * The pair is the assertion the download button needs: **what he downloads must be what he is
+   * looking at**, and the only way to prove it is to compare the two queries that reached the
+   * wire. A `vi.fn()` that agreed with itself could not.
+   */
+  readonly logQueries: PlatformLogQuery[] = [];
+  readonly exportQueries: PlatformLogQuery[] = [];
 
   /** Exactly what reached the wire, in order. Empty is the assertion `notSignedIn` needs. */
   readonly createdCompanies: CreateCompanyRequest[] = [];
@@ -102,10 +128,24 @@ export class KnobbedPlatformGateway implements PlatformGateway {
   readonly disabled: string[] = [];
   readonly enabled: string[] = [];
 
+  /**
+   * Rows the fixture does not ship, appended to whatever it does.
+   *
+   * Two customers and three accounts is the right size for reading a screen and useless for
+   * proving that one pages at ten. Appended rather than substituted, so a spec that fills either
+   * of these still meets Vodoinstal, Elektro and the founder — every other assertion in the file
+   * goes on holding.
+   */
+  readonly extraCompanies: PlatformCompanyResponse[] = [];
+  readonly extraUsers: PlatformUserResponse[] = [];
+
   async listCompanies(query: { q?: string; cursor?: string } = {}): Promise<PlatformCompanyListResponse> {
     this.companyListings += 1;
     this.refuse(this.companiesError);
-    return this.real.listCompanies(query);
+    const answer = await this.real.listCompanies(query);
+    return this.extraCompanies.length === 0
+      ? answer
+      : { ...answer, companies: [...(answer.companies ?? []), ...this.extraCompanies] };
   }
 
   async createCompany(request: CreateCompanyRequest): Promise<PlatformCompanyResponse> {
@@ -133,7 +173,10 @@ export class KnobbedPlatformGateway implements PlatformGateway {
     this.userListings += 1;
     await this.usersGate?.promise;
     this.refuse(this.usersError);
-    return this.real.listUsers(query);
+    const answer = await this.real.listUsers(query);
+    return this.extraUsers.length === 0
+      ? answer
+      : { ...answer, users: [...(answer.users ?? []), ...this.extraUsers] };
   }
 
   async createAdmin(request: CreateAdminRequest): Promise<CreateAdminResponse> {
@@ -147,6 +190,23 @@ export class KnobbedPlatformGateway implements PlatformGateway {
     this.refuse(this.inviteError);
     this.invited.push(userId);
     return { ...(await this.real.invite(userId)), emailed: this.emailed };
+  }
+
+  async listLogs(query: PlatformLogQuery = {}): Promise<PlatformLogListResponse> {
+    this.logQueries.push(query);
+    await this.logsGate?.promise;
+    this.refuse(this.logsError);
+    return this.real.listLogs(query);
+  }
+
+  async exportLogs(query: PlatformLogQuery = {}): Promise<PlatformLogExport> {
+    this.exportQueries.push(query);
+    await this.exportGate?.promise;
+    this.refuse(this.exportError);
+    if (this.emptyExport) {
+      return { body: new Blob([]), contentDisposition: null };
+    }
+    return this.real.exportLogs(query);
   }
 
   async disableUser(userId: string): Promise<PlatformUserResponse> {

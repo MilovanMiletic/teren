@@ -10,6 +10,8 @@ import { AppStatus } from '../../core/app-status.service';
 import { TerenApiClient } from '../../core/api/teren-api.client';
 import { EntryStore } from '../../core/db/entry-store';
 import { TEREN_DB, TerenDb } from '../../core/db/teren-db';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
 import { TEST_PROJECT, captureEntry } from '../../testing/capture-fixture';
 import { flushLiveQueries, waitUntil } from '../../testing/flush';
 import { ConfirmPage } from './confirm-page';
@@ -747,5 +749,102 @@ describe('ConfirmPage', () => {
     await click('Gotovo');
 
     expect(navigate).toHaveBeenCalledWith(['/']);
+  });
+
+  /**
+   * What the gate tells the action log (D5).
+   *
+   * Nothing on this screen declares itself on a control, and that is deliberate. Confirming is the
+   * last step of the money path, so the fact worth having is whether the server took it — not that
+   * a button was pressed. And the edits are worse than uninteresting as clicks: every field on this
+   * screen runs through `draft.update()`, so a foreman typing a material name would produce one
+   * event per character and push a morning's captures out of a five-hundred row buffer.
+   */
+  describe('the action log', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('records a confirmation the server accepted, against the entry it confirmed', async () => {
+      const entryId = await givenEntry();
+      await render(entryId);
+      type(textarea(), 'Postavljeni radijatori.');
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+
+      await click('Potvrdi unos');
+
+      expect(record).toHaveBeenCalledWith(ACTIONS.confirmSend, {
+        outcome: 'ok',
+        entryId,
+        detail: undefined,
+      });
+    });
+
+    it('records a verbatim day as itself, never as an ordinary confirmation', async () => {
+      await givenTranscriptButNoStructure();
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+
+      await click('Pošalji moje reči');
+
+      const slugs = record.mock.calls.map((call) => call[0]);
+      expect(slugs).toContain(ACTIONS.confirmVerbatim);
+      expect(slugs).not.toContain(ACTIONS.confirmSend);
+      // …and the words themselves never travel. `SPOKEN` is what he said on site.
+      expect(JSON.stringify(record.mock.calls)).not.toContain(SPOKEN.slice(0, 12));
+    });
+
+    it('records a refused confirmation as a failure, and says whether it is worth retrying', async () => {
+      const entryId = await givenEntry();
+      await render(entryId);
+      type(textarea(), 'Postavljeni radijatori.');
+      api.failConfirm = httpError(500);
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+
+      await click('Potvrdi unos');
+
+      expect(record).toHaveBeenCalledWith(ACTIONS.confirmSend, {
+        outcome: 'fail',
+        entryId,
+        detail: { retryable: true },
+      });
+    });
+
+    /**
+     * **One event per part of the day, not one per keystroke.**
+     *
+     * The question the log is asked is *did he correct the AI, and where* — which is a set of at
+     * most seven answers per entry. Typing eighteen characters into a material name must produce
+     * exactly one row, and it is the buffer's ceiling that makes this a correctness property
+     * rather than a tidiness one.
+     */
+    it('records an edit once per part of the day, however much is typed', async () => {
+      const entryId = await givenEntry();
+      await render(entryId);
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+
+      type(textarea(), 'Postavljeni radijatori.');
+      type(textarea(), 'Postavljeni radijatori danas.');
+      type(textarea(), 'Postavljeni radijatori danas popodne.');
+
+      const edits = record.mock.calls.filter((call) => call[0] === ACTIONS.confirmEdit);
+      expect(edits).toHaveLength(1);
+      expect(edits[0][1]).toEqual({ entryId, detail: { field: 'notes' } });
+      // The note itself is not on the wire — only the name of the box it went into.
+      expect(JSON.stringify(record.mock.calls)).not.toContain('radijatori');
+    });
+
+    it('tells one part of the day from another', async () => {
+      await render(await givenEntry());
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+
+      button('Dodaj materijal').click();
+      fixture.detectChanges();
+      type(textarea(), 'Nešto.');
+
+      const fields = record.mock.calls
+        .filter((call) => call[0] === ACTIONS.confirmEdit)
+        .map((call) => (call[1] as { detail: { field: string } }).detail.field);
+      expect(fields).toEqual(['materials', 'notes']);
+    });
   });
 });

@@ -13,6 +13,12 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="QuestPDF" Version="2026.8.0" />
+    <!-- The custom app_log sink lives here, beside the DbContext whose table it writes. Serilog
+         core only: the hosting integration stays in Teren.Api, which is where the logger is
+         configured. -->
+    <PackageReference Include="Serilog" Version="4.3.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.0" />
   </ItemGroup>
 
   <PropertyGroup>

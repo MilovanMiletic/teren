@@ -42,7 +42,7 @@ namespace Teren.Api.Platform;
 /// Every list pages by keyset (see <see cref="Keyset"/>), never by offset.
 /// </para>
 /// </summary>
-public sealed class PlatformDirectory(
+public sealed partial class PlatformDirectory(
     TerenIdentityDbContext db,
     IMailSender mail,
     IInviteQueue invites)

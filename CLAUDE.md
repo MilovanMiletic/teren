@@ -133,8 +133,8 @@ before being presented as done; gating fixes go back to the implementer and are 
   gating items closed)**, **F5, F6, F8, D7/F9 (all accept-with-fixes, 2026-09-01)**, **D8**,
   **D4** (`/api/platform/*`, **REJECT** — see below), **D6** (invite email, 2026-09-01) and
   **F10** (`/company/profile`, 2026-09-02, unreviewed). **F3's rejection is discharged.**
-  **What is left: D5** (`app_log` + sink + retention + the redaction test), then the **health page
-  and log viewer**, which are the two of F7's five screens that wait on it.
+  **D5 and the log viewer are done (2026-09-02).** What is left of the identity work is F7's
+  **health page**, and nothing now blocks it.
 - **D4's rejection is open and it is a founder decision, not a code fix.** The authenticated
   invite/reset hatch lets Teren staff mint a working set-password link for a company admin, take his
   account, and read his diaries — exactly what plan decision 2 says is impossible. It predates D4
@@ -348,14 +348,39 @@ before being presented as done; gating fixes go back to the implementer and are 
   *Two more from that review worth carrying: the funnel was **white on pale tint** inside a sorted
   pill (1.2:1, in `/company`'s default state), and a 28 px tap target against the token minimum of
   44 — it is drawn small and hit large (`::after { inset: -8px }`).*
-- **Suites: 1368 PWA specs** (74 files) and **910 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
+- **Every table paginates at ten rows (2026-09-02), and one round of it is a scar worth reading.**
+  `TABLE_PAGE_SIZE = 10` and the clamp/slice arithmetic live in `ui/table-controls.ts`; `ui/table-pager.ts`
+  draws it (numbered ≥768, `‹ n / N ›` below). `/platform/logs` imports the **constant** while holding no
+  `TableControls` — its filters run on the server, so it is fetched in fifties and read in tens, and it
+  still never prints a total the server has not given. **The clamp is applied on every read, not on the
+  events somebody remembered**: a filter, a sort, a reload and a shrinking list are four paths and there
+  will be a fifth.
+  *Two defects found by review, both the same shape — a list cut in one order and drawn in another.*
+  `/platform` sliced the **flat** sort and then regrouped into bands, so 17 accounts under the default
+  sort put **no `Teren tim` band on page 1** and split the admins across pages. Slice the drawn order.
+  ***And the middle round is the one to remember.*** The founder reported the log table "overlapping
+  down"; the measurement came back `unreachablePx: -32` — **nothing was unreachable**, the foot was
+  simply below the fold before he scrolled. It was engineered away anyway with `.screen { height: 100dvh }`,
+  which made every card a flex item in a container that could not grow, and `.card { overflow: hidden }`
+  (deliberately on the base class) then **sliced `UČITANO 50` through the middle of its digits** and cut
+  the NIVO chips in half. A clipped number is a wrong number, on the screen whose whole job is telling
+  the truth. Reverted whole. **When a measurement says there is nothing to fix, that is the finding —
+  not a reason to look for a different fix.** No screen on this route claims the window's height; the
+  page scrolls and cards size to their content.
+  *Below 1024 the log stream is a **list, not a squeezed table** — filter card shut by default, the
+  `GREŠKE`/`UPOZORENJA` counts tappable as filters, because the question a founder asks a phone is
+  "is anything wrong", not "show me line #444". The medium class had never been pinned: every table
+  spec passed `render(true, true)`, so all of them were really testing expanded.*
+- **Suites: 1575 PWA specs** (81 files) and **991 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
   + Testcontainers over real Postgres, ~66 s; PdfPig in tests only, so report assertions read text
   back out of the rendered PDF). `dotnet test` needs Docker running.
   *The figures here were stale before 2026-08-30 (403/447 recorded against an actual 436/476) —
   both were re-measured off the tree, not carried forward.*
-- **Check at session start:** the tree is green — **910 backend tests and 1368 PWA specs, the PWA
-  suite re-verified by execution 2026-09-02**, `dotnet build` clean with 0 warnings, `ng build` clean with
-  no budget warning.
+- **Check at session start:** the tree is green — **991 backend tests and 1575 PWA specs, both
+  re-verified by execution 2026-09-02**, `ng build` clean with no budget warning. `dotnet build` succeeds
+  with **one** warning: `CS9107` in `DemoIdentitySeedTests.cs:400`. **It is pre-existing** — confirmed by
+  building a worktree at `a42adaf` — so the long-standing "0 warnings" claim in this file was simply
+  wrong. Do not go hunting for it in your own diff.
 - **"It doesn't work" has meant "it isn't running" twice in a row (2026-09-01).** First "frontend was
   destroyed, build again" — a stopped `ng serve`. Then "backend also doesn't work" — no `Teren.Api`
   process on 5080. **Neither was a code fault, and in both cases the tree was untouched and green.**
@@ -396,7 +421,7 @@ before being presented as done; gating fixes go back to the implementer and are 
   500s; `systemctl --user start docker-desktop` then `docker compose up -d` restores it.*
   *If `dotnet build` reports `MSB3027 ... file is locked by Microsoft Visual Studio`, that is the
   founder's IDE or a running API holding the output, not a code error — **never kill `dotnet.exe`**;
-  build to a scratch path with `-p:BaseOutputPath=` instead.* **Gates as of 2026-09-02:** cleared — the verbatim pair, the
+  build to a scratch path with `-p:BaseOutputPath=` instead.* **F13 (ten rows a page) had one review — accept-with-fixes, both gating findings closed and re-proven — and then FOUR more rounds off founder screenshots that NOBODY reviewed**: the pager reshape, the `height: 100dvh` mistake, its revert, and the compact/medium redesign. Its delta review was stopped mid-run so it would not test a tree being edited. **Gates as of 2026-09-02:** cleared — the verbatim pair, the
   report-polish/download pair, B3a, D1, F1+F2, D2, D3, F4, F4b, and F5/F6/F8/D7-F9 (all
   accept-with-fixes, 2026-09-01). **F3's rejection is discharged**: its two gating defects were the
   route bugs F4b fixed, its third is a founder action, and the screens themselves were re-read in the
@@ -410,6 +435,39 @@ before being presented as done; gating fixes go back to the implementer and are 
   so that increment never passed its gate; the salvage bug found afterwards was traced to async
   state sequencing, not to the rework. Design canvas still owes the 1280 desktop artboard variants.
   **B4's own delta review was not re-run** — the implementer mutation-proved its fix instead.
+- **A green suite cannot see a mutation left in the tree, and this is now the THIRD time (2026-09-02).**
+  D5's implementer was stopped before reporting and left a fabricated `AiProviderException` in
+  `RoleFilter.cs` — a Serbian sentence and an email address, logged on **every 403**, under a comment
+  saying *"RESTORED IMMEDIATELY"*. **979 tests passed with it in place.** Every previous instance was
+  the same shape: a stopped agent, a mutation, a green tree. **Read `git diff` and account for every
+  hunk before believing any suite**, and be specific about files that have no business in the
+  increment — `QuestPdfReportRenderer.cs` in a *logging* diff turned out to be legitimate, and
+  checking cost thirty seconds.
+- **"No free text can reach the log table" was false for the one caller who proves nothing.** The
+  sink's allow-list admitted `Path`, `BearerAuthFilter` logs `http.Request.Path`, and that filter runs
+  **before** any credential is checked — so an anonymous `GET /api/entries/<a whole sentence>` wrote
+  the sentence verbatim into the table Teren staff read. The fix is to log the **matched route
+  template** (`LoggableRoute.Of(http)` → `/api/entries/{id}`), which is always available in a filter
+  and can never be written from outside. *An allow-list works on **names**, so a name as general as
+  `Path` or `Message` is a hole with a respectable label on it.*
+- **A vocabulary can ship complete and emit nothing.** F12's 33 action slugs were declared, and 26 of
+  them had no `data-log` attribute and no `record()` call anywhere — the whole money path would have
+  logged as `ui.app-capture-page.button.btn`. **Every spec passed**, because each asked whether what
+  *is* wired is wired correctly and none asked whether a declared name is reachable at all. Same blind
+  spot as `ee37f04`'s half-finished route rename, in a different costume. `action-wiring.spec.ts` now
+  fails on a slug nothing can emit. *When you add a registry — routes, slugs, keys — the guard that
+  matters is the one that walks it and asks "can this entry ever happen?"*
+- **`Serilog.Extensions.Logging` renders a pre-rendered MEL state as the literal `{State:l}`.** Every
+  Hangfire line arrived that way and the sink dropped `State` as not allow-listed, so **half the log
+  table was a placeholder** — on precisely the source "what is failing" depends on. No test saw it
+  because no test emitted a MEL event of that shape.
+- **`Serilog.Debugging.SelfLog` is off unless someone calls `SelfLog.Enable`.** Every failure channel
+  in the D5 sink reported through it, and nothing enabled it — so a host started without `migrate`
+  would drop every batch on a `42P01` and show an **empty log screen** rather than an error. A comment
+  saying "reported to SelfLog" is not a report.
+- **`pkill -f "<pattern>"` matches the shell running it** if the pattern appears in your own command
+  line. It killed my own command mid-script (exit 144). Match on something narrower, or check what
+  ran afterwards.
 - **Migrations are not applied by running the API.** `dotnet run --project src/Teren.Api -- migrate`
   is a separate step, and skipping it fails at runtime with a bare Npgsql `42703 column does not
   exist` — it has now bitten twice, once silently killing the money path on the dev database.

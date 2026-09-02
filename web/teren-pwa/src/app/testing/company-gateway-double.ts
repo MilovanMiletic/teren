@@ -10,6 +10,7 @@ import {
   DeviceResponse,
   ShareTextResponse,
   WorkerListResponse,
+  WorkerResponse,
 } from '../core/company/company-types';
 import { MockCompanyGateway } from '../core/company/mock-company-gateway';
 
@@ -109,11 +110,25 @@ export class KnobbedGateway implements CompanyGateway {
     return this.real.me();
   }
 
+  /**
+   * Foremen the fixture does not ship, appended to whatever it does.
+   *
+   * The fixture is two men, which is the right size for reading a screen and useless for proving
+   * that it pages at ten. Appended rather than replacing the mock's own rows, so a spec that fills
+   * this still meets Zoran and Marko — every other assertion in the file goes on holding.
+   */
+  readonly extraWorkers: WorkerResponse[] = [];
+
   async listWorkers(): Promise<WorkerListResponse> {
     this.workerListings += 1;
     await this.workersGate?.promise;
     this.refuse(this.workersError);
-    return this.real.listWorkers();
+    const answer = await this.real.listWorkers();
+    if (this.extraWorkers.length === 0) {
+      return answer;
+    }
+    const workers = [...(answer.workers ?? []), ...this.extraWorkers];
+    return { workers, count: workers.length };
   }
 
   async listDevices(): Promise<DeviceListResponse> {

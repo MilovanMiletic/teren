@@ -37,6 +37,19 @@
         <app-icon name="phone-home" [size]="20" />
       </button>
 
+      <!--
+        The log (D5). In the head cluster with the others, because it is a *place* rather than an
+        action on this screen's data — the same argument that put the customers there.
+      -->
+      <button
+        type="button"
+        class="btn-icon"
+        [attr.aria-label]="t('platform.logs.open')"
+        (click)="openLogs()"
+      >
+        <app-icon name="activity" [size]="20" />
+      </button>
+
       <button
         type="button"
         class="btn-icon"
@@ -105,21 +118,21 @@
 
       <section class="card people wide" [attr.aria-label]="t('platform.people.caption')">
         <!--
-          Only while a filter is live, and at every width. A directory quietly showing three of
-          twenty accounts is the one state in which this screen can make the founder believe a
-          customer's admin was never created, so the count and the way out of it are printed rather
-          than left to a tinted funnel in one column head.
+          **At every width, and now always** (founder, 2026-09-02: ten rows a page, and never hide
+          the count). A directory quietly showing three of twenty accounts is the one state in which
+          this screen can make the founder believe a customer's admin was never created — and with
+          paging, "ten of twenty-four" is that same state arrived at from the other direction. The
+          strip therefore says which slice of which total is on screen, keeps the filtered total
+          distinct from the unfiltered one, and only turns loud when a filter is live.
         -->
-        @if (controls.filtering()) {
-          <div class="table-bar" role="status">
-            <span class="t-meta">
-              {{ t('table.filter.showing', { shown: shown(), total: people().length }) }}
-            </span>
+        <div class="table-bar" [class.table-bar--quiet]="!controls.filtering()" role="status">
+          <span class="t-meta">{{ t(countKey(), countParams()) }}</span>
+          @if (controls.filtering()) {
             <button type="button" class="table-bar__clear" (click)="controls.clearFilters()">
               {{ t('table.filter.clearAll') }}
             </button>
-          </div>
-        }
+          }
+        </div>
 
         <!--
           Below 768 the same three controls the table's column heads carry, travelling as pills:
@@ -308,6 +321,10 @@
             </ul>
           }
         }
+
+        <!-- One control for both renderings: the table from 768 up and the row list below it are
+             two views of one list, and two pagers would be two places for the page to drift. -->
+        <app-table-pager [page]="page()" [pageCount]="pageCount()" (goTo)="goToPage($event)" />
       </section>
     }
 

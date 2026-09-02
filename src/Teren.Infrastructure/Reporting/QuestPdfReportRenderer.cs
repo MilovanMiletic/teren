@@ -99,9 +99,12 @@ public sealed class QuestPdfReportRenderer : IReportRenderer
                 // page that carries no evidence, and refusing to send a client his site diary
                 // over a mistyped image path would trade something that matters for something
                 // that does not. The wordmark is a complete fallback, which is the point of it.
+                // Named after the setting rather than logged as a generic {Path}: the sink's
+                // allow-list works on names, and a name as general as "Path" is what let a
+                // caller's own URL into `app_log` before the D5 review.
                 logger.LogWarning(
-                    "Reporting:BrandLogoPath is set to {Path}, which does not exist; reports will "
-                    + "carry the {Wordmark} wordmark instead.",
+                    "Reporting:BrandLogoPath is set to {BrandLogoPath}, which does not exist; "
+                    + "reports will carry the {Wordmark} wordmark instead.",
                     configured, _options.BrandWordmark);
             }
         }

@@ -15,6 +15,9 @@ import {
 import { GeolocationService } from '../../core/media/geolocation.service';
 import { DEMO_PROJECTS } from '../../core/projects/project-source';
 import { ProjectService } from '../../core/projects/project.service';
+import { describeClick } from '../../core/telemetry/action-descriptor';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
 import { entryUrlFor } from '../../testing/route-table';
 import { flushLiveQueries, waitUntil } from '../../testing/flush';
 import { routes } from '../../app.routes';
@@ -448,6 +451,111 @@ describe('CaptureRecordingPage', () => {
       element.querySelector<HTMLButtonElement>('.problem__actions .btn--primary')?.click();
 
       await expectSavedScreen(entryId);
+    });
+  });
+
+  /**
+   * What this screen tells the action log (D5).
+   *
+   * Three of the four moments here cannot be expressed by a click. "He pressed record" is not the
+   * fact worth having — the fact is whether the microphone opened, and why it did not; "he pressed
+   * stop" is not the fact either — the fact is how long the take was and whether it survived. Only
+   * the discard is a plain press, and that one declares itself on the control.
+   */
+  describe('the action log', () => {
+    /**
+     * Spied on the prototype, not on an instance: `begin()` runs from the constructor, so the very
+     * first thing this screen records happens before `TestBed.createComponent` has returned and
+     * there is nothing to hold a reference to yet.
+     */
+    function spyOnRecord() {
+      return vi.spyOn(ActionLogService.prototype, 'record');
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('names the discard button on the control itself', async () => {
+      const element = await configure();
+
+      expect(describeClick(element.querySelector('.actions__cancel'))).toBe(
+        ACTIONS.captureRecordDiscard,
+      );
+    });
+
+    it('records a start that opened the microphone, against the entry it opened', async () => {
+      const record = spyOnRecord();
+
+      await configure();
+      const entryId = (await db.captures.toArray())[0].entryId;
+
+      expect(record).toHaveBeenCalledWith(ACTIONS.captureRecordStart, {
+        outcome: 'ok',
+        entryId,
+      });
+    });
+
+    it('records a start with no site as blocked, and says which blocker', async () => {
+      const record = spyOnRecord();
+
+      await configure({ projects: false });
+
+      expect(record).toHaveBeenCalledWith(ACTIONS.captureRecordStart, {
+        outcome: 'blocked',
+        detail: { reason: 'no-project' },
+      });
+    });
+
+    it('records a refused microphone as a failure, with the recorder state as the reason', async () => {
+      const record = spyOnRecord();
+
+      await configure({ outcome: 'denied' });
+
+      expect(record).toHaveBeenCalledWith(ACTIONS.captureRecordStart, {
+        outcome: 'fail',
+        detail: { reason: 'denied' },
+      });
+    });
+
+    it('records the stop with how long the take was and that it survived', async () => {
+      const element = await configure();
+      const entryId = (await db.captures.toArray())[0].entryId;
+      const record = spyOnRecord();
+
+      element.querySelector<HTMLButtonElement>('.stop')?.click();
+      await waitUntil(async () => (await db.entries.get(entryId))?.status === 'draft', {
+        onTick: () => fixture.detectChanges(),
+        describe: 'the take to be saved',
+      });
+
+      expect(record).toHaveBeenCalledWith(ACTIONS.captureRecordStop, {
+        outcome: 'ok',
+        durationMs: 41_000,
+        entryId,
+      });
+    });
+
+    /**
+     * A save that threw is not a stop that worked, and the difference is the whole reason this one
+     * is recorded by hand: the chunks are still on disk and the foreman is looking at a retry.
+     */
+    it('records a stop whose save failed as a failure', async () => {
+      const element = await configure();
+      const entryId = (await db.captures.toArray())[0].entryId;
+      const record = spyOnRecord();
+
+      vi.spyOn(store, 'finishCapture').mockRejectedValueOnce(new Error('quota exceeded'));
+      element.querySelector<HTMLButtonElement>('.stop')?.click();
+      await waitUntil(() => text(element).includes('Sačuvaj ponovo'), {
+        onTick: () => fixture.detectChanges(),
+        describe: 'the retry offer',
+      });
+
+      expect(record).toHaveBeenCalledWith(ACTIONS.captureRecordStop, {
+        outcome: 'fail',
+        entryId,
+      });
     });
   });
 });

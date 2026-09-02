@@ -34,7 +34,8 @@ export type IconName =
   | 'log-out'
   | 'copy'
   | 'building'
-  | 'filter';
+  | 'filter'
+  | 'activity';
 
 /**
  * The icon set: stroke-based, 24 px grid, stroke-width 2, round caps and joins
@@ -225,6 +226,15 @@ export type IconName =
           <path d="M9 7h2" />
           <path d="M9 11h2" />
           <path d="M9 15h2" />
+        }
+        @case ('activity') {
+          <!--
+            The log. A pulse line, not a stack of pages: what this screen shows is the product
+            *behaving over time* — presses, jobs, failures in the order they happened — and a
+            document glyph would promise a report. It reads at 20 px, which is the size every
+            control in a head cluster is drawn at.
+          -->
+          <path d="M3 12h4l3 8 4-16 3 8h4" />
         }
         @case ('filter') {
           <!--

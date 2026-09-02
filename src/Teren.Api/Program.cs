@@ -27,6 +27,7 @@ using Teren.Api.Errors;
 using Teren.Api.Validation;
 using Teren.Core.Storage;
 using Teren.Core.Tenancy;
+using Teren.Infrastructure.Logging;
 using Teren.Infrastructure.Mail;
 using Teren.Infrastructure.Persistence;
 using Teren.Infrastructure.Seeding;
@@ -34,6 +35,13 @@ using Teren.Infrastructure.Storage;
 using Teren.Infrastructure.Tenancy;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// D5. Serilog's own failure channel, before anything can fail. Every way the app_log sink can
+// break reports here and nowhere else — an ILogger call from inside the log writer would enqueue a
+// row about failing to write rows — and SelfLog is disabled by default, which made all of them
+// silent. A host started without `migrate` is this repo's most repeated failure, and it drops
+// every batch on a 42P01 while the log viewer simply looks empty. See SelfLogChannel.
+SelfLogChannel.EnableToStandardError();
 
 // Structured logging to stdout (ARCHITECTURE §13). The pipeline pushes the entry id into a log
 // scope, so every line about one entry carries it — which is the difference between reading a
@@ -44,7 +52,12 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
     .Enrich.FromLogContext()
     .WriteTo.Console(
         outputTemplate:
-        "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}"));
+        "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
+    // D5: the same events, scrubbed, into `app_log` for the super admin's viewer. Resolved from
+    // the container rather than constructed here so the queue it writes into is the same
+    // singleton POST /api/client-events enqueues to — two copies of that buffer would mean the
+    // flusher drained one of them and the other grew until the process died of it.
+    .WriteTo.Sink(services.GetRequiredService<PostgresLogSink>()));
 
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
@@ -90,6 +103,15 @@ builder.Services.AddDbContext<TerenDbContext>(options => options.UseNpgsql(conne
 builder.Services.AddDbContext<TerenIdentityDbContext>(options => options
     .UseNpgsql(connectionString, npgsql => npgsql
         .MigrationsHistoryTable(TerenIdentityDbContext.MigrationsHistoryTable)));
+
+// D5: the log stream — a bounded queue, a background flusher, the scrubbing sink and the nightly
+// retention job. Registered BEFORE the logger is built above resolves PostgresLogSink out of it.
+//
+// Verbose and Debug reach `app_log` only in Development. The console keeps them everywhere; this
+// table does not, because it is a firehose on a small VPS and debug rows are the difference
+// between a fortnight of retained log and the largest thing in the nightly backup.
+builder.Services.AddTerenLogging(
+    builder.Configuration, connectionString, storeDebugLevels: builder.Environment.IsDevelopment());
 
 // Object storage: presigned PUT URLs out, HEAD verification back. Local values come from
 // appsettings.Development.json (throwaway MinIO credentials); production sets Storage__* env vars.
@@ -213,6 +235,7 @@ builder.Services.AddSingleton<IValidator<CreateWorkerRequest>, CreateWorkerReque
 builder.Services.AddSingleton<IValidator<UpdateWorkerRequest>, UpdateWorkerRequestValidator>();
 builder.Services.AddSingleton<IValidator<CreateCompanyRequest>, CreateCompanyRequestValidator>();
 builder.Services.AddSingleton<IValidator<CreateAdminRequest>, CreateAdminRequestValidator>();
+builder.Services.AddSingleton<IValidator<ClientEventBatchRequest>, ClientEventBatchRequestValidator>();
 
 // Staging and production put Caddy in front of this process (ARCHITECTURE §13): Caddy owns the
 // certificate and forwards over the private compose network in plain HTTP. Without this, two
@@ -431,6 +454,7 @@ api.MapEntryEndpoints();
 api.MapWorkerEndpoints();
 api.MapDeviceEndpoints();
 api.MapPlatformEndpoints();
+api.MapClientEventEndpoints();
 
 // Said once, loudly, rather than discovered as a 401 on a demo phone. An empty Auth:DeviceToken
 // is a legitimate configuration — it is the D7 end state — but on a box that is meant to be
@@ -472,6 +496,15 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", defaultValue: true))
         PipelineSweepJob.RecurringJobId,
         job => job.RunAsync(null!),
         sweepCron);
+
+    // D5. Without this the log table is the only thing in the database that grows for ever, and
+    // the first anyone hears of it is a backup that no longer fits or a restore that no longer
+    // finishes. Daily, in the small hours, and idempotent — a missed run costs a day of extra
+    // rows and nothing else.
+    app.Services.GetRequiredService<IRecurringJobManager>().AddOrUpdate<LogRetentionJob>(
+        LogRetentionJob.RecurringJobId,
+        job => job.RunAsync(null!),
+        LogRetentionJob.Schedule);
 
     // Said once, loudly, at start-up rather than discovered per entry in a job log. A missing
     // key is a working host that will park entries in needs_review — which is the honest

@@ -8,6 +8,9 @@ import { EntryStore } from '../../core/db/entry-store';
 import { TEREN_DB, TerenDb } from '../../core/db/teren-db';
 import { ReportResult, ReportService } from '../../core/report/report.service';
 import { DEMO_PROJECTS } from '../../core/projects/project-source';
+import { describeClick } from '../../core/telemetry/action-descriptor';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
 import { captureEntry } from '../../testing/capture-fixture';
 import { flushLiveQueries, waitUntil } from '../../testing/flush';
 import en from '../../../../public/i18n/en.json';
@@ -893,5 +896,79 @@ describe('EntryDetail', () => {
     await settled(element, 'Prijem u toku');
 
     expect(element.querySelector('.chip--warn')).not.toBeNull();
+  });
+
+  /**
+   * What the record tells the action log (D5).
+   *
+   * The photo strip and the two ways into the gate declare themselves; the download does not,
+   * because pressing it is not the interesting fact. A report is a few megabytes over a site
+   * connection and the question a support call actually asks is whether the PDF arrived — and, if
+   * it did not, which of the eight refusals it was.
+   */
+  describe('the action log', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('names a photograph on the thumbnail that opens it', async () => {
+      const entry = await captureEntry(store, { photoCount: 2 });
+      const element = await render(entry.id);
+      await thumbs(element, 2);
+
+      expect(describeClick(element.querySelector('.photos__thumb'))).toBe(ACTIONS.archiveMediaOpen);
+      // The `<img>` inside it is what a thumb is actually tapped on.
+      expect(describeClick(element.querySelector('.photos__thumb img'))).toBe(
+        ACTIONS.archiveMediaOpen,
+      );
+    });
+
+    it('names the way into the gate on an entry the server is holding', async () => {
+      const entry = await captureEntry(store);
+      archive.getEntry.mockResolvedValue({
+        status: 'ok',
+        missing: false,
+        entry: serverEntry({ id: entry.id, status: 'needs_review', reported_at: null }),
+      });
+
+      const element = await render(entry.id);
+      await settled(element, 'Proverite i potvrdite');
+
+      expect(describeClick(element.querySelector('.detail__notice-action'))).toBe(
+        ACTIONS.confirmOpen,
+      );
+    });
+
+    it('records a report that reached the phone', async () => {
+      const element = await reportedRecord();
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+
+      await tapDownload(element);
+
+      expect(record).toHaveBeenCalledWith(ACTIONS.archiveReportDownload, {
+        outcome: 'ok',
+        entryId: 'entry-1',
+        detail: undefined,
+      });
+    });
+
+    /**
+     * The camelCase of `ReportFailure` is not a slug, and the contract's `detail` alphabet is
+     * lower-case: an unconverted `notReady` would be dropped by the scrubber and the log would say
+     * a download failed without ever saying why.
+     */
+    it('records a refused download with a reason the wire will actually carry', async () => {
+      reports.download.mockResolvedValue(failed('notReady', true));
+      const element = await reportedRecord();
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+
+      await tapDownload(element);
+
+      expect(record).toHaveBeenCalledWith(ACTIONS.archiveReportDownload, {
+        outcome: 'fail',
+        entryId: 'entry-1',
+        detail: { reason: 'not-ready' },
+      });
+    });
   });
 });

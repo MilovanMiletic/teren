@@ -46,6 +46,8 @@ function failingWith(error: unknown): PlatformGateway {
     invite: () => Promise.reject(error),
     disableUser: () => Promise.reject(error),
     enableUser: () => Promise.reject(error),
+    listLogs: () => Promise.reject(error),
+    exportLogs: () => Promise.reject(error),
   };
 }
 
@@ -71,6 +73,8 @@ function throwingSynchronouslyWith(error: unknown): PlatformGateway {
     invite: bang,
     disableUser: bang,
     enableUser: bang,
+    listLogs: bang,
+    exportLogs: bang,
   };
 }
 
@@ -952,6 +956,16 @@ class WatchedGateway implements PlatformGateway {
   enableUser(userId: string) {
     this.calls.push('enableUser');
     return this.inner.enableUser(userId);
+  }
+
+  listLogs(query?: Parameters<PlatformGateway['listLogs']>[0]) {
+    this.calls.push('listLogs');
+    return this.inner.listLogs(query);
+  }
+
+  exportLogs(query?: Parameters<PlatformGateway['exportLogs']>[0]) {
+    this.calls.push('exportLogs');
+    return this.inner.exportLogs(query);
   }
 }
 

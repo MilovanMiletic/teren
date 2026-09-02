@@ -3,6 +3,7 @@ import { Router, provideRouter } from '@angular/router';
 import { TranslocoTestingModule } from '@jsverse/transloco';
 
 import { MockPlatformGateway } from '../../core/platform/mock-platform-gateway';
+import { PlatformUserResponse } from '../../core/platform/platform-types';
 import { PLATFORM_GATEWAY } from '../../core/platform/platform-gateway';
 import { ADMIN_SESSION_STORAGE_KEY, AdminSession } from '../../core/session/admin-session';
 import { KnobbedPlatformGateway, platformHttpError } from '../../testing/platform-gateway-double';
@@ -563,7 +564,12 @@ describe('PlatformPage', () => {
       await press('Prikaži sve');
 
       expect(listedNames()).toEqual(['Milovan Miletić', 'Petar Petrović', 'Zoran Jovanović']);
-      expect(element.querySelector('.table-bar')).toBeNull();
+      // The strip stays and goes quiet — see `company-page.spec.ts`, which reasons it out: the
+      // count is printed always since paging, and the tint goes on meaning one thing only.
+      const cleared = element.querySelector('.table-bar');
+      expect(cleared?.classList.contains('table-bar--quiet')).toBe(true);
+      expect(cleared?.textContent).toContain('Ukupno 3');
+      expect(text()).not.toContain('Prikaži sve');
     });
 
     it('says a filter is why the directory is empty, not that the product is', async () => {
@@ -847,6 +853,206 @@ describe('PlatformPage', () => {
       expect(element.querySelector('.pop')?.textContent).toContain(
         'nikada transkript, fotografiju ili izveštaj',
       );
+    });
+  });
+
+  // ---- Ten rows a page ---------------------------------------------------------------------------
+
+  describe('paging', () => {
+    /**
+     * Foremen at one customer, generated rather than written out.
+     *
+     * Workers, because the fixture's three accounts are one of each role and a generated crew keeps
+     * the three group bands meaningful: staff and administrators stay small, and it is the foremen
+     * band that grows past a page — which is what the founder's directory will actually look like.
+     */
+    function crew(size: number): PlatformUserResponse[] {
+      return Array.from({ length: size }, (_, index) => {
+        const n = String(index + 1).padStart(2, '0');
+        return {
+          id: `66666666-6666-6666-6666-0000000000${n}`,
+          company_id: MockPlatformGateway.VODOINSTAL_ID,
+          company_name: 'Vodoinstal Petrović d.o.o.',
+          role: 'worker',
+          username: `radnik.${n}`,
+          display_name: `Radnik ${n}`,
+          email: null,
+          language: 'sr',
+          created_at: '2026-08-02T06:15:00.000Z',
+          last_login_at: null,
+          disabled_at: null,
+          password_pending: true,
+        };
+      });
+    }
+
+    function pages(): string[] {
+      return [...element.querySelectorAll('.pager__page')].map((n) => n.textContent?.trim() ?? '');
+    }
+
+    async function goToPage(number: string): Promise<void> {
+      const target = [...element.querySelectorAll<HTMLButtonElement>('.pager__page')].find(
+        (candidate) => candidate.textContent?.trim() === number,
+      );
+      if (!target) {
+        throw new Error(`no page control reading "${number}"; there are: ${pages().join(', ')}`);
+      }
+      target.click();
+      await settle();
+    }
+
+    /**
+     * A second member of Teren's own staff, named so he sorts **last** alphabetically.
+     *
+     * The whole point of him. With seventeen accounts and the page cut from a flat sort, staff
+     * whose names fall late in the alphabet land on page 2 — and a first page of the *accounts
+     * directory* with no `Teren tim` band on it tells the founder Teren has no staff. `Ž` is the
+     * last letter of the Serbian Latin alphabet, so this fixture fails on any order that is not the
+     * drawn one.
+     */
+    function lateStaff(): PlatformUserResponse {
+      return {
+        id: '88888888-8888-8888-8888-000000000001',
+        company_id: null,
+        company_name: null,
+        role: 'super_admin',
+        username: null,
+        display_name: 'Živko Žikić',
+        email: 'zivko@teren.rs',
+        language: 'sr',
+        created_at: '2026-07-02T08:00:00.000Z',
+        last_login_at: '2026-09-01T07:30:00.000Z',
+        disabled_at: null,
+        password_pending: false,
+      };
+    }
+
+    /** The band each drawn row belongs under, read off the table as a screen reader would. */
+    function bandOfEachRow(): string[] {
+      const bands: string[] = [];
+      let current = '';
+      for (const node of element.querySelectorAll('tbody tr')) {
+        const label = node.querySelector('.group__label');
+        if (label) {
+          current = label.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+        } else if (node.classList.contains('person')) {
+          bands.push(current);
+        }
+      }
+      return bands;
+    }
+
+    /**
+     * **The page is cut from the order the screen draws, not from the order it sorts.**
+     *
+     * Until the review of 2026-09-02 it was cut from a flat sort and only then regrouped, so a
+     * page's membership came from the sort and its order came from the band — two orders, one
+     * screen. Driven at 1280 this left the founder's own staff on page 2 with no `Teren tim` band
+     * on page 1 at all, and gave a page reading V, Z, S, T, U, L, M under a column head claiming
+     * ascending.
+     *
+     * Both halves are asserted, because each fails on its own: the staff band is **on page 1**,
+     * and the bands the rows fall under are **contiguous and in reach order** rather than
+     * interleaved.
+     */
+    it('cuts the page from the drawn order, so the first band is never left behind', async () => {
+      gateway.extraUsers.push(lateStaff(), ...crew(14));
+      await render();
+
+      expect(groupBands()[0]).toBe('Teren tim');
+      expect(listedNames().slice(0, 2)).toEqual(['Milovan Miletić', 'Živko Žikić']);
+
+      // Contiguous: every band appears as one unbroken run, in reach order.
+      const bands = bandOfEachRow();
+      expect(bands).toEqual(
+        [...bands].sort((a, b) => groupBands().indexOf(a) - groupBands().indexOf(b)),
+      );
+      expect(new Set(bands).size).toBe(groupBands().length);
+    });
+
+    /** The same, with the name sort the reviewer drove — the order a column head is claiming. */
+    it('keeps each band’s own order under the column head that claims it', async () => {
+      gateway.extraUsers.push(lateStaff(), ...crew(14));
+      await render();
+
+      await sortByColumn('Osoba');
+
+      // Staff A→Ž first, then the administrators, then the foremen — never one flat alphabet
+      // sliced and shuffled back into bands.
+      expect(groupBands()[0]).toBe('Teren tim');
+      expect(listedNames().slice(0, 3)).toEqual([
+        'Milovan Miletić',
+        'Živko Žikić',
+        'Petar Petrović',
+      ]);
+    });
+
+    /**
+     * **Ten accounts a page, cut through the groups rather than inside them.**
+     *
+     * A page size applied per group would draw up to thirty rows under a control promising ten, and
+     * the strip above it would be describing a screen nobody was looking at.
+     */
+    it('draws ten accounts to a page, across the bands', async () => {
+      gateway.extraUsers.push(...crew(14));
+      await render();
+
+      expect(listedNames()).toHaveLength(10);
+      expect(pages()).toEqual(['1', '2']);
+      expect(element.querySelector('.table-bar')?.textContent).toContain('Prikazano 1–10 od 17');
+    });
+
+    /** A page holding only foremen prints one band, not three — the bands come from the slice. */
+    it('draws only the bands the page actually has people in', async () => {
+      gateway.extraUsers.push(...crew(14));
+      await render();
+
+      await goToPage('2');
+
+      expect(listedNames()).toHaveLength(7);
+      expect(groupBands()).toEqual(['Poslovođe']);
+      expect(element.querySelector('.table-bar')?.textContent).toContain('Prikazano 11–17 od 17');
+    });
+
+    /** The rewind: an answer to a question he has just asked belongs on the first page. */
+    it('goes back to the first page the moment the directory becomes a different list', async () => {
+      gateway.extraUsers.push(...crew(14));
+      await render();
+      await goToPage('2');
+
+      await filterBy('Osoba', 'radnik');
+
+      expect(element.querySelector('[aria-current="page"]')?.textContent?.trim()).toBe('1');
+      expect(listedNames()[0]).toBe('Radnik 01');
+    });
+
+    it('goes back to the first page when the order is changed', async () => {
+      gateway.extraUsers.push(...crew(14));
+      await render();
+      await goToPage('2');
+
+      await sortByColumn('Osoba');
+
+      expect(element.querySelector('[aria-current="page"]')?.textContent?.trim()).toBe('1');
+    });
+
+    /** The two totals stay apart: what is on the glass, what answers the filter, what exists. */
+    it('says which slice of which total, without letting paging look like filtering', async () => {
+      gateway.extraUsers.push(...crew(14));
+      await render();
+
+      await filterBy('Osoba', 'radnik');
+
+      const bar = element.querySelector('.table-bar');
+      expect(bar?.textContent).toContain('Prikazano 1–10 od 14');
+      expect(bar?.textContent).toContain('filtrirano iz 17');
+    });
+
+    it('draws no pager over a directory that fits on one page, and still says how many', async () => {
+      await render();
+
+      expect(element.querySelector('.pager')).toBeNull();
+      expect(element.querySelector('.table-bar')?.textContent).toContain('Ukupno 3');
     });
   });
 });

@@ -1,3 +1,4 @@
+using Teren.Api.Logging;
 using Teren.Core.Tenancy;
 
 namespace Teren.Api.Auth;
@@ -68,9 +69,14 @@ public sealed class BearerAuthFilter : IEndpointFilter
 
     private static IResult Challenge(HttpContext http, ILogger logger, string reason)
     {
-        // Logged with the reason, never with the presented token.
+        // Logged with the reason, never with the presented token — and never with the URL. This
+        // line runs for a caller who has proved nothing, so `http.Request.Path` here was an
+        // anonymous write of the caller's own words into `app_log` (see LoggableRoute).
         logger.LogWarning(
-            "Rejected {Method} {Path}: {Reason}.", http.Request.Method, http.Request.Path, reason);
+            "Rejected {Method} {Route}: {Reason}.",
+            http.Request.Method,
+            LoggableRoute.Of(http),
+            reason);
 
         http.Response.Headers.WWWAuthenticate = "Bearer";
         return TypedResults.Problem(

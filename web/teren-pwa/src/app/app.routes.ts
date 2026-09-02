@@ -255,6 +255,30 @@ export const routes: Routes = [
   },
   {
     /**
+     * The log (D5). Every line the server wrote, and every action the app recorded, in one stream.
+     *
+     * `requiresSuperAdmin`, like the two screens above it — and it is the gate that matters most
+     * on this surface. The stream carries `company_id` and `entry_id` on rows belonging to real
+     * customers, and while it holds no transcript, no photograph and no report, "which customer had
+     * an error at 18:12" is still Teren's business and nobody else's. **Not "company admin or
+     * better"**: the roles are not a hierarchy, and a gate written as a rank is the first step
+     * towards a customer reading another customer's failures.
+     *
+     * Before the wildcard, for the reason every other admin route is: a member of staff has no
+     * device session, so `'**' -> redirectTo: ''` would send him to Home, whose guard would send
+     * him to Welcome, and the app would answer a valid sign-in with a screen asking for a code he
+     * cannot have.
+     *
+     * **Reachable, which is a separate question from registered** (2026-09-01, `/login`). The way
+     * in is a control in `/platform`'s head cluster; `logs-page.spec.ts` presses that control and
+     * follows it through the real route table rather than asserting that a path exists.
+     */
+    path: 'platform/logs',
+    canMatch: [requiresSuperAdmin],
+    loadComponent: () => import('./features/platform/logs-page').then((m) => m.LogsPage),
+  },
+  {
+    /**
      * One account: his link, and the switch that takes him out of service.
      *
      * A route rather than a row action, for the reason `/company/worker/:workerId` is one:

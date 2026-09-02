@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Diagnostics;
+using Teren.Api.Logging;
 
 namespace Teren.Api.Errors;
 
@@ -25,9 +26,16 @@ public sealed class MalformedRequestExceptionHandler(
             return false;
         }
 
+        // NOTHING user-derived is logged here, and this is the site that made that rule necessary.
+        // Parameter binding runs before the auth filter, so this line is reachable with no
+        // credential at all; the framework's message names the offending value, and the URL is
+        // whatever the caller typed. The route template and the status are what an operator can
+        // act on, and neither can be written from outside (see LoggableRoute).
         logger.LogInformation(
-            "Malformed {Method} {Path}: {Message}",
-            httpContext.Request.Method, httpContext.Request.Path, badRequest.Message);
+            "Malformed {Method} {Route}: rejected with {Status}.",
+            httpContext.Request.Method,
+            LoggableRoute.Of(httpContext),
+            badRequest.StatusCode);
 
         httpContext.Response.StatusCode = badRequest.StatusCode;
 

@@ -18,6 +18,8 @@ import { AudioRecorderService, RecorderState } from '../../core/media/audio-reco
 import { negotiateAudioMimeType } from '../../core/media/audio-mime';
 import { GeolocationService } from '../../core/media/geolocation.service';
 import { ProjectService } from '../../core/projects/project.service';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
 import { AppHeader } from '../../ui/app-header';
 import { formatDuration } from '../../ui/duration.pipe';
 import { Icon } from '../../ui/icon';
@@ -72,6 +74,15 @@ export class CaptureRecordingPage implements OnDestroy {
   private readonly geolocation = inject(GeolocationService);
   private readonly projects = inject(ProjectService);
   private readonly status = inject(AppStatus);
+  /**
+   * The action log (D5).
+   *
+   * Every call below is one of the two cases a `data-log` attribute cannot express — an outcome or
+   * a duration — and every one of them is fire-and-forget: `record()` composes in memory, hands
+   * the write to a chain nobody awaits, and swallows its own failures. Nothing here can delay a
+   * chunk reaching the store or a take reaching the draft.
+   */
+  private readonly actions = inject(ActionLogService);
 
   protected readonly project = this.projects.selected;
   protected readonly state = this.recorder.state;
@@ -180,7 +191,14 @@ export class CaptureRecordingPage implements OnDestroy {
     this.recorder.reset();
 
     const project = this.project();
-    if (this.blocker() !== null || !project) {
+    const blocker = this.blocker();
+    if (blocker !== null || !project) {
+      // Why the microphone never opened, said as a slug from this file's own vocabulary — never
+      // the project, never the sentence on the card.
+      this.actions.record(ACTIONS.captureRecordStart, {
+        outcome: 'blocked',
+        detail: { reason: blocker ?? 'no-project' },
+      });
       return;
     }
 
@@ -198,6 +216,10 @@ export class CaptureRecordingPage implements OnDestroy {
       });
     } catch {
       this.status.reportStorageFailure();
+      this.actions.record(ACTIONS.captureRecordStart, {
+        outcome: 'fail',
+        detail: { reason: 'storage' },
+      });
       return;
     }
 
@@ -208,8 +230,16 @@ export class CaptureRecordingPage implements OnDestroy {
       // start-up sweep to puzzle over.
       await this.entries.discardCapture(entryId);
       this.entryId = null;
+      // The recorder's own state is the reason: denied, unavailable, unsupported, error. All four
+      // are constants of this app, which is what makes them safe to put on the wire.
+      this.actions.record(ACTIONS.captureRecordStart, {
+        outcome: 'fail',
+        detail: { reason: this.state() },
+      });
       return;
     }
+
+    this.actions.record(ACTIONS.captureRecordStart, { outcome: 'ok', entryId });
 
     // Location is nice-to-have evidence and must never delay or block the recording, so it is
     // fetched alongside it and simply stays null if it does not arrive.
@@ -239,8 +269,20 @@ export class CaptureRecordingPage implements OnDestroy {
         await this.entries.discardCapture(entryId);
         this.entryId = null;
         this.tooShort.set(true);
+        this.actions.record(ACTIONS.captureRecordStop, {
+          outcome: 'cancel',
+          entryId,
+          detail: { empty: true },
+        });
         return;
       }
+
+      // Before the navigation, so the event is filed on the screen the button was on.
+      this.actions.record(ACTIONS.captureRecordStop, {
+        outcome: 'ok',
+        durationMs: finished?.durationMs,
+        entryId,
+      });
 
       this.leaving = true;
       await this.router.navigate(['/entry', entry.id], { replaceUrl: true });
@@ -248,6 +290,7 @@ export class CaptureRecordingPage implements OnDestroy {
       // The chunks are still on disk under this entry id, so the retry below — or the next app
       // start — can still assemble them. Nothing is stranded.
       this.saveFailed.set(true);
+      this.actions.record(ACTIONS.captureRecordStop, { outcome: 'fail', entryId });
     } finally {
       this.saving.set(false);
     }

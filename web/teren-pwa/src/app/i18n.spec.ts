@@ -11,6 +11,8 @@ import { CONFIRM_FAILURES } from './core/confirm/confirm.service';
 import { PROFILE_ROLES } from './core/identity/profile.service';
 import { REPORT_FAILURES } from './core/report/report.service';
 import { COMPANY_REASON_KEYS } from './features/company/company-reason';
+import { ACTION_VOCABULARY } from './core/telemetry/actions';
+import { LOG_LEVELS, LOG_RANGES } from './features/platform/log-level';
 import { REASON_KEYS } from './features/pending/pending-page';
 import { AVAILABLE_LANGUAGES, DEFAULT_LANGUAGE } from './i18n';
 
@@ -45,10 +47,21 @@ function sourceFiles(dir = join(process.cwd(), 'src', 'app')): { path: string; t
  * never invent one — the safe direction for a guard to be imprecise in.
  */
 function withoutComments(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/\/\/[^\n]*/g, ' ');
+  return (
+    source
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/<!--[\s\S]*?-->/g, ' ')
+      .replace(/\/\/[^\n]*/g, ' ')
+      /*
+       * …and `data-log="capture.send"`, which is a wire slug and not a key.
+       *
+       * A control declares its own name for the action log (D5, `core/telemetry/`), and the
+       * vocabulary happens to be spelled like a translation key. Nobody reads one; they travel to
+       * `POST /api/client-events` and nowhere else. Stripped rather than exempting whole templates,
+       * because the same file's real keys must still be checked.
+       */
+      .replace(/data-log\s*=\s*"[^"]*"/g, ' ')
+  );
 }
 
 /** The top-level blocks of the dictionary — read from the dictionary, never listed by hand. */
@@ -68,11 +81,46 @@ const KEY_LITERAL = new RegExp(
   'g',
 );
 
+/**
+ * The dotted literals that are **not** translation keys, however exactly they are shaped like one.
+ *
+ * D5's action vocabulary is a slug namespace — `capture.send`, `platform.user.open`, `app.start` —
+ * and it collides by pure coincidence with the shape of a Transloco key. Those slugs go to
+ * `POST /api/client-events` and nowhere else; no human ever reads one, and asking the dictionaries
+ * to answer for them would be asking for thirty Serbian sentences nobody will ever see.
+ *
+ * Exempted **where a slug is written, not wherever its spelling appears** — in `actions.ts`, the
+ * one file that spells the vocabulary out, and inside a `data-log` attribute. That is the scoping
+ * `actions.ts` documents for itself, and getting it wrong is not theoretical: this started as a
+ * blanket exemption by value, and **four of the thirty-three slugs are also real translation
+ * keys** — `capture.record.stop` is the label on the stop button, `confirm.open` and
+ * `archive.report.download` sit on a diary row, `company.code.issue` on a foreman's page. Exempting
+ * the spelling everywhere switched this guard off for four sentences a foreman actually reads:
+ * delete one of them from both dictionaries and nothing would have gone red.
+ *
+ * The collision itself is harmless and deliberately tolerated — a slug names the same thing the
+ * button says, so of course they are spelled alike. What matters is that a slug is only ignored at
+ * a site where it cannot be a translation.
+ */
+const NOT_KEYS = new Set<string>(ACTION_VOCABULARY);
+
+/** The one file that writes a slug out as a string; everywhere else references `ACTIONS.x`. */
+const SLUG_DECLARATION = 'actions.ts';
+
+/** `data-log="capture.photo.add"` declares an action on a control. It is never a sentence. */
+const LOG_ATTRIBUTE = /\sdata-log=(["'`])[^"'`]*\1/g;
+
 function referencedKeys(): { key: string; file: string }[] {
   const found: { key: string; file: string }[] = [];
   for (const { path, text } of sourceFiles()) {
-    for (const match of text.matchAll(KEY_LITERAL)) {
-      found.push({ key: match[1] + match[2], file: basename(path) });
+    const file = basename(path);
+    const declaresSlugs = file === SLUG_DECLARATION;
+    for (const match of text.replace(LOG_ATTRIBUTE, ' ').matchAll(KEY_LITERAL)) {
+      const key = match[1] + match[2];
+      if (declaresSlugs && NOT_KEYS.has(key)) {
+        continue;
+      }
+      found.push({ key, file });
     }
   }
   return found;
@@ -360,6 +408,96 @@ describe('translation dictionaries', () => {
 
     expect(en.company.phones.confirm.body).toMatch(/stops being sent/i);
     expect(en.company.phones.confirm.body).toMatch(/nothing on the phone is deleted/i);
+  });
+
+  /**
+   * The log screen's two closed sets, both built by concatenation (D5).
+   *
+   * `logs-page.html` writes `t('logs.range.' + option)` and `LogsPage.levelWord` builds
+   * `logs.level.<lowercase>`, so the literal scan above cannot see one of those keys. The levels
+   * are the sharper half: they are **wire values** — `Warning`, `Error` — and a missing Serbian
+   * word would put a raw English level on a chip beside `Greška`, on the one screen whose job is
+   * to be read quickly.
+   */
+  it('can name every level and every period the log screen offers', () => {
+    expect(LOG_LEVELS.length).toBe(6);
+    for (const level of LOG_LEVELS) {
+      const key = `logs.level.${level.toLowerCase()}`;
+      expect(enKeys, `no English word for '${level}'`).toContain(key);
+      expect(srKeys, `no Serbian word for '${level}'`).toContain(key);
+    }
+
+    expect(LOG_RANGES.length).toBeGreaterThan(0);
+    for (const range of LOG_RANGES) {
+      expect(enKeys).toContain(`logs.range.${range}`);
+      expect(srKeys).toContain(`logs.range.${range}`);
+    }
+  });
+
+  /**
+   * **The log screen may not claim a total, and now it has no sentence in which to.**
+   *
+   * Every other table in the product prints "showing 3 of 12" because it holds all twelve. This
+   * screen holds one keyset page of a stream and cannot know a total — so a count that read like
+   * one would be the same lie as a quietly filtered directory, on the screen an owner opens
+   * precisely because he does not trust what he is being told.
+   *
+   * It used to be guarded by reading `logs.count.more` / `logs.count.all` and checking neither said
+   * "of {{". Those keys are **gone** (founder, 2026-09-02: *"remove the header text that is above
+   * the columns"*), and a guard whose subject has been deleted is a guard that passes for ever
+   * while checking nothing. So the property is pinned the other way round: the shared count
+   * sentences all three *other* tables use are named, and the log screen's template is scanned to
+   * prove it reaches for none of them. It is the class that is forbidden, not two spellings of it —
+   * which also catches the likelier mistake, somebody adding a count strip here out of habit
+   * because the other three have one.
+   */
+  it('never lets the log screen claim a total it cannot know', () => {
+    const template = readFileSync(
+      join(process.cwd(), 'src', 'app', 'features', 'platform', 'logs-page.html'),
+      'utf8',
+    );
+
+    // Named from the dictionary rather than typed here, so renaming one renames it in the guard.
+    const fractions = leafKeys(en.table.page, 'table.page').concat('table.filter.showing');
+    expect(fractions).toContain('table.page.range');
+    expect(fractions.length).toBeGreaterThan(2);
+
+    for (const key of fractions) {
+      expect(template, `${key} says "of N" and this screen has no N`).not.toContain(key);
+    }
+
+    // …and the sentences themselves really are the "of N" shape, or the scan above proves nothing.
+    for (const dictionary of [en, sr]) {
+      expect(read(dictionary, 'table.page.range')).toMatch(/\{\{\s*total\s*\}\}/);
+    }
+  });
+
+  /**
+   * The exemption above, kept honest — **by scope, not by spelling.**
+   *
+   * Several slugs are also real keys, because a slug names the thing the button says. The rule
+   * that makes that safe is that a slug is ignored only in `actions.ts` and in a `data-log`
+   * attribute. This walks the collisions and insists the scan still sees each of them somewhere
+   * else: if the exemption ever widens back out to matching by value, these keys drop out of the
+   * scan silently and the sentences behind them stop being checked at all.
+   */
+  it('still checks the keys that happen to be spelled like an action slug', () => {
+    expect(ACTION_VOCABULARY.length).toBeGreaterThan(20);
+
+    const collisions = ACTION_VOCABULARY.filter((slug) => resolves(en, slug) || resolves(sr, slug));
+    // A guard on the guard: if nothing collides any more this spec proves nothing, and the
+    // scoping it defends should be re-read rather than left standing on an empty set.
+    expect(collisions.length).toBeGreaterThan(0);
+
+    const scanned = new Set(
+      referencedKeys()
+        .filter(({ file }) => file !== SLUG_DECLARATION)
+        .map(({ key }) => key),
+    );
+    const referenced = collisions.filter((slug) =>
+      [...scanned].some((key) => key === slug || key.startsWith(`${slug}.`)),
+    );
+    expect(referenced.length, 'no colliding slug is checked as a key any more').toBeGreaterThan(0);
   });
 
   it('keeps Serbian the default runtime locale', () => {

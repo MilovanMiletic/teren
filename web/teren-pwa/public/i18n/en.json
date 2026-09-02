@@ -70,6 +70,18 @@
       "clearAll": "Show all",
       "showing": "Showing {{shown}} of {{total}}",
       "empty": "No rows match the filter."
+    },
+    "page": {
+      "range": "Showing {{from}}–{{to}} of {{total}}",
+      "filteredRange": "Showing {{from}}–{{to}} of {{shown}} — filtered from {{total}}",
+      "total": "{{total}} in total"
+    },
+    "pager": {
+      "label": "Pagination",
+      "previous": "Previous page",
+      "next": "Next page",
+      "page": "Page {{page}}",
+      "position": "{{page}} / {{pageCount}}"
     }
   },
   "home": {
@@ -1028,6 +1040,90 @@
       "refused": "The server did not accept this.",
       "emailTaken": "That address already has an account. Invite that account instead of making a second one.",
       "unavailable": "The server is not responding right now."
+    },
+    "logs": {
+      "open": "Open the log"
+    }
+  },
+  "logs": {
+    "title": "Log",
+    "subtitle": "What the product did",
+    "caption": "Every line the server wrote and every action the app recorded",
+    "loading": "Loading the log…",
+    "unavailable": "Nothing was loaded — the server did not answer this question.",
+    "reload": "Refresh",
+    "back": "Back to the platform",
+    "about": {
+      "title": "What you are looking at",
+      "body": "The server’s own log and the actions people took in the app, newest first. The filtering happens on the server, so this screen never knows a total — only how many lines it has loaded so far. When the server is holding more, “Load more” waits at the foot. The download button gives you the same filters as a CSV file."
+    },
+    "filters": {
+      "title": "Narrow the stream",
+      "on": "on",
+      "clear": "Clear the filters"
+    },
+    "range": {
+      "label": "Period",
+      "hour": "Last hour",
+      "today": "Today",
+      "week": "7 days",
+      "all": "Everything kept"
+    },
+    "level": {
+      "label": "Level",
+      "verbose": "Verbose",
+      "debug": "Debug",
+      "information": "Information",
+      "warning": "Warning",
+      "error": "Error",
+      "fatal": "Fatal"
+    },
+    "column": {
+      "time": "Time",
+      "level": "Level",
+      "source": "Source",
+      "message": "Message",
+      "ids": "Record",
+      "open": "Open the line"
+    },
+    "row": {
+      "open": "Show this line in full"
+    },
+    "empty": {
+      "none": "Nothing has been logged yet.",
+      "filtered": "No lines match these filters."
+    },
+    "more": {
+      "action": "Load more",
+      "loading": "Loading…"
+    },
+    "detail": {
+      "message": "Message",
+      "id": "Line number",
+      "at": "Exact time",
+      "atZone": "on this device’s clock",
+      "level": "Level",
+      "template": "Template",
+      "properties": "Properties",
+      "exception": "Exception",
+      "noException": "No exception on this line.",
+      "correlation": "Correlation",
+      "company": "Customer",
+      "entry": "Record"
+    },
+    "export": {
+      "action": "Download the log",
+      "working": "Preparing the file…",
+      "done": "The file was saved",
+      "failed": "The download did not go through"
+    },
+    "summary": {
+      "loaded": "Loaded",
+      "errors": "Errors",
+      "warnings": "Warnings"
+    },
+    "triage": {
+      "label": "Status — tap to see only that"
     }
   }
 }

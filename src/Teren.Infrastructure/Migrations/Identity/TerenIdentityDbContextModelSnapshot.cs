@@ -188,6 +188,80 @@ namespace Teren.Infrastructure.Migrations.Identity
                     b.ToTable("admin_session", (string)null);
                 });
 
+            modelBuilder.Entity("Teren.Core.Entities.AppLog", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<Guid?>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<string>("Correlation")
+                        .HasColumnType("text")
+                        .HasColumnName("correlation");
+
+                    b.Property<Guid?>("EntryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("entry_id");
+
+                    b.Property<string>("Exception")
+                        .HasColumnType("text")
+                        .HasColumnName("exception");
+
+                    b.Property<string>("Level")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("level");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("message");
+
+                    b.Property<string>("Properties")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("properties");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source");
+
+                    b.Property<string>("Template")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("template");
+
+                    b.HasKey("Id")
+                        .HasName("pk_app_log");
+
+                    b.HasIndex("At")
+                        .IsDescending()
+                        .HasDatabaseName("ix_app_log_at");
+
+                    b.HasIndex("CompanyId", "At")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_app_log_company_id_at");
+
+                    b.HasIndex("Level", "At")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_app_log_level_at");
+
+                    b.ToTable("app_log", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_app_log_level", "level IN ('Verbose','Debug','Information','Warning','Error','Fatal')");
+                        });
+                });
+
             modelBuilder.Entity("Teren.Core.Entities.AppUser", b =>
                 {
                     b.Property<Guid>("Id")

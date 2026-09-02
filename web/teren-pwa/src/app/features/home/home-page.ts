@@ -22,6 +22,8 @@ import { LocalEntry, Project, needsConfirmation } from '../../core/db/models';
 import { ProjectService } from '../../core/projects/project.service';
 import { RETURN_URL_PARAM } from '../../core/session/return-url';
 import { EntryStatusRefresher } from '../../core/sync/entry-status-refresh.service';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
 import { AppHeader } from '../../ui/app-header';
 import { DurationPipe } from '../../ui/duration.pipe';
 import { StatusTone, entryStatusKey, entryStatusTone } from '../../ui/entry-status';
@@ -66,6 +68,15 @@ export class HomePage {
   private readonly projects = inject(ProjectService);
   private readonly statuses = inject(EntryStatusRefresher);
   private readonly connectivity = inject(ConnectivityService);
+  /**
+   * The action log (D5).
+   *
+   * A recent row cannot declare its own slug, because it is two actions wearing one control: an
+   * entry the server has handed back opens the confirmation gate and everything else opens the
+   * record. A `data-log` attribute would have to claim one of them and would be wrong about the
+   * other, so the branch is what does the recording.
+   */
+  private readonly actions = inject(ActionLogService);
   protected readonly plural = inject(PluralService);
   protected readonly status = inject(AppStatus);
 
@@ -238,6 +249,7 @@ export class HomePage {
       this.openConfirm(entry.id);
       return;
     }
+    this.actions.record(ACTIONS.archiveEntryOpen, { entryId: entry.id });
     void this.router.navigate(['/diary'], { queryParams: { [ARCHIVE_ENTRY_PARAM]: entry.id } });
   }
 
@@ -255,6 +267,7 @@ export class HomePage {
   }
 
   private openConfirm(entryId: string): void {
+    this.actions.record(ACTIONS.confirmOpen, { entryId });
     void this.router.navigate(['/confirm', entryId]);
   }
 

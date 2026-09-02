@@ -1,3 +1,4 @@
+using Teren.Api.Logging;
 using Teren.Core.Entities;
 using Teren.Core.Tenancy;
 
@@ -57,11 +58,12 @@ public sealed class RoleFilter(params AppUserRole[] allowed) : IEndpointFilter
             http.RequestServices.GetRequiredService<ILoggerFactory>()
                 .CreateLogger<RoleFilter>()
                 .LogWarning(
-                    // The role and the route, never the user's name: this line goes to the log
-                    // stream a super admin will be able to read at D5.
-                    "Refused {Method} {Path}: role {Role} is not admitted here.",
+                    // The role and the route TEMPLATE, never the user's name and never the URL he
+                    // typed: this line goes to the log stream a super admin reads, and a URL is
+                    // caller-controlled text (see LoggableRoute).
+                    "Refused {Method} {Route}: role {Role} is not admitted here.",
                     http.Request.Method,
-                    http.Request.Path,
+                    LoggableRoute.Of(http),
                     AppUserRoleNames.ToWire(principal.Role));
 
             return Forbidden();

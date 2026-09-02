@@ -74,6 +74,7 @@
         <button
           type="button"
           class="btn btn--primary btn--row detail__notice-action"
+          data-log="confirm.open"
           (click)="openConfirm()"
         >
           {{ t('confirm.open') }}
@@ -94,6 +95,7 @@
         <button
           type="button"
           class="btn btn--tertiary btn--row detail__notice-action"
+          data-log="confirm.open"
           (click)="openConfirm()"
         >
           {{ t('archive.revise.action') }}
@@ -277,6 +279,7 @@
               <button
                 type="button"
                 class="photos__thumb"
+                data-log="archive.media.open"
                 [attr.aria-label]="t('archive.photos.open', { index: i + 1 })"
                 (click)="openViewer(i)"
               >

@@ -90,21 +90,21 @@
 
       <section class="card people wide" [attr.aria-label]="t('platform.companies.caption')">
         <!--
-          Only while a filter is live, and at every width: a list quietly showing three of twenty
-          customers is the one state in which this screen can make the founder believe a customer
-          was never created — or, worse, suspend the wrong one because the row he expected is not
-          where he expected it.
+          **At every width, and now always** (founder, 2026-09-02: ten rows a page, and never hide
+          the count). A list quietly showing three of twenty customers is the one state in which
+          this screen can make the founder believe a customer was never created — or, worse,
+          suspend the wrong one because the row he expected is not where he expected it. Paging
+          reaches the same state from the other direction, so the strip says which slice of which
+          total is on screen and only turns loud when a filter is live.
         -->
-        @if (controls.filtering()) {
-          <div class="table-bar" role="status">
-            <span class="t-meta">
-              {{ t('table.filter.showing', { shown: listed().length, total: customers().length }) }}
-            </span>
+        <div class="table-bar" [class.table-bar--quiet]="!controls.filtering()" role="status">
+          <span class="t-meta">{{ t(countKey(), countParams()) }}</span>
+          @if (controls.filtering()) {
             <button type="button" class="table-bar__clear" (click)="controls.clearFilters()">
               {{ t('table.filter.clearAll') }}
             </button>
-          </div>
-        }
+          }
+        </div>
 
         <!--
           Below 768 the same three controls the column heads carry, as pills: one tap on the word
@@ -203,7 +203,7 @@
                 </tr>
               </thead>
               <tbody>
-                @for (customer of listed(); track customer.id) {
+                @for (customer of pageListed(); track customer.id) {
                   <tr class="person">
                     <td>
                       <span class="person__name">{{ customer.name }}</span>
@@ -246,7 +246,7 @@
           </div>
         } @else {
           <ul class="rows">
-            @for (customer of listed(); track customer.id) {
+            @for (customer of pageListed(); track customer.id) {
               <li class="row">
                 <span class="person__name">{{ customer.name }}</span>
                 <span class="t-meta t-num"
@@ -281,6 +281,10 @@
             }
           </ul>
         }
+
+        <!-- One control for both renderings: the table from 768 up and the row list below it are
+             two views of one list, and two pagers would be two places for the page to drift. -->
+        <app-table-pager [page]="page()" [pageCount]="pageCount()" (goTo)="goToPage($event)" />
       </section>
     }
 

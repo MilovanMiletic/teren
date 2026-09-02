@@ -18,6 +18,8 @@ import {
   PlatformStatus,
   serverAnswered,
 } from '../../core/platform/platform.service';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
 import { AppHeader } from '../../ui/app-header';
 import { Icon } from '../../ui/icon';
 import { LanguageSwitcher } from '../../ui/language-switcher';
@@ -73,6 +75,7 @@ interface IssuedLink {
 export class PersonPage {
   private readonly platform = inject(PlatformService);
   private readonly router = inject(Router);
+  private readonly actions = inject(ActionLogService);
 
   readonly userId = input.required<string>();
 
@@ -205,10 +208,15 @@ export class PersonPage {
 
     if (result.status !== 'ok' || !result.invite) {
       this.actionStatus.set(result.status === 'ok' ? 'unavailable' : result.status);
+      // The outcome, never the link. A `trn_p_` token is a working credential to somebody's
+      // account, and the whole point of D6 was that it never leaves the server; writing one into
+      // a log table that Teren staff read would undo that in a single line.
+      this.actions.record(ACTIONS.platformInviteSend, { outcome: 'fail' });
       return;
     }
 
     this.issuedState.set({ personId: id, invite: result.invite });
+    this.actions.record(ACTIONS.platformInviteSend, { outcome: 'ok' });
   }
 
   protected async setDisabled(disabled: boolean): Promise<void> {
@@ -230,8 +238,16 @@ export class PersonPage {
 
     if (result.status !== 'ok') {
       this.actionStatus.set(result.status);
+      this.actions.record(ACTIONS.platformUserDisable, {
+        outcome: 'fail',
+        detail: { disabled },
+      });
       return;
     }
+
+    // Which way it went is a boolean, so it is allowed to travel; who it was done to is not.
+    // Withdrawing a man's access and restoring it are opposite acts and must not read alike.
+    this.actions.record(ACTIONS.platformUserDisable, { outcome: 'ok', detail: { disabled } });
 
     // Reload rather than trusting the returned row: the list is where every other number on this
     // surface comes from, and one screen holding a different copy is how two of them disagree.

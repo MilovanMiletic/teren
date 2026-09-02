@@ -190,13 +190,18 @@ function navigationTargets(): { targets: NavigationTarget[]; unresolvable: strin
  * **41 → 43 (2026-09-01)**: the people list opens the owner's own account, and that screen has the
  * way back to the people. Counted off the tree.
  *
+ * **43 → 45 (D5)**: `/platform`'s head cluster opens the log viewer, and the viewer has the way
+ * back. The pair is the shape every screen on this surface takes — a door and its way out — and a
+ * bump of exactly two is what a new screen should cost here. A bump of one would mean a screen
+ * somebody can reach and not leave.
+ *
  * Worth recording what this count could not catch, since it was green throughout. All forty
  * navigations resolved, `/platform` among them — but its *only* navigation was the one
  * `login-page.ts` performs on a successful sign-in, and on the founder's own browser `/login` was
  * itself unreachable (`requiresNoAdminSession`). A route table cannot see that: reachability is a
  * property of the guards, not of the paths. `device.guard.spec.ts` pins it where it lives.
  */
-const NAVIGATION_COUNT = 43;
+const NAVIGATION_COUNT = 45;
 
 /**
  * The query parameters a navigation may put on the URL, by the name of the constant that holds
@@ -377,6 +382,11 @@ describe('app routes', () => {
       // The customers, on a route of their own so the heaviest action in the product does not
       // sit beside a row about somebody's phone.
       'platform/companies',
+      // The log (D5): every line the server wrote and every action the app recorded, in one
+      // stream. `requiresSuperAdmin` like the two above it — the rows carry `company_id` and
+      // `entry_id`, and "which customer had an error at 18:12" is Teren's business and nobody
+      // else's.
+      'platform/logs',
       // One account: his link, and the switch that takes him out of service. A route rather than
       // a row action, because re-inviting mints a working credential and supersedes any live one.
       'platform/user/:userId',

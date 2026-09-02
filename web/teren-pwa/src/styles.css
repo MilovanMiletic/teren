@@ -573,6 +573,33 @@ button {
   color: var(--color-ink-2);
 }
 
+/*
+ * …and the same strip when nothing is being hidden.
+ *
+ * With paging the count is printed **always** — "never hide the count" (founder, 2026-09-02) —
+ * because a table that shows ten of twenty-four rows and says nothing about it is the same defect
+ * the tint was invented for, arrived at by a different route. But the tint must keep meaning one
+ * thing: *a filter is narrowing what you see*. So the strip is quiet until a filter is live, and
+ * loud the moment one is.
+ *
+ * **The ground changes and the ink does not.** There was a `color: var(--color-ink-3)` here; it
+ * never applied — the strip's own `.t-meta` child sets ink-2 and wins — so the count read correctly
+ * for the wrong reason, and anybody repairing that cascade would have put a load-bearing count at
+ * 2.4:1 on canvas. ink-3 is for placeholders and decorative glyphs (design/tokens.md), and *how
+ * many rows you are looking at* is neither (review, 2026-09-02).
+ */
+.table-bar--quiet {
+  background: var(--color-canvas);
+}
+
+/*
+ * The pager sits at the foot of the card the table is in, and spans it: `ui/table-pager.ts` draws
+ * its own rule and padding, and this only stops the host collapsing to an inline box.
+ */
+app-table-pager {
+  display: block;
+}
+
 .table-bar__clear {
   min-height: var(--tap-min);
   padding: 0 var(--space-2);
@@ -584,6 +611,104 @@ button {
   font-size: var(--text-meta);
   font-weight: 600;
   cursor: pointer;
+}
+
+/*
+ * ---- The summary strip -----------------------------------------------------------------------
+ *
+ * A card of two or three numbers across the top of a screen: how many foremen, how many phones,
+ * how many errors. It exists on `/company`, `/platform`, `/platform/companies` and
+ * `/platform/logs`, and until now each of those four carried its own copy of these rules — the
+ * same duplication `.data-table` and `.table-bar` were hoisted here to end.
+ *
+ * **Only the log screen reads it from here so far.** The other three still define their own, and a
+ * component's scoped rules outrank a global one, so nothing about them changes until somebody
+ * collapses them onto this — which is a follow-up, not tonight's increment.
+ */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 0;
+  overflow: hidden;
+}
+
+.stats__cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4) 18px;
+  /* `border: 0` first, so a cell that is a <button> sheds the one the browser gives it. */
+  border: 0;
+  border-right: 1px solid var(--color-card-line);
+}
+
+.stats__cell:last-child {
+  border-right: 0;
+}
+
+.stats dt,
+.stats dd {
+  margin: 0;
+}
+
+.stats__value {
+  font-size: var(--text-h1);
+  line-height: 1.1;
+}
+
+/* The two colours that mean something. Everything else stays ink, so these read at a glance. */
+.stats__value--err {
+  color: var(--color-err);
+}
+
+.stats__value--warn {
+  color: var(--color-warn);
+}
+
+/*
+ * A summary cell that is a control.
+ *
+ * `/platform/logs` below 1024 makes two of its three cells buttons: the founder away from his desk
+ * is asking *is anything wrong*, and the moment a cell answers with a number he does not like, the
+ * next thing he wants is only those lines. Kept here with the rest of the strip so a second screen
+ * that wants the gesture inherits it rather than re-inventing it.
+ */
+.stats__cell--tap {
+  background: none;
+  font-family: var(--font-family);
+  text-align: left;
+  cursor: pointer;
+}
+
+/*
+ * Pressed means "the list is showing only this". Loud, because a screen quietly showing one of six
+ * kinds is the same trap as a quietly filtered directory — and this one is reached by a tap that is
+ * easy to make by accident in a corridor.
+ */
+.stats__cell--on {
+  background: var(--color-ink);
+}
+
+.stats__cell--on .t-label,
+.stats__cell--on .stats__value {
+  color: var(--color-card);
+}
+
+/*
+ * The same strip, spending less height on itself — what a phone wants.
+ *
+ * On a 390×844 screen every pixel above the first row is a pixel the reader did not come for. The
+ * numbers stay the biggest thing in the card, because they are the answer to his question, but it
+ * gives back its generous desktop padding and drops a type step. Still a 56 px target, comfortably
+ * past the 44 px minimum, for the cells that are controls.
+ */
+.stats--tight .stats__cell {
+  min-height: 56px;
+  padding: var(--space-2) var(--space-4);
+}
+
+.stats--tight .stats__value {
+  font-size: var(--text-h2);
 }
 
 /*

@@ -168,6 +168,13 @@ public sealed class TerenTestApp : IAsyncLifetime
         // retry tests instant while still exercising the loop.
         Environment.SetEnvironmentVariable("Pipeline__RetryDelay", "00:00:00");
 
+        // D5. The database log sink is REAL in the suite — a broken sink must fail here rather
+        // than on the founder's laptop — but its background flusher is pushed out of the way so
+        // that what reaches `app_log` is deterministic: a test enqueues, calls FlushLogsAsync,
+        // and reads. A two-second timer would otherwise write another test's lines into the
+        // middle of an assertion.
+        Environment.SetEnvironmentVariable("Logging__FlushInterval", "01:00:00");
+
         // D2. Two things ride on this, and both are deliberate.
         //
         //   * It is what staging and production actually run (deploy/docker-compose.prod.yml puts
@@ -286,6 +293,21 @@ public sealed class TerenTestApp : IAsyncLifetime
     public TerenIdentityDbContext CreateIdentityDbContext() =>
         CreateIdentityDbContext(ApiConnectionString);
 
+    // ------------------------------------------------------------------ logging
+
+    /// <summary>The one queue the sink and <c>POST /api/client-events</c> both feed.</summary>
+    public Teren.Infrastructure.Logging.AppLogQueue LogQueue =>
+        Factory.Services.GetRequiredService<Teren.Infrastructure.Logging.AppLogQueue>();
+
+    /// <summary>
+    /// Writes whatever is queued, now, and hands back how many rows landed. The suite's flush
+    /// interval is an hour, so this is the only thing that moves a log line into the table —
+    /// which is what makes a log assertion about the test that wrote it and nothing else.
+    /// </summary>
+    public Task<int> FlushLogsAsync(CancellationToken ct = default) =>
+        Factory.Services.GetRequiredService<Teren.Infrastructure.Logging.AppLogWriter>()
+            .FlushAsync(ct);
+
     private static TerenIdentityDbContext CreateIdentityDbContext(string connectionString)
     {
         var options = new DbContextOptionsBuilder<TerenIdentityDbContext>()
@@ -390,6 +412,12 @@ public sealed class TerenTestApp : IAsyncLifetime
         RaceInterceptor.Disarm();
         CommandTap.Reset();
 
+        // D5. The log queue is drained BEFORE the truncate below, and the order is the whole
+        // point: every test in this run emits log lines, and a flush that arrived after the
+        // truncate would put the previous test's warnings in the table this one is asserting
+        // about. Discarded rather than written — nothing in the suite wants the last test's log.
+        LogQueue.Discard();
+
         await using var db = CreateDbContext(companyId: null);
         // Every table any test can write to, identity included. This list, DemoReset's ordered
         // delete and DemoRowCounts grow together or the reset's safety assertion gains a blind
@@ -399,7 +427,7 @@ public sealed class TerenTestApp : IAsyncLifetime
             TRUNCATE TABLE
                 media, report, entry, project,
                 admin_audit, admin_session, password_token, activation_code, device, app_user,
-                company
+                app_log, company
             RESTART IDENTITY CASCADE
             """);
 

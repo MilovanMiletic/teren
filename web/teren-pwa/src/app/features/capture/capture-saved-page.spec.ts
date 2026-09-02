@@ -9,6 +9,9 @@ import { TEREN_DB, TerenDb } from '../../core/db/teren-db';
 import { GeolocationService } from '../../core/media/geolocation.service';
 import { IMAGE_COMPRESSOR } from '../../core/media/image-compression';
 import { DEMO_PROJECTS } from '../../core/projects/project-source';
+import { describeClick } from '../../core/telemetry/action-descriptor';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
 import { captureEntry } from '../../testing/capture-fixture';
 import { flushLiveQueries } from '../../testing/flush';
 import { CaptureSavedPage } from './capture-saved-page';
@@ -145,5 +148,63 @@ describe('CaptureSavedPage', () => {
   it('says so plainly when the entry is not on this phone', async () => {
     const element = await render(crypto.randomUUID());
     expect(element.textContent).toContain('Ovaj unos nije pronađen na telefonu');
+  });
+
+  /**
+   * What this screen tells the action log (D5).
+   *
+   * "Gotovo" declares itself on the control, because it is the money path and an attribute puts no
+   * code between the tap and `draft → queued`. The camera cannot: a file input fires the same event
+   * whether three pictures were compressed and stored or the entry refused them, and those are
+   * different facts.
+   */
+  describe('the action log', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('names the hand-over to the outbox on the control itself', async () => {
+      const entry = await captureEntry(store, { project: DEMO_PROJECTS[0] });
+      const element = await render(entry.id);
+
+      expect(describeClick(element.querySelector('.footer .btn--primary'))).toBe(
+        ACTIONS.captureSend,
+      );
+    });
+
+    it('records a stored photograph as a count, and never as a file name', async () => {
+      const entry = await captureEntry(store, { project: DEMO_PROJECTS[0] });
+      const element = await render(entry.id);
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+
+      selectPhoto(element);
+      await flushLiveQueries(10);
+      fixture.detectChanges();
+
+      expect(record).toHaveBeenCalledWith(ACTIONS.capturePhotoAdd, {
+        outcome: 'ok',
+        entryId: entry.id,
+        detail: { count: 1 },
+      });
+      // The fixture's file is called `IMG_0042.jpg`, and nothing on the wire may know that.
+      expect(JSON.stringify(record.mock.calls)).not.toContain('IMG_0042');
+    });
+
+    it('records an entry that would not take the photograph as blocked, not as a failure', async () => {
+      const entry = await captureEntry(store, { project: DEMO_PROJECTS[0] });
+      await store.queue(entry.id);
+      const element = await render(entry.id);
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+
+      selectPhoto(element);
+      await flushLiveQueries(10);
+      fixture.detectChanges();
+
+      expect(record).toHaveBeenCalledWith(ACTIONS.capturePhotoAdd, {
+        outcome: 'blocked',
+        entryId: entry.id,
+        detail: { count: 1 },
+      });
+    });
   });
 });

@@ -17,6 +17,9 @@ import { DEMO_PROJECTS } from '../../core/projects/project-source';
 import { flushLiveQueries, waitUntil } from '../../testing/flush';
 import { ProjectService } from '../../core/projects/project.service';
 import { SESSION_STORAGE_KEY } from '../../core/session/session';
+import { describeClick } from '../../core/telemetry/action-descriptor';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
 import { routeUrlFor } from '../../testing/route-table';
 import { ProfilePage } from '../profile/profile-page';
 import en from '../../../../public/i18n/en.json';
@@ -530,6 +533,46 @@ describe('HomePage', () => {
       // white slab, which is the worst of both — the pane either reaches the foot of the window or
       // it should not have been a pane.
       expect(rules).not.toMatch(/\.record \{[^}]*max-height/);
+    });
+  });
+
+  /**
+   * What Home tells the action log (D5).
+   *
+   * The recent row is the one control in the app that is two actions: an entry the server has
+   * handed back opens the confirmation gate and every other one opens the record. A `data-log`
+   * would have to claim one of them and would be wrong about the other, so the branch records.
+   * "Sve" is a plain press and declares itself.
+   */
+  describe('the action log', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('names the way into the archive on the control itself', async () => {
+      const element = await render();
+
+      expect(describeClick(element.querySelector('.recent__all'))).toBe(ACTIONS.archiveOpen);
+    });
+
+    it('records which of the two things a recent row did, and about which entry', async () => {
+      const waiting = await givenUploadedEntry('needs_review');
+      const done = await givenUploadedEntry('reported');
+      vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+      const element = await render();
+      await waitUntil(() => element.querySelectorAll('.recent__row').length === 2, {
+        onTick: () => fixture.detectChanges(),
+        describe: 'both recent rows to render',
+      });
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+
+      const rows = [...element.querySelectorAll<HTMLButtonElement>('.recent__row')];
+      // Newest first, and `done` was captured second.
+      rows[0].click();
+      expect(record).toHaveBeenCalledWith(ACTIONS.archiveEntryOpen, { entryId: done });
+
+      rows[1].click();
+      expect(record).toHaveBeenCalledWith(ACTIONS.confirmOpen, { entryId: waiting });
     });
   });
 });

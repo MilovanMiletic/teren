@@ -17,6 +17,8 @@ import {
   PlatformStatus,
   serverAnswered,
 } from '../../core/platform/platform.service';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
 import { AppHeader } from '../../ui/app-header';
 import { ColumnMenu } from '../../ui/column-menu';
 import { Icon } from '../../ui/icon';
@@ -25,6 +27,7 @@ import { LanguageSwitcher } from '../../ui/language-switcher';
 import { ModalSheet } from '../../ui/modal-sheet';
 import { SessionLink } from '../../ui/session-link';
 import { SortDirection, TableControls } from '../../ui/table-controls';
+import { TablePager } from '../../ui/table-pager';
 import { ViewportService } from '../../ui/viewport.service';
 import { platformReasonFor } from './platform-reason';
 import { CUSTOMER_DEFAULT_DIRECTION, CustomerSortKey, sortCustomers } from './platform-people';
@@ -74,6 +77,7 @@ import { CUSTOMER_DEFAULT_DIRECTION, CustomerSortKey, sortCustomers } from './pl
     LanguageSwitcher,
     ModalSheet,
     SessionLink,
+    TablePager,
     TranslocoDirective,
   ],
   templateUrl: './companies-page.html',
@@ -82,6 +86,7 @@ import { CUSTOMER_DEFAULT_DIRECTION, CustomerSortKey, sortCustomers } from './pl
 export class CompaniesPage {
   private readonly platform = inject(PlatformService);
   private readonly router = inject(Router);
+  private readonly actions = inject(ActionLogService);
 
   protected readonly viewport = inject(ViewportService);
 
@@ -127,6 +132,47 @@ export class CompaniesPage {
       this.controls.sort(),
     ),
   );
+
+  // ---- paging (ten rows a page, `ui/table-controls.ts`) ----------------------------------------
+
+  /** The slice on screen. Every row the template draws comes from here and from nowhere else. */
+  protected readonly pageListed = computed(() => this.controls.slice(this.listed()));
+
+  protected readonly page = computed(() => this.controls.pageOn(this.listed().length));
+  protected readonly pageCount = computed(() => this.controls.pageCount(this.listed().length));
+
+  /** The first and last row numbers on screen, one-based — what the count strip prints. */
+  protected readonly firstOnPage = computed(() =>
+    this.listed().length === 0 ? 0 : (this.page() - 1) * this.controls.pageSize + 1,
+  );
+
+  protected readonly lastOnPage = computed(() =>
+    Math.min(this.listed().length, this.page() * this.controls.pageSize),
+  );
+
+  /**
+   * Which of the four sentences the count strip says — see `company-page.ts`, which reasons the
+   * same four out in full. On this screen the stakes are the highest of the three: the button
+   * beside a customer's name suspends him, and a founder who has not noticed that he is looking at
+   * ten rows of twenty-four is a founder about to act on the wrong one.
+   */
+  protected readonly countKey = computed(() => {
+    if (this.pageCount() > 1) {
+      return this.controls.filtering() ? 'table.page.filteredRange' : 'table.page.range';
+    }
+    return this.controls.filtering() ? 'table.filter.showing' : 'table.page.total';
+  });
+
+  protected readonly countParams = computed(() => ({
+    from: this.firstOnPage(),
+    to: this.lastOnPage(),
+    shown: this.listed().length,
+    total: this.customers().length,
+  }));
+
+  protected goToPage(page: number): void {
+    this.controls.goTo(page);
+  }
 
   protected readonly activeCount = computed(
     () => this.customers().filter((customer) => customer.suspendedAt === null).length,
@@ -300,6 +346,9 @@ export class CompaniesPage {
   }
 
   protected openPeople(): void {
+    // Which customer was opened is not sent: a company name is a customer's name. That the
+    // customers screen was used to reach the people is the fact worth having.
+    this.actions.record(ACTIONS.platformCompanyOpen, {});
     void this.router.navigate(['/platform']);
   }
 }

@@ -67,6 +67,7 @@
                     <button
                       type="button"
                       class="row-button row"
+                      data-log="archive.entry.open"
                       [class.row--selected]="row.id === selectedId()"
                       [attr.aria-current]="row.id === selectedId() ? 'true' : null"
                       (click)="open(row)"
@@ -110,6 +111,7 @@
                         <button
                           type="button"
                           class="btn btn--tertiary btn--row revise__action"
+                          data-log="confirm.open"
                           [attr.aria-label]="
                             t('archive.revise.rowLabel', { time: row.capturedAt | date: 'HH:mm' })
                           "

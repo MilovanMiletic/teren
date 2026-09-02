@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpResponse } from '@angular/common/http';
 import { Injectable, InjectionToken, inject } from '@angular/core';
 import { firstValueFrom, timeout } from 'rxjs';
 
@@ -11,12 +11,23 @@ import {
   InviteSentResponse,
   PlatformCompanyListResponse,
   PlatformCompanyResponse,
+  PlatformLogExport,
+  PlatformLogListResponse,
+  PlatformLogQuery,
   PlatformUserListResponse,
   PlatformUserResponse,
 } from './platform-types';
 
 /** The budget every small JSON call in this app uses. Unsubscribing aborts the fetch. */
 const PLATFORM_TIMEOUT_MS = 30_000;
+
+/**
+ * The export's own budget, and it is longer for a reason rather than for symmetry.
+ *
+ * The server streams up to fifty thousand rows of stack traces. That is a real transfer over a
+ * real connection, and killing it at thirty seconds would abandon a file that was arriving.
+ */
+const EXPORT_TIMEOUT_MS = 120_000;
 
 /**
  * Teren's own surface, behind a seam — the twin of `CompanyGateway`, and separate for the same
@@ -55,6 +66,25 @@ export interface PlatformGateway {
   invite(userId: string): Promise<InviteSentResponse>;
   disableUser(userId: string): Promise<PlatformUserResponse>;
   enableUser(userId: string): Promise<PlatformUserResponse>;
+
+  /**
+   * One keyset page of the server's log (D5).
+   *
+   * **Filtered on the server, unlike every other list on this surface.** The other tables hold
+   * tens of rows fetched whole and filter what is in hand (`ui/table-controls.ts` says why that is
+   * the right answer there); this is a firehose the client holds one page of, so a filter that ran
+   * on the page would narrow the wrong set and quietly lie about what exists.
+   */
+  listLogs(query?: PlatformLogQuery): Promise<PlatformLogListResponse>;
+
+  /**
+   * The same query, as a CSV file.
+   *
+   * Same parameters as {@link listLogs} by contract, so what he downloads is what he is looking
+   * at. Fetched as a blob with the admin bearer rather than opened as a link: a plain `<a href>`
+   * cannot carry an `Authorization` header, which is the same reason `downloadReport` exists.
+   */
+  exportLogs(query?: PlatformLogQuery): Promise<PlatformLogExport>;
 }
 
 export const PLATFORM_GATEWAY = new InjectionToken<PlatformGateway>('PLATFORM_GATEWAY', {
@@ -131,6 +161,36 @@ export class HttpPlatformGateway implements PlatformGateway {
     );
   }
 
+  listLogs(query: PlatformLogQuery = {}): Promise<PlatformLogListResponse> {
+    return this.get<PlatformLogListResponse>('/api/platform/logs', logParams(query));
+  }
+
+  /**
+   * The export, as bytes.
+   *
+   * `observe: 'response'` because the filename is on `Content-Disposition` and the body alone
+   * would lose it. Note that with `responseType: 'blob'` an error body arrives as a `Blob`, so the
+   * server's problem document cannot be read as JSON downstream — which costs nothing: the status
+   * carries every distinction this screen makes, and branching on an English detail string is
+   * forbidden in this codebase anyway.
+   */
+  async exportLogs(query: PlatformLogQuery = {}): Promise<PlatformLogExport> {
+    const response = await firstValueFrom(
+      this.http
+        .get(`${this.baseUrl}/api/platform/logs/export${queryString(logParams(query))}`, {
+          headers: this.headers(),
+          responseType: 'blob' as const,
+          observe: 'response' as const,
+        })
+        .pipe(timeout(EXPORT_TIMEOUT_MS)),
+    );
+
+    return {
+      body: (response as HttpResponse<Blob>).body,
+      contentDisposition: response.headers.get('Content-Disposition'),
+    };
+  }
+
   private headers(): HttpHeaders {
     // Read fresh on every call, never cached: a sign-out between two requests must not leave a
     // withdrawn bearer on the second.
@@ -144,14 +204,9 @@ export class HttpPlatformGateway implements PlatformGateway {
    * make every idle render of the screen a different request than the one before it.
    */
   private get<T>(path: string, params: Record<string, string | undefined> = {}): Promise<T> {
-    const query = Object.entries(params)
-      .filter(([, value]) => value !== undefined && value !== '')
-      .map(([key, value]) => `${key}=${encodeURIComponent(value!)}`)
-      .join('&');
-
     return firstValueFrom(
       this.http
-        .get<T>(`${this.baseUrl}${path}${query ? `?${query}` : ''}`, { headers: this.headers() })
+        .get<T>(`${this.baseUrl}${path}${queryString(params)}`, { headers: this.headers() })
         .pipe(timeout(PLATFORM_TIMEOUT_MS)),
     );
   }
@@ -166,4 +221,42 @@ export class HttpPlatformGateway implements PlatformGateway {
         .pipe(timeout(PLATFORM_TIMEOUT_MS)),
     );
   }
+}
+
+/**
+ * A query string, or nothing at all.
+ *
+ * Only parameters that were actually given reach the URL. An empty `q` is not a search for the
+ * empty string — it is no search — and sending it would make every idle render of a screen a
+ * different request than the one before it, which on the log stream would mean a fresh keyset page
+ * on every keystroke that changed nothing.
+ */
+function queryString(params: Record<string, string | undefined>): string {
+  const query = Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== '')
+    .map(([key, value]) => `${key}=${encodeURIComponent(value as string)}`)
+    .join('&');
+  return query ? `?${query}` : '';
+}
+
+/**
+ * The log query as wire parameters — `snake_case`, exactly as every body this API exchanges.
+ *
+ * `level` is sent comma-separated rather than repeated. The contract accepts either, and one
+ * parameter keeps this function's return type a flat map, which is what {@link queryString} and
+ * the mock both work with. **The list is the same one the export is given**, which is the whole
+ * point: what he downloads is what he is looking at.
+ */
+function logParams(query: PlatformLogQuery): Record<string, string | undefined> {
+  return {
+    level: query.levels && query.levels.length > 0 ? query.levels.join(',') : undefined,
+    source: query.source,
+    q: query.q,
+    company_id: query.companyId,
+    entry_id: query.entryId,
+    from: query.from,
+    to: query.to,
+    cursor: query.cursor,
+    limit: query.limit === undefined ? undefined : String(query.limit),
+  };
 }

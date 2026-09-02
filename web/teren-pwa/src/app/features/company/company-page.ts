@@ -18,6 +18,8 @@ import {
   serverAnswered,
 } from '../../core/company/company.service';
 import { AdminSessionService } from '../../core/session/admin-session.service';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
 import { AppHeader } from '../../ui/app-header';
 import { ColumnMenu } from '../../ui/column-menu';
 import { Icon } from '../../ui/icon';
@@ -26,6 +28,7 @@ import { LanguageSwitcher } from '../../ui/language-switcher';
 import { ModalSheet } from '../../ui/modal-sheet';
 import { SessionLink } from '../../ui/session-link';
 import { SortDirection, TableControls } from '../../ui/table-controls';
+import { TablePager } from '../../ui/table-pager';
 import { ViewportService } from '../../ui/viewport.service';
 import { companyReasonFor } from './company-reason';
 import { DEFAULT_DIRECTION, PeopleSortKey, StatusChip, sortWorkers, workerChips } from './people';
@@ -35,6 +38,17 @@ interface PersonRow {
   worker: Worker;
   chips: StatusChip[];
 }
+
+/**
+ * One row of the directory, whichever group it belongs to.
+ *
+ * The owner and his foremen are **one paginated list**, not a fixed row above a paginated one. Ten
+ * rows a page has to mean ten rows on the glass, and a screen that quietly drew eleven on page one
+ * would be a screen whose own count strip was wrong — the exact class of lie this table's strip
+ * exists to prevent. So he is entry zero, the slice cuts through both groups, and the group bands
+ * are drawn from what the slice actually contains.
+ */
+type PersonEntry = { kind: 'director'; name: string } | { kind: 'worker'; row: PersonRow };
 
 /**
  * The office (`plans/profile-and-identity.md` §10.3, decisions 3, 9, 10, 13): **the company's
@@ -107,6 +121,7 @@ interface PersonRow {
     LanguageSwitcher,
     ModalSheet,
     SessionLink,
+    TablePager,
     TranslocoDirective,
   ],
   templateUrl: './company-page.html',
@@ -116,6 +131,14 @@ export class CompanyPage {
   private readonly company = inject(CompanyService);
   private readonly admins = inject(AdminSessionService);
   private readonly router = inject(Router);
+  /**
+   * The action log (D5).
+   *
+   * The one thing this screen records by hand is whether adding a foreman actually worked; the
+   * rows declare themselves in the template. **Nothing here touches a code** — decision 13 keeps
+   * every path to a credential on `/company/worker/:workerId`, and that includes the log's.
+   */
+  private readonly actions = inject(ActionLogService);
 
   protected readonly viewport = inject(ViewportService);
 
@@ -209,11 +232,81 @@ export class CompanyPage {
     })),
   );
 
+  /**
+   * Everybody the filters left, in the order the screen shows them — **one list, both groups.**
+   *
+   * The owner first, because his band is drawn first; then his foremen. Paging cuts through this
+   * rather than through the foremen alone, so a page really is ten rows of the directory.
+   */
+  protected readonly entries = computed<PersonEntry[]>(() => {
+    const boss = this.directorRow();
+    return [
+      ...(boss ? [{ kind: 'director' as const, name: boss.displayName }] : []),
+      ...this.rows().map((row) => ({ kind: 'worker' as const, row })),
+    ];
+  });
+
   /** How many people the list is drawing, the owner's own row included. */
-  protected readonly shown = computed(() => this.rows().length + (this.directorRow() ? 1 : 0));
+  protected readonly shown = computed(() => this.entries().length);
 
   /** How many there are altogether — the other half of "showing 3 of 12". */
   protected readonly total = computed(() => this.workers().length + (this.director() ? 1 : 0));
+
+  // ---- paging (ten rows a page, `ui/table-controls.ts`) ----------------------------------------
+
+  /** The slice on screen. Every row the template draws comes from here and from nowhere else. */
+  private readonly pageEntries = computed(() => this.controls.slice(this.entries()));
+
+  /** The owner's row, when this page is the page it falls on. */
+  protected readonly pagedDirector = computed(() => {
+    const entry = this.pageEntries().find((candidate) => candidate.kind === 'director');
+    return entry?.kind === 'director' ? entry.name : null;
+  });
+
+  /** The foremen on this page. */
+  protected readonly pagedRows = computed(() =>
+    this.pageEntries().flatMap((entry) => (entry.kind === 'worker' ? [entry.row] : [])),
+  );
+
+  protected readonly page = computed(() => this.controls.pageOn(this.shown()));
+  protected readonly pageCount = computed(() => this.controls.pageCount(this.shown()));
+
+  /** The first and last row numbers on screen, one-based — what the count strip prints. */
+  protected readonly firstOnPage = computed(() =>
+    this.shown() === 0 ? 0 : (this.page() - 1) * this.controls.pageSize + 1,
+  );
+
+  protected readonly lastOnPage = computed(() =>
+    Math.max(0, this.firstOnPage() + this.pageEntries().length - 1),
+  );
+
+  /**
+   * Which of the four sentences the count strip says.
+   *
+   * They are four because the two facts are independent: a filter may or may not be live, and the
+   * answer may or may not fit on one page. Every combination has a true sentence, and none of them
+   * is allowed to imply the other fact — a range that looked like a filter would make an owner
+   * hunt for a filter he never set, and a filtered count with no range would make him think ten
+   * rows is all he has.
+   */
+  protected readonly countKey = computed(() => {
+    if (this.pageCount() > 1) {
+      return this.controls.filtering() ? 'table.page.filteredRange' : 'table.page.range';
+    }
+    return this.controls.filtering() ? 'table.filter.showing' : 'table.page.total';
+  });
+
+  /** The numbers behind whichever of the four it is. Unused ones are harmless to pass. */
+  protected readonly countParams = computed(() => ({
+    from: this.firstOnPage(),
+    to: this.lastOnPage(),
+    shown: this.shown(),
+    total: this.total(),
+  }));
+
+  protected goToPage(page: number): void {
+    this.controls.goTo(page);
+  }
 
   /**
    * Phones across the company that can still record.
@@ -373,6 +466,11 @@ export class CompanyPage {
 
     const result = await this.company.addWorker(name, this.newEmail());
     this.addBusy.set(false);
+
+    // The verdict, never the man: no name, no address, no username.
+    this.actions.record(ACTIONS.companyWorkerAdd, {
+      outcome: result.status === 'ok' && result.worker ? 'ok' : 'fail',
+    });
 
     if (result.status !== 'ok' || !result.worker) {
       this.addFailure.set(result.status);

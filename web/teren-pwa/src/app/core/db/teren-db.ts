@@ -4,6 +4,7 @@ import Dexie, { Table } from 'dexie';
 import { canonicalProject } from '../projects/legacy-project-ids';
 import {
   AudioChunk,
+  BufferedEvent,
   CaptureSession,
   ConfirmDraft,
   LocalEntry,
@@ -27,6 +28,7 @@ export class TerenDb extends Dexie {
   readonly chunks!: Table<AudioChunk, [string, number]>;
   readonly captures!: Table<CaptureSession, string>;
   readonly confirmDrafts!: Table<ConfirmDraft, string>;
+  readonly clientEvents!: Table<BufferedEvent, number>;
 
   constructor(name: string = TEREN_DB_NAME) {
     super(name);
@@ -109,6 +111,21 @@ export class TerenDb extends Dexie {
     // row is deleted when the server accepts the confirmation, never before, for the same reason
     // the outbox row survives until `/complete` answers.
     this.version(5).stores({ confirmDrafts: 'entryId' });
+
+    // v6 — D5: the action log's outbound buffer. One new table, no change to any existing one.
+    //
+    // `++seq` and nothing else. The primary key is auto-incremented, so key order is arrival
+    // order, and both operations this table has — take the head batch to send, drop the head rows
+    // on overflow — are ranges over the primary key. A secondary index on `surface` or on the
+    // event's timestamp would be an index nothing reads.
+    //
+    // **This is the one table in the store whose rows may be destroyed before a server has seen
+    // them.** Every other row here is evidence and principle 3 forbids it; these are records of
+    // what was pressed, and a buffer that could grow without limit would eventually claim the
+    // storage quota a day's photographs need. `BufferedEvent` says the same thing where the shape
+    // is defined, because that is the assumption a future reader will be tempted to generalise
+    // from.
+    this.version(6).stores({ clientEvents: '++seq' });
   }
 }
 

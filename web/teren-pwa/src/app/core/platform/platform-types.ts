@@ -99,3 +99,74 @@ export interface CreateAdminResponse {
   user?: PlatformUserResponse | null;
   emailed?: boolean | null;
 }
+
+/**
+ * One line of the server's log (`GET /api/platform/logs`, D5).
+ *
+ * **`id` is a string on the wire and must stay one.** It is a `bigserial`, and a JSON number in a
+ * browser loses precision above 2^53 — by the time `JSON.parse` has run, a numeric id is already
+ * wrong and no amount of narrowing here can recover it. Nothing in this client ever coerces it;
+ * it is a cursor key and a `track` expression, never arithmetic.
+ *
+ * `properties`, `exception`, `company_id`, `entry_id` and `correlation` are all nullable, and each
+ * null is a fact rather than a gap: a log line with no exception is an ordinary line, one with no
+ * company belongs to the platform itself rather than to a customer.
+ */
+export interface PlatformLogResponse {
+  id?: string | null;
+  at?: string | null;
+  /** One of the six Serilog levels, exactly as stored. Never translated on the wire. */
+  level?: string | null;
+  source?: string | null;
+  /** The message template, with its `{Placeholders}` intact — what groups lines of a kind. */
+  template?: string | null;
+  /** The template rendered. What a person reads. */
+  message?: string | null;
+  properties?: Record<string, unknown> | null;
+  /** Scrubbed on the server. Never searched — an operator must not be able to fish in a stack. */
+  exception?: string | null;
+  company_id?: string | null;
+  entry_id?: string | null;
+  correlation?: string | null;
+}
+
+export interface PlatformLogListResponse {
+  logs?: PlatformLogResponse[] | null;
+  /**
+   * Opaque, and **keyset** rather than an offset.
+   *
+   * The stream is live: an offset page two would show a row from page one again the moment
+   * anything was written between the two requests. Built by the server, never parsed here.
+   */
+  next_cursor?: string | null;
+}
+
+/**
+ * What the log screen is asking for — the same shape for the stream and for the export, so that
+ * **what the founder downloads is what he is looking at**.
+ *
+ * `levels` is a set rather than a string because the wire takes the parameter repeatably; the
+ * gateway is what knows it may also be sent comma-separated.
+ */
+export interface PlatformLogQuery {
+  levels?: readonly string[];
+  /** Case-insensitive contains over `source`. */
+  source?: string;
+  /** Case-insensitive contains over `message` **and** `template`. Never over the exception. */
+  q?: string;
+  companyId?: string;
+  entryId?: string;
+  /** ISO-8601, inclusive. */
+  from?: string;
+  /** ISO-8601, exclusive. */
+  to?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+/** The bytes of `GET /api/platform/logs/export`, and the name the server gave them. */
+export interface PlatformLogExport {
+  body: Blob | null;
+  /** Readable cross-origin only with `Access-Control-Expose-Headers`. Null is ordinary. */
+  contentDisposition: string | null;
+}

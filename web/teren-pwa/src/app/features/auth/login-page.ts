@@ -5,6 +5,8 @@ import { TranslocoDirective } from '@jsverse/transloco';
 import { ActivationService, AuthFailure } from '../../core/auth/activation.service';
 import { ConnectivityService } from '../../core/connectivity.service';
 import { RETURN_URL_PARAM, safeReturnUrl } from '../../core/session/return-url';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
 import { Icon } from '../../ui/icon';
 import { LanguageSwitcher } from '../../ui/language-switcher';
 import { AuthMark } from './auth-mark';
@@ -55,6 +57,12 @@ export class LoginPage {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly activation = inject(ActivationService);
+  /**
+   * The action log (D5). One call, after the server has answered: a sign-in that was *attempted*
+   * and a sign-in that *worked* are the two facts a locked-out owner's support call turns on, and
+   * a bare click on a submit button tells neither apart.
+   */
+  private readonly actions = inject(ActionLogService);
   protected readonly connectivity = inject(ConnectivityService);
 
   protected readonly email = signal('');
@@ -167,6 +175,13 @@ export class LoginPage {
     this.busy.set(true);
     const result = await this.activation.login(this.email(), this.password());
     this.busy.set(false);
+
+    // The role, never the address: `role` is one of three constants of this product, and an email
+    // is the one thing on this screen that must never travel on a log line.
+    this.actions.record(ACTIONS.sessionLogin, {
+      outcome: result.ok ? 'ok' : 'fail',
+      detail: result.ok && result.role ? { role: result.role } : undefined,
+    });
 
     if (!result.ok) {
       this.failure.set(result.failure);

@@ -18,6 +18,8 @@ import {
 import { ActivationService, AuthFailure } from '../../core/auth/activation.service';
 import { ConnectivityService } from '../../core/connectivity.service';
 import { RETURN_URL_PARAM, safeReturnUrl } from '../../core/session/return-url';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
 import { Icon } from '../../ui/icon';
 import { LanguageSwitcher } from '../../ui/language-switcher';
 import { AuthMark } from './auth-mark';
@@ -81,6 +83,11 @@ export class ActivatePage {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly activation = inject(ActivationService);
+  /**
+   * The action log (D5). Recorded after the server answers, with the outcome and nothing else —
+   * never the username, and never the code, which is a live credential.
+   */
+  private readonly actions = inject(ActionLogService);
   protected readonly connectivity = inject(ConnectivityService);
 
   private readonly usernameField = viewChild<ElementRef<HTMLInputElement>>('usernameInput');
@@ -236,6 +243,8 @@ export class ActivatePage {
     // The canonical, folded code — never the string the field is showing.
     const result = await this.activation.activate(this.username(), this.folded());
     this.busy.set(false);
+
+    this.actions.record(ACTIONS.sessionActivate, { outcome: result.ok ? 'ok' : 'fail' });
 
     if (!result.ok) {
       // The field keeps what he typed. He fixes one character, not eight.

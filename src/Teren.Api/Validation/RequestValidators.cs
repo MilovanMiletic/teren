@@ -1,5 +1,7 @@
 using FluentValidation;
+using Microsoft.Extensions.Options;
 using Teren.Api.Contracts;
+using Teren.Infrastructure.Logging;
 using Teren.Core.Entities;
 using Teren.Core.Identity;
 
@@ -358,5 +360,37 @@ public sealed class CreateAdminRequestValidator : AbstractValidator<CreateAdminR
             .NotEmpty()
             .WithMessage("email is required for an administrator; it is how he signs in.")
             .MaximumLength(EmailAddress.MaximumLength);
+    }
+}
+
+/// <summary>
+/// The batch envelope, and <b>only</b> the envelope (D5).
+///
+/// <para>
+/// <b>Per-event validation deliberately lives in the handler, not here.</b> The contract says a
+/// partly bad batch must still be accepted — a phone that gets a 4xx retries the same batch for
+/// ever because one row in it was malformed — so the per-event rules produce a <em>count</em>,
+/// not a validation problem. A validator that rejected the batch would be the exact failure mode
+/// the contract forbids, dressed as diligence.
+/// </para>
+/// <para>
+/// What is left is the shape of the envelope, where a 400 is right: no <c>events</c> array at all
+/// is a caller that has misunderstood the route, and too many events at once is a request the
+/// server declines to size its buffers for.
+/// </para>
+/// </summary>
+public sealed class ClientEventBatchRequestValidator : AbstractValidator<ClientEventBatchRequest>
+{
+    public ClientEventBatchRequestValidator(IOptions<LoggingOptions> options)
+    {
+        RuleLevelCascadeMode = CascadeMode.Stop;
+
+        var max = options.Value.ClientEvents.MaxEventsPerBatch;
+
+        RuleFor(r => r.Events)
+            .NotNull()
+            .WithMessage("events is required; send an empty array to report nothing.")
+            .Must(events => events!.Count <= max)
+            .WithMessage($"events may carry at most {max} events per batch.");
     }
 }

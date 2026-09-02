@@ -53,6 +53,13 @@ public sealed class TerenIdentityDbContext(DbContextOptions<TerenIdentityDbConte
     public DbSet<AdminAudit> AdminAudits => Set<AdminAudit>();
 
     /// <summary>
+    /// The application's own log (D5). It is mapped <b>here</b> rather than on the evidence model
+    /// for one reason: the log viewer is a super-admin screen, and putting its table in this
+    /// closed set is what keeps that screen compiled against a model with no <c>Entry</c> in it.
+    /// </summary>
+    public DbSet<AppLog> Logs => Set<AppLog>();
+
+    /// <summary>
     /// Read-only from here: the authenticator needs <c>suspended_at</c> before a tenant exists.
     /// Nothing on the platform path writes a company row in D1.
     /// </summary>
@@ -66,6 +73,7 @@ public sealed class TerenIdentityDbContext(DbContextOptions<TerenIdentityDbConte
         modelBuilder.ApplyConfiguration(new PasswordTokenConfiguration());
         modelBuilder.ApplyConfiguration(new AdminSessionConfiguration());
         modelBuilder.ApplyConfiguration(new AdminAuditConfiguration());
+        modelBuilder.ApplyConfiguration(new AppLogConfiguration());
 
         // Company is shared with TerenDbContext, which owns its DDL. Mapping it without excluding
         // it would make both contexts try to create the same table.

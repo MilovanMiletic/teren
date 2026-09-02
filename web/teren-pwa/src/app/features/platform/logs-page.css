@@ -1,0 +1,646 @@
+/*
+ * `/platform/logs` — the server's log, and the app's own presses, in one stream.
+ *
+ *   compact   <768      the screen's own bar (the app header is display:none there), the filter
+ *                       card, then a list of collapsed lines that expand on tap. No table: cells
+ *                       forced to blocks lose the table role in every browser, so the markup
+ *                       itself changes instead.
+ *   medium    768–1023  a real table on the 640 column: time, level, message — with the source
+ *                       under the message, because a .NET namespace given a column of its own on
+ *                       that width leaves two letters for the message and pushes the last column
+ *                       off the card. The whole row opens the line, as it does on the phone.
+ *   expanded  >=1024    a strip of counts above the filters, and a table that gains the source as
+ *                       a column of its own and a fifth column of ids. The width goes on the thing
+ *                       a founder correlates with, not on a wider margin.
+ *
+ * Every colour, space and radius is a token from `design/tokens.md`. There is no raw hex here.
+ */
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--space-4);
+}
+
+.bar__brand {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.bar__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* The app header exists from 768 up and carries the wordmark, so this bar would be a second one. */
+@media (min-width: 768px) {
+  .bar--compact {
+    display: none;
+  }
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+
+.head__text {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.head__sub {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.head__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+
+@media (min-width: 768px) {
+  .head {
+    padding-top: var(--space-6);
+    padding-bottom: 0;
+  }
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-8);
+}
+
+/*
+ * ---- Expanded: the twelve-column grid ---------------------------------------------------------
+ *
+ * **The page scrolls and cards size to their content.** That is the whole rule, and it is worth a
+ * comment because it was broken here once and the damage was worse than the thing it cured.
+ *
+ * The founder reported *"table overlaps down"* (2026-09-02). It was read as a clip and answered by
+ * making this screen a fixed-height flex column so the stream took the leftover height and scrolled
+ * its rows inside the card. The measurement taken **before** that change had already said it was
+ * unnecessary - the card's foot was 32 px above the fold at the scroll limit, across thirty
+ * width x height combinations - because his complaint was that the foot sat below the fold *before
+ * he scrolled*, not that anything was unreachable.
+ *
+ * And the cure sliced the screen. With the screen a container that could not grow, every card
+ * became a flex item in it: the summary and filter cards were squeezed, and the base card's
+ * `overflow: hidden` - deliberate, and load-bearing elsewhere - cut their content in half. The
+ * loaded count lost the bottom of its digits. **A clipped number is a wrong number**, which is a
+ * worse defect than a control below the fold.
+ *
+ * So: no height claim, no leftover-height arithmetic, no cleverer calculation. A long page scrolls.
+ */
+@media (min-width: 1024px) {
+  .content {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: var(--space-6);
+    align-content: start;
+    padding-top: var(--space-5);
+  }
+
+  /* Everything spans the grid: this screen is one stream and the controls above it. A rail here
+     would hold six chips beside a table that wants every pixel of a stack trace. */
+  .wide {
+    grid-column: 1 / -1;
+  }
+}
+
+.state {
+  padding: var(--space-5);
+}
+
+/* Inside the filter card the pill bar keeps its sideways scroll but not the card's own padding. */
+.filters__pills {
+  padding: 0;
+}
+
+/* ---- The filter card's disclosure, below 1024 ------------------------------------------------ */
+
+/* `.row-button` (styles.css) supplies the reset; this only adds what a disclosure needs. */
+.filters__disclosure {
+  gap: var(--space-2);
+  min-height: var(--tap-row);
+  font-family: var(--font-family);
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+
+/* Takes the slack, so the chevron sits at the far edge and the whole row is the target. */
+.filters__disclosure-text {
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+/* ---- The filter card ------------------------------------------------------------------------ */
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) 18px;
+}
+
+.filters__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.filters__label {
+  flex: none;
+}
+
+/*
+ * The chips scroll sideways inside their own row rather than wrapping to three lines on a 390 px
+ * screen — and the page itself never scrolls sideways at any width.
+ */
+.filters__chips {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+@media (min-width: 768px) {
+  .filters__row {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  .filters__label {
+    width: 88px;
+  }
+
+  /* There is room for all six at this width; wrapping beats a hidden scroll on a pointer device,
+     where a horizontal scrollbar is a thing to hunt for rather than a thing to swipe. */
+  .filters__chips {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+}
+
+.filters__row--clear {
+  align-items: flex-start;
+}
+
+/*
+ * A filter chip. Off by default and reversed to ink when it is on, which is how this product has
+ * said "this one is picked" since the office rework — the same language the sorted pill uses.
+ */
+.toggle {
+  flex: none;
+  min-height: var(--tap-min);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-field-line);
+  border-radius: var(--radius-pill);
+  background: var(--color-card);
+  color: var(--color-ink-2);
+  font-family: var(--font-family);
+  font-size: var(--text-meta);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.toggle--on {
+  border-color: var(--color-ink);
+  background: var(--color-ink);
+  color: var(--color-card);
+}
+
+/* A level chip that is on keeps its own meaning: picking "Greška" must not turn it the same
+   colour as picking "Debug", or the row of chips stops saying which is the alarming one. */
+.toggle--err.toggle--on {
+  border-color: var(--color-err);
+  background: var(--color-err);
+}
+
+.toggle--warn.toggle--on {
+  border-color: var(--color-warn);
+  background: var(--color-warn);
+}
+
+/* ---- The stream ----------------------------------------------------------------------------- */
+
+.stream {
+  padding: 0;
+  overflow: hidden;
+}
+
+/*
+ * The table scrolls inside its own card when a .NET namespace and a rendered message outgrow the
+ * columns. **The page itself never scrolls sideways** — that is a defect at any width, and this is
+ * what keeps the promise while letting a log line be as wide as a log line is.
+ *
+ * `position: relative` is load-bearing and was missing: the hidden caption on the last column head
+ * is `position: absolute` (`.visually-hidden`), nothing between it and `.screen` was positioned, so
+ * it took its static position at x≈881 as an *absolute* one, escaped this scroller entirely and
+ * widened `<html>` — `body` has `overflow-x: hidden` and `html` does not. The page scrolled
+ * sideways at 768 and 834 because of a caption nobody can see. Anything absolutely positioned
+ * inside the table is now contained by the box whose overflow is already handled.
+ */
+.stream__scroll {
+  position: relative;
+  overflow-x: auto;
+}
+
+/*
+ * Columns given widths rather than left to the browser: auto layout takes its cue from the content,
+ * and one stack-trace-bearing message would otherwise take four fifths of the table and squeeze the
+ * timestamp — which is the column a reader scans down.
+ *
+ * **The widths are only ever hints, and a hint is not a promise.** With auto layout a column can
+ * never be narrower than its own longest unbreakable word, so
+ * `Teren.Infrastructure.Reporting.EntryReporter` in a 26 % source column made the whole table
+ * 866 px wide inside a 592 px card at 768: the message was sliced to two letters and the expand
+ * control sat off the card. The source column is therefore not drawn at all below 1024 (it rides
+ * under the message instead), and every text cell may break inside a word, which is what keeps the
+ * table's *minimum* width small enough to fit the medium column.
+ */
+.col--at {
+  width: 108px;
+  white-space: nowrap;
+}
+
+.col--level {
+  width: 110px;
+}
+
+.col--source {
+  width: 22%;
+}
+
+.col--ids {
+  width: 16%;
+}
+
+.col--go {
+  width: 44px;
+}
+
+.stream__table tbody td {
+  padding: var(--space-3) var(--col-pad);
+  border-bottom: 1px solid var(--color-card-line);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * The message, and — below 1024, where there is no column for it — the source under it. The same
+ * two facts the phone's list carries, stacked for the same reason.
+ */
+.line__message {
+  display: block;
+}
+
+.line__source {
+  display: block;
+  margin-top: 2px;
+}
+
+/*
+ * The row's own id under its timestamp, at 1024 and above only.
+ *
+ * The founder quotes a line by its number when he reports one, and until now that number was on
+ * the screen nowhere. It goes here rather than into a column of its own because the time column is
+ * already 108 px of `white-space: nowrap` and `#80423` is five characters — width the table has,
+ * without taking any from the message.
+ *
+ * **ink-2, not ink-3.** This is the single value on the row that exists to be read aloud and typed
+ * into a support message, and ink-3 put it at 2.8:1 on the card — a token design/tokens.md reserves
+ * for placeholders and decorative glyphs, never body text. ink-2 is 6.8:1 on the card and 5.6:1 on
+ * the tint an open row wears (review, 2026-09-02).
+ */
+.line__id {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-ink-2);
+}
+
+/* An open line is tinted so the detail below it plainly belongs to it rather than to the row
+   after it — which, in a list of near-identical timestamps, is a real ambiguity. */
+.line--open > td {
+  background: var(--color-accent-tint-1);
+  border-bottom: 0;
+}
+
+/*
+ * The row is the control, so it says so under the pointer and takes the whole width as its target
+ * — the phone's list has behaved this way since it was written, and a 36 px chevron in the last
+ * column was the only way in above 768.
+ */
+.line {
+  cursor: pointer;
+}
+
+.line__toggle {
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.line__chevron {
+  color: var(--color-ink-2);
+  transition: transform 120ms ease;
+}
+
+.line__chevron--open {
+  transform: rotate(180deg);
+}
+
+.ids {
+  display: block;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.detail-row > td {
+  padding: 0 var(--col-pad) var(--space-4);
+  background: var(--color-accent-tint-1);
+  border-bottom: 1px solid var(--color-card-line);
+}
+
+/* ---- The compact list ------------------------------------------------------------------------ */
+
+.lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * **A tone stripe down the left edge**, which is how an unusual line is found on a phone.
+ *
+ * The founder scanning in a corridor is looking for the one row that is not like the others, and a
+ * colour survives at arm's length where a word does not. Transparent for the ordinary levels, so
+ * only the two that mean something show — the same argument `levelTone` makes for chips, which is
+ * why they share one vocabulary.
+ */
+.line-item {
+  border-bottom: 1px solid var(--color-card-line);
+  border-left: 3px solid transparent;
+}
+
+.line-item--err {
+  border-left-color: var(--color-err);
+}
+
+.line-item--warn {
+  border-left-color: var(--color-warn);
+}
+
+.line-item:last-child {
+  border-bottom: 0;
+}
+
+.line-item--open {
+  background: var(--color-accent-tint-1);
+}
+
+/*
+ * The whole row is one button.
+ *
+ * `.row-button` in `styles.css` resets it and lays it out as a *row*; this makes it a column and
+ * pins its children to the left. Without the two `align-items` lines a button centres its text and
+ * a flex column stretches its children, which at 390 reads as a centred list no other screen in
+ * the app has.
+ */
+.line-item__summary {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-height: var(--tap-row);
+  padding: var(--space-3) var(--space-4);
+}
+
+.line-item__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+/*
+ * The time leads the head row, and it does not grow: it is a fixed-width fact, and letting it take
+ * the slack pushed the chip and the chevron apart by a hand's width on a tablet.
+ */
+/* `.t-meta` supplies the colour; this only stops the time taking the row's slack. */
+.line-item__time {
+  flex: none;
+}
+
+/* The chevron sits at the far edge whatever else is in the row — with or without a chip. */
+.line-item__chevron {
+  margin-left: auto;
+  flex: none;
+}
+
+/*
+ * Two lines, clamped. A phone showing eight lines of one message is a phone showing one log line —
+ * and the whole of it is one tap away, which is what the expansion is for.
+ */
+.line-item__message {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-item__source {
+  overflow-wrap: anywhere;
+}
+
+.line-item .detail {
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+/*
+ * ---- Medium (768–1023): the same list, spending its width on the message ----------------------
+ *
+ * Not a table. At 834 the table gave the message about 300 px — four and five line wraps, 150 px
+ * rows — while two columns held 250 px between them repeating the same timestamp shape and the same
+ * `INFORMACIJA`. A tablet was getting the desktop's layout with its one useful column squeezed.
+ *
+ * What the extra width buys is the message: the full width of the card rather than a third of it,
+ * at body size, clamped to three lines rather than two. The rest of the row keeps the order its
+ * importance deserves — when it happened, then what happened, then where it came from.
+ *
+ * An `order: -1` on the source was tried first, to sit it beside the time and give back a line per
+ * row. In a flex *column* that lifts it to the top instead, so every row read
+ * `Teren.Core.Entities.AdminSession` before its own timestamp — the least important fact first, on
+ * a screen whose whole job is finding the surprising line. Seen at 834 and reverted.
+ */
+@media (min-width: 768px) {
+  .line-item__message {
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    font-size: var(--text-body);
+  }
+}
+
+/* ---- One line, opened ------------------------------------------------------------------------ */
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+}
+
+.facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.facts__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.facts dt,
+.facts dd {
+  margin: 0;
+}
+
+@media (min-width: 768px) {
+  /* Label and value side by side once there is room, so the block reads as a table of facts
+     rather than as a column of alternating weights. */
+  .facts__row {
+    flex-direction: row;
+    gap: var(--space-4);
+  }
+
+  .facts dt {
+    flex: none;
+    width: 140px;
+    padding-top: 2px;
+  }
+
+  .facts dd {
+    min-width: 0;
+  }
+}
+
+.detail__block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.detail__none {
+  margin: 0;
+}
+
+/*
+ * The words that qualify a value rather than being one — "on this device's clock" beside a
+ * timestamp. Set apart so the value is still the thing the eye lands on, and inline so the caveat
+ * arrives *with* the claim rather than after it.
+ *
+ * **ink-2, not ink-3.** design/tokens.md reserves ink-3 for placeholders, disabled controls and
+ * decorative glyphs — *never body text* — and this is body text: 2.3:1 on the tint this block sits
+ * on, against 5.6:1 for ink-2. The separation is carried by the smaller type and the space, which
+ * is what it should have been carried by in the first place (review, 2026-09-02).
+ */
+.detail__aside {
+  margin-left: var(--space-2);
+  color: var(--color-ink-2);
+}
+
+.props {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.props__row {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.props dt {
+  flex: none;
+  width: 40%;
+  max-width: 200px;
+  color: var(--color-ink-2);
+  overflow-wrap: anywhere;
+}
+
+.props dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * A template, an id and a property value are all things a person retypes into a query or a support
+ * message, so they are set in a monospaced face where a 1 and an l are different letters.
+ */
+.mono {
+  font-family: var(--font-mono, ui-monospace, 'SFMono-Regular', Menlo, monospace);
+  font-size: var(--text-meta);
+  overflow-wrap: anywhere;
+}
+
+/*
+ * The stack trace.
+ *
+ * **Capped and scrolled inside itself**, which is the price of choosing an expanding row over a
+ * detail panel: without this, one open `SocketException` pushes the rest of the stream off the
+ * screen and the reader loses the two lines he opened it to compare it with. `pre-wrap` rather than
+ * `pre`, so a long frame wraps instead of making the card scroll sideways.
+ */
+.trace {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: var(--space-3);
+  border-radius: var(--radius-field);
+  background: var(--color-canvas);
+  color: var(--color-ink-2);
+  font-family: var(--font-mono, ui-monospace, 'SFMono-Regular', Menlo, monospace);
+  font-size: var(--text-meta);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .toggle:hover:not(.toggle--on) {
+    border-color: var(--color-ink-2);
+    color: var(--color-ink);
+  }
+
+  .line-item__summary:hover {
+    background: var(--color-accent-tint-1);
+  }
+
+  .line:hover > td {
+    background: var(--color-canvas);
+  }
+
+  .line--open:hover > td {
+    background: var(--color-accent-tint-1);
+  }
+}

@@ -118,6 +118,7 @@ public sealed class PlatformPrivacyTests(TerenTestApp app) : ApiTestBase(app)
         var offenders = (
             from dto in dtos
             from property in dto.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            where !IsBareIdentifier(property)
             let word = EvidenceWords.FirstOrDefault(w =>
                 property.Name.Contains(w, StringComparison.OrdinalIgnoreCase))
             where word is not null
@@ -129,6 +130,50 @@ public sealed class PlatformPrivacyTests(TerenTestApp app) : ApiTestBase(app)
             + "cannot see what was done on site. Narrowing that claim is a founder decision.\n"
             + string.Join("\n", offenders));
     }
+
+    /// <summary>
+    /// The one exception to the vocabulary, and it is the plan's own, not a convenience.
+    ///
+    /// <para>
+    /// D5's log viewer filters on <c>entry_id</c>, because "why did this day of work fail" is the
+    /// question the stream exists to answer. The plan's <c>app_log</c> block settles it in as many
+    /// words — <em>"an ID is not evidence; it is how you find the row"</em> — and it is the same
+    /// call the founder made on 2026-08-30 when project <em>names</em> were admitted to this
+    /// surface and everything else about a project was not.
+    /// </para>
+    /// <para>
+    /// <b>It is deliberately the narrowest exception that works.</b> The name must be exactly
+    /// <c>EntryId</c> and the type must really be a UUID. <c>EntryCount</c> is an <c>int</c> and
+    /// still fails — which matters, because that is the example §12 itself gives for how this
+    /// boundary gets lost. <c>EntryNotes</c> is a <c>string</c> and still fails. A property called
+    /// <c>Entries</c> holding a list still fails. Widen this and you are making a decision, which
+    /// is the whole point of writing it down here.
+    /// </para>
+    /// </summary>
+    private static bool IsBareIdentifier(PropertyInfo property) =>
+        property.Name == "EntryId"
+        && (property.PropertyType == typeof(Guid) || property.PropertyType == typeof(Guid?));
+
+    [Fact]
+    public void The_identifier_exception_admits_an_id_and_nothing_that_merely_looks_like_one()
+    {
+        // Anti-vacuity for the exception above. Without this, loosening `IsBareIdentifier` to
+        // `Name.Contains("Entry")` would silently re-open the door the vocabulary closed, and
+        // every other assertion in this file would stay green.
+        var admitted = typeof(Teren.Api.Contracts.PlatformLogResponse)
+            .GetProperty(nameof(Teren.Api.Contracts.PlatformLogResponse.EntryId))!;
+
+        IsBareIdentifier(admitted).ShouldBeTrue();
+
+        foreach (var property in typeof(NotAnIdentifier)
+                     .GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            IsBareIdentifier(property).ShouldBeFalse(property.Name);
+        }
+    }
+
+    /// <summary>The three shapes that must keep failing however loudly they claim to be an id.</summary>
+    private sealed record NotAnIdentifier(int EntryCount, string EntryNotes, string EntryId);
 
     /// <summary>
     /// A guard on the guard: if the walk below ever stopped visiting anything, the assertion above

@@ -8,6 +8,10 @@ import { TranslocoTestingModule } from '@jsverse/transloco';
 import { COMPANY_GATEWAY } from '../../core/company/company-gateway';
 import { MockCompanyGateway } from '../../core/company/mock-company-gateway';
 import { ADMIN_SESSION_STORAGE_KEY, AdminSession } from '../../core/session/admin-session';
+import { describeClick } from '../../core/telemetry/action-descriptor';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
+import { WorkerResponse } from '../../core/company/company-types';
 import { KnobbedGateway, httpError } from '../../testing/company-gateway-double';
 import { routePathFor, routeUrlFor } from '../../testing/route-table';
 import { ViewportService } from '../../ui/viewport.service';
@@ -488,7 +492,14 @@ describe('CompanyPage', () => {
       await press('Prikaži sve');
 
       expect(listedNames()).toEqual(['Marko Marković', 'Zoran Jovanović']);
-      expect(element.querySelector('.table-bar')).toBeNull();
+      // **The strip stays and goes quiet.** Since paging (2026-09-02) the count is printed
+      // always — ten rows of twenty-four with nothing said about it is the same lie the tint was
+      // invented for — so what a cleared filter removes is the *loudness* and the way out, not the
+      // count. The tint must go on meaning exactly one thing: a filter is narrowing what you see.
+      const cleared = element.querySelector('.table-bar');
+      expect(cleared?.classList.contains('table-bar--quiet')).toBe(true);
+      expect(cleared?.textContent).toContain('Ukupno 3');
+      expect(text()).not.toContain('Prikaži sve');
       expect(element.querySelector('.person--you')).not.toBeNull();
     });
 
@@ -1143,6 +1154,255 @@ describe('CompanyPage', () => {
     it('takes every colour from the design tokens', () => {
       // `design/tokens.md` is binding, and a raw hex is how a screen drifts out of the system.
       expect(rules).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    });
+  });
+
+  /**
+   * What the people list tells the action log (D5).
+   *
+   * **Nothing about a code, at either end.** Decision 13 keeps every path to a credential on
+   * `/company/worker/:workerId`, and the log obeys the same rule: this screen names the row a man
+   * was opened from and the verdict on adding one, and there is no slug here that a code could
+   * ride on. `company.code.issue` and `company.code.reveal` live on his page.
+   */
+  describe('the action log', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('names a foreman row in the table, from anywhere inside it', async () => {
+      viewport.atLeastMedium = () => true;
+      await render();
+
+      const row = element.querySelector('tbody tr.person--open:not(.person--you)');
+      expect(describeClick(row)).toBe(ACTIONS.companyWorkerOpen);
+      // The whole row is the control, so a press on the name, on a chip, or on the last-contact
+      // cell has to answer the same thing.
+      expect(describeClick(row!.querySelector('.person__name'))).toBe(ACTIONS.companyWorkerOpen);
+      expect(describeClick(row!.querySelector('.chip'))).toBe(ACTIONS.companyWorkerOpen);
+    });
+
+    /**
+     * The phone's list is a different rendering of the same fact, and it is the one an owner
+     * actually uses on site. A slug on only one of the two would leave half the presses unnamed.
+     */
+    it('names a foreman row on the phone as well as in the table', async () => {
+      viewport.atLeastMedium = () => false;
+      await render();
+
+      expect(describeClick(element.querySelector('.row-button.row:not(.row--you)'))).toBe(
+        ACTIONS.companyWorkerOpen,
+      );
+    });
+
+    it('leaves the owner’s own row out of it — he is not one of his foremen', async () => {
+      viewport.atLeastMedium = () => true;
+      await render();
+
+      expect(describeClick(element.querySelector('tr.person--you'))).not.toBe(
+        ACTIONS.companyWorkerOpen,
+      );
+    });
+
+    it('records the verdict on adding a foreman, and nothing about the man', async () => {
+      await render();
+      await press('Dodaj poslovođu');
+      await type('input[type="text"]', 'Petar Petrović');
+      await type('input[type="email"]', 'Petar@Firma.RS');
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+
+      await press('Dodaj i napravi kod');
+
+      expect(record).toHaveBeenCalledWith(ACTIONS.companyWorkerAdd, { outcome: 'ok' });
+      const said = JSON.stringify(record.mock.calls);
+      expect(said).not.toContain('Petar');
+      expect(said).not.toContain('firma.rs');
+    });
+
+    it('records a refused add as a failure rather than staying silent', async () => {
+      gateway.addError = httpError(409, { code: 'email_taken' });
+      await render();
+      await press('Dodaj poslovođu');
+      await type('input[type="text"]', 'Petar Petrović');
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+
+      await press('Dodaj i napravi kod');
+
+      expect(record).toHaveBeenCalledWith(ACTIONS.companyWorkerAdd, { outcome: 'fail' });
+    });
+  });
+
+  // ---- Ten rows a page ---------------------------------------------------------------------------
+
+  describe('paging', () => {
+    /**
+     * A crew big enough to page, generated rather than written out.
+     *
+     * Named `Radnik NN` with a zero-padded number so the Serbian-Latin collation the list sorts by
+     * puts them in the order the names are read in — a spec that could not name the row it expected
+     * would prove nothing about *which* ten are on screen, which is the whole question.
+     */
+    function crew(size: number): WorkerResponse[] {
+      return Array.from({ length: size }, (_, index) => {
+        const n = String(index + 1).padStart(2, '0');
+        return {
+          id: `d3a0c1f0-5b8e-4f1a-9c62-0000000009${n}`,
+          username: `radnik.${n}`,
+          display_name: `Radnik ${n}`,
+          email: null,
+          language: 'sr',
+          created_at: '2026-08-01T07:00:00.000Z',
+          disabled_at: null,
+          active_device_count: 1,
+          last_seen_at: '2026-08-31T13:19:13.000Z',
+          has_live_activation_code: false,
+        };
+      });
+    }
+
+    /** The pager's own numbered controls, in the order it draws them. */
+    function pages(): string[] {
+      return [...element.querySelectorAll('.pager__page')].map((n) => n.textContent?.trim() ?? '');
+    }
+
+    async function goToPage(number: string): Promise<void> {
+      const target = [...element.querySelectorAll<HTMLButtonElement>('.pager__page')].find(
+        (candidate) => candidate.textContent?.trim() === number,
+      );
+      if (!target) {
+        throw new Error(`no page control reading "${number}"; there are: ${pages().join(', ')}`);
+      }
+      target.click();
+      await settle();
+    }
+
+    /**
+     * **Ten rows, and the owner is one of them.**
+     *
+     * He is entry zero of one list rather than a fixed row above a paginated one: ten a page has to
+     * mean ten on the glass, and a screen that quietly drew eleven would be a screen whose own
+     * count strip was wrong — the exact class of lie that strip exists to prevent.
+     */
+    it('draws ten people to a page, the owner’s own row included', async () => {
+      gateway.extraWorkers.push(...crew(14));
+      await render();
+
+      // 14 generated + Zoran and Marko + the owner = 17 people, so nine foremen ride with him.
+      expect(listedNames()).toHaveLength(9);
+      expect(element.querySelectorAll('.person--you')).toHaveLength(1);
+      expect(pages()).toEqual(['1', '2']);
+      expect(element.querySelector('.table-bar')?.textContent).toContain('Prikazano 1–10 od 17');
+    });
+
+    it('moves to the second page and draws the rest of them', async () => {
+      gateway.extraWorkers.push(...crew(14));
+      await render();
+
+      await goToPage('2');
+
+      expect(listedNames()).toHaveLength(7);
+      // The owner rode on page one, so his band and his row are gone from this one.
+      expect(element.querySelectorAll('.person--you')).toHaveLength(0);
+      expect(element.querySelector('.table-bar')?.textContent).toContain('Prikazano 11–17 od 17');
+      expect(element.querySelector('[aria-current="page"]')?.textContent?.trim()).toBe('2');
+    });
+
+    /**
+     * **The reset, which is the guard that matters most on this screen.**
+     *
+     * Standing on page 2 and typing a filter that leaves three rows would otherwise show an empty
+     * table — and an empty table here reads as *my foremen are gone*, which is precisely what the
+     * loud strip above it exists to prevent. The answer to a question he has just asked is on page
+     * one, so page one is where he lands.
+     */
+    it('goes back to the first page the moment the list becomes a different list', async () => {
+      gateway.extraWorkers.push(...crew(14));
+      await render();
+      await goToPage('2');
+
+      // Fourteen men answer this, which is **still two pages** — deliberately, so that what proves
+      // the rewind is the rewind. A filter that left one page would be rescued by the clamp
+      // instead, and this spec would go on passing with the reset deleted.
+      await filterBy('Osoba', 'radnik');
+
+      expect(element.querySelector('[aria-current="page"]')?.textContent?.trim()).toBe('1');
+      expect(listedNames()[0]).toBe('Radnik 01');
+      expect(element.querySelector('.table-bar')?.textContent).toContain('Prikazano 1–10 od 14');
+    });
+
+    /** The same rewind for a sort, which reorders the list under him just as thoroughly. */
+    it('goes back to the first page when the order is changed', async () => {
+      gateway.extraWorkers.push(...crew(14));
+      await render();
+      await goToPage('2');
+
+      await press('Osoba');
+
+      expect(element.querySelector('[aria-current="page"]')?.textContent?.trim()).toBe('1');
+      expect(element.querySelector('.table-bar')?.textContent).toContain('Prikazano 1–10 od 17');
+    });
+
+    /**
+     * **The count strip keeps the two totals apart.**
+     *
+     * "Ten of twelve, filtered from twenty-four" is three facts and every one of them is load
+     * bearing: what is on the glass, how many answer the question he asked, and how many men he
+     * actually has. Collapsing any two of them is how a screen makes an owner believe a foreman
+     * was removed from his company.
+     */
+    it('says which slice of which total, without letting paging look like filtering', async () => {
+      gateway.extraWorkers.push(...crew(14));
+      await render();
+
+      await filterBy('Osoba', 'radnik');
+
+      const bar = element.querySelector('.table-bar');
+      expect(bar?.textContent).toContain('Prikazano 1–10 od 14');
+      expect(bar?.textContent).toContain('filtrirano iz 17');
+      expect(bar?.classList.contains('table-bar--quiet')).toBe(false);
+    });
+
+    /** One page is no pager, and still a count: furniture goes, facts stay. */
+    it('draws no pager over a company that fits on one page, and still says how many', async () => {
+      await render();
+
+      expect(element.querySelector('.pager')).toBeNull();
+      expect(element.querySelector('.table-bar')?.textContent).toContain('Ukupno 3');
+    });
+
+    /**
+     * **The clamp, on the read.** A reload that answers with fewer men than the page he is standing
+     * on must show him the men there are, not an empty table — and no event handler covers this,
+     * because nothing on the glass was touched.
+     */
+    it('does not strand him on a page the company has shrunk out of', async () => {
+      gateway.extraWorkers.push(...crew(14));
+      await render();
+      await goToPage('2');
+
+      gateway.extraWorkers.length = 0;
+      await press('Osveži');
+
+      expect(listedNames()).toEqual(['Marko Marković', 'Zoran Jovanović']);
+      expect(element.querySelector('.pager')).toBeNull();
+      expect(element.querySelector('.table-bar')?.textContent).toContain('Ukupno 3');
+    });
+
+    /** The phone gets the same control, wearing the compact bar the column menu wears. */
+    it('pages on a phone through a position and two arrows', async () => {
+      viewport.atLeastMedium = () => false;
+      viewport.expanded = () => false;
+      gateway.extraWorkers.push(...crew(14));
+      await render();
+
+      expect(pages()).toEqual([]);
+      expect(element.querySelector('.pager__position')?.textContent?.trim()).toBe('1 / 2');
+
+      element.querySelector<HTMLButtonElement>('.pager__step:last-of-type')?.click();
+      await settle();
+
+      expect(element.querySelector('.pager__position')?.textContent?.trim()).toBe('2 / 2');
+      expect(listedNames()).toHaveLength(7);
     });
   });
 });

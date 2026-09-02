@@ -72,10 +72,23 @@ export function filenameFromContentDisposition(header: string | null | undefined
  * the last separator is kept and the rest is dropped, which is what a browser's own download
  * logic does.
  *
- * The second is duller: a name with no `.pdf` on it opens in nothing on Windows and in a text
+ * The second is duller: a name with no extension on it opens in nothing on Windows and in a text
  * viewer on Android. The extension is enforced rather than trusted.
  */
-export function safeFilename(raw: string | null | undefined, fallbackBase: string): string {
+export function safeFilename(
+  raw: string | null | undefined,
+  fallbackBase: string,
+  /**
+   * What the file must end in, without the dot.
+   *
+   * Defaulted to `pdf` because the report is what this module was written for and every existing
+   * call site means that. The log export (D5) is a CSV and passes `csv` — one parameter rather
+   * than a second copy of the whole sanitiser, because everything else about naming a downloaded
+   * file is identical and the traversal defence below is exactly the part nobody should write
+   * twice.
+   */
+  extension: string = 'pdf',
+): string {
   const lastSegment = (raw ?? '').split(/[\\/]/).pop() ?? '';
   const cleaned = lastSegment
     .replace(UNSAFE, '')
@@ -83,13 +96,15 @@ export function safeFilename(raw: string | null | undefined, fallbackBase: strin
     .replace(/^\.+/, '')
     .trim();
 
-  const base = withoutPdf(cleaned.length > 0 ? cleaned : fallbackBase).slice(0, MAX_LENGTH).trim();
-  return `${base.length > 0 ? base : fallbackBase}.pdf`;
+  const base = withoutExtension(cleaned.length > 0 ? cleaned : fallbackBase, extension)
+    .slice(0, MAX_LENGTH)
+    .trim();
+  return `${base.length > 0 ? base : fallbackBase}.${extension}`;
 }
 
-/** Strip a trailing `.pdf` so the length cap cannot cut the extension in half. */
-function withoutPdf(name: string): string {
-  return name.replace(/\.pdf$/i, '');
+/** Strip a trailing extension so the length cap cannot cut it in half. */
+function withoutExtension(name: string, extension: string): string {
+  return name.replace(new RegExp(`\\.${extension}$`, 'i'), '');
 }
 
 /**

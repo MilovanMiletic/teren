@@ -70,6 +70,18 @@
       "clearAll": "Prikaži sve",
       "showing": "Prikazano {{shown}} od {{total}}",
       "empty": "Nijedan red ne odgovara filteru."
+    },
+    "page": {
+      "range": "Prikazano {{from}}–{{to}} od {{total}}",
+      "filteredRange": "Prikazano {{from}}–{{to}} od {{shown}} — filtrirano iz {{total}}",
+      "total": "Ukupno {{total}}"
+    },
+    "pager": {
+      "label": "Kretanje kroz strane",
+      "previous": "Prethodna strana",
+      "next": "Sledeća strana",
+      "page": "Strana {{page}}",
+      "position": "{{page}} / {{pageCount}}"
     }
   },
   "home": {
@@ -1028,6 +1040,90 @@
       "refused": "Server ovo nije prihvatio.",
       "emailTaken": "Ta adresa već ima nalog. Pozovite taj nalog umesto pravljenja drugog.",
       "unavailable": "Server trenutno ne odgovara."
+    },
+    "logs": {
+      "open": "Otvori log"
+    }
+  },
+  "logs": {
+    "title": "Log",
+    "subtitle": "Šta je aplikacija radila",
+    "caption": "Svaka linija koju je server upisao i svaka akcija u aplikaciji",
+    "loading": "Učitavanje loga…",
+    "unavailable": "Ništa nije učitano — server nije odgovorio na ovo pitanje.",
+    "reload": "Osveži",
+    "back": "Nazad na platformu",
+    "about": {
+      "title": "Šta ovde vidite",
+      "body": "Serverov log i akcije koje su ljudi napravili u aplikaciji, najnovije prvo. Filtriranje radi server, pa ovaj ekran nikada ne zna ukupan broj — zna samo koliko je linija do sada učitao. Kada server ima još, na dnu stoji „Učitaj još“. Dugme za preuzimanje daje isti filter kao CSV datoteku."
+    },
+    "filters": {
+      "title": "Suzi listu",
+      "on": "uključeni",
+      "clear": "Ukloni filtere"
+    },
+    "range": {
+      "label": "Period",
+      "hour": "Poslednji sat",
+      "today": "Danas",
+      "week": "7 dana",
+      "all": "Sve sačuvano"
+    },
+    "level": {
+      "label": "Nivo",
+      "verbose": "Detaljno",
+      "debug": "Dijagnostika",
+      "information": "Informacija",
+      "warning": "Upozorenje",
+      "error": "Greška",
+      "fatal": "Kritično"
+    },
+    "column": {
+      "time": "Vreme",
+      "level": "Nivo",
+      "source": "Izvor",
+      "message": "Poruka",
+      "ids": "Zapis",
+      "open": "Otvori liniju"
+    },
+    "row": {
+      "open": "Prikaži celu liniju"
+    },
+    "empty": {
+      "none": "Još ništa nije zabeleženo.",
+      "filtered": "Nijedna linija ne odgovara ovim filterima."
+    },
+    "more": {
+      "action": "Učitaj još",
+      "loading": "Učitavanje…"
+    },
+    "detail": {
+      "message": "Poruka",
+      "id": "Broj linije",
+      "at": "Tačno vreme",
+      "atZone": "po satu ovog uređaja",
+      "level": "Nivo",
+      "template": "Šablon",
+      "properties": "Podaci",
+      "exception": "Izuzetak",
+      "noException": "Ova linija nema izuzetak.",
+      "correlation": "Korelacija",
+      "company": "Klijent",
+      "entry": "Zapis"
+    },
+    "export": {
+      "action": "Preuzmi log",
+      "working": "Priprema datoteke…",
+      "done": "Datoteka je sačuvana",
+      "failed": "Preuzimanje nije prošlo"
+    },
+    "summary": {
+      "loaded": "Učitano",
+      "errors": "Greške",
+      "warnings": "Upozorenja"
+    },
+    "triage": {
+      "label": "Stanje — dodirnite da vidite samo to"
     }
   }
 }

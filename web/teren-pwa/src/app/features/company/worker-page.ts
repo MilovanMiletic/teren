@@ -20,6 +20,8 @@ import {
   serverAnswered,
 } from '../../core/company/company.service';
 import { AdminSessionService } from '../../core/session/admin-session.service';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
 import { AppHeader } from '../../ui/app-header';
 import { Icon } from '../../ui/icon';
 import { InfoPopover } from '../../ui/info-popover';
@@ -135,6 +137,15 @@ export class WorkerPage {
   private readonly company = inject(CompanyService);
   private readonly admins = inject(AdminSessionService);
   private readonly router = inject(Router);
+  /**
+   * The action log (D5).
+   *
+   * Issuing is recorded by hand because the outcome is the whole story: an issue that got no
+   * verdict may already have superseded the code the man is holding, and "he pressed it" without
+   * "and it failed" is the one shape of log line that would send an admin looking in the wrong
+   * place. Copying and unfolding declare themselves in the template.
+   */
+  private readonly actions = inject(ActionLogService);
 
   /** From the route (`withComponentInputBinding`), so a reload lands on the same man. */
   readonly workerId = input.required<string>();
@@ -404,6 +415,13 @@ export class WorkerPage {
     this.copied.set(null);
 
     const result = await this.company.issueCode(id);
+
+    // Recorded before the mid-flight guard below returns, because an issue that landed on a screen
+    // the admin has already left is exactly the event worth having a row for. The code itself is
+    // never a fact here — only that one was minted, and whether the server said so.
+    this.actions.record(ACTIONS.companyCodeIssue, {
+      outcome: result.status === 'ok' ? 'ok' : 'fail',
+    });
 
     if (this.workerId() !== id) {
       // He navigated away mid-flight. The code exists on the server and this screen is now about

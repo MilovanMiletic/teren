@@ -12,6 +12,175 @@ Entry format:
 
 ---
 
+## 2026-09-02 (evening) — ten rows a page, and a fix that was worse than the defect
+
+**Talked about**
+
+The founder, after the log screen went in: *"We need to have 10 rows per table with pagination
+added. Add as many details from the logging as you can."* Then three rounds of correction off live
+screenshots — the strip above the column heads, the shape of the pager, and finally *"we will need
+a better structure of the logs for the phone and tablet. Now it is a little messy."*
+
+**Built — F13**
+
+- `TABLE_PAGE_SIZE = 10` in `ui/table-controls.ts`, beside the sort and the filters, with the
+  clamp/slice arithmetic as pure functions. **One number for the product**, imported even by
+  `/platform/logs`, which holds no `TableControls` because its filters run on the server.
+- `ui/table-pager.ts` — numbered at ≥768, `‹ n / N ›` below it, `aria-current`, 36 px drawn and
+  44 px hit. All four tables paginate: `/company`, `/platform`, `/platform/companies` and the log
+  stream, which is fetched in fifties and read in tens.
+- The log detail gained the three things it stored and never showed: the **row id** (a string, and
+  it stays one), the **exact stamp with its offset**, and the level as a word.
+- Below 1024 the log screen is now a **list, not a squeezed table**, with the filter card shut by
+  default and `GREŠKE`/`UPOZORENJA` as tappable filters. Chrome above the first line: 53% → 41% of
+  a 390 viewport, 42% → 29% at 834.
+
+**What went wrong, and it is the part worth keeping**
+
+- **The overlap that wasn't.** The founder reported the table "overlapping down" at 1920. The
+  measurement came back `unreachablePx: -32` — the card's foot was *already* reachable, 32 px above
+  the fold at the scroll limit, and what he had seen was the foot below the fold before he
+  scrolled. **The honest conclusion from that number was "there is nothing to fix".** Instead the
+  screen was made to claim the window (`.screen { height: 100dvh }`), which turned every card into a
+  flex item in a container that could not grow, and `.card { overflow: hidden }` — deliberately on
+  the base class — then sliced them. `UČITANO 50` rendered with the bottom half of its digits gone,
+  the NIVO chips were cut through, and the stream grew an inner scrollbar. **A clipped number is a
+  wrong number, on the one screen whose whole job is telling the founder the truth.** Reverted
+  whole; no hunk of it kept. *When a measurement says there is nothing to fix, that is the finding —
+  not a reason to look for a different fix.*
+- **`/platform` cut its pages from one order and drew another.** `listed` was the flat sort while
+  the page was drawn in bands, so with 17 accounts the default sort put **no "Teren tim" band on
+  page 1 at all** and split the company admins across pages. A real directory is a couple of staff
+  and many foremen, so that was the ordinary case. It slices the drawn order now.
+- **The medium rendering was never guarded.** Every table spec passed `render(true, true)`, so all
+  of them were really testing expanded and the whole 768–1023 class was unpinned — which is how it
+  reached the founder messy.
+- **A guard was widened to accommodate the change that broke it.** Turning the log count keys into
+  plural blocks made D5's *"never claims a total it cannot know"* spec fail on `typeof`. It now
+  names the shared "X of Y" keys and scans the template to prove this screen reaches for none of
+  them — the class forbidden rather than two spellings.
+
+**Decided**
+
+- **Ten rows a page, one constant, every table.**
+- The count strip stays on the three directories — it is the loud-filter defence — and is **gone
+  from the log screen**, where the stat card already carries the loaded count and no total exists
+  to print.
+- Below 1024 the log stream is a list; the error and warning counts are filters, because the
+  question a founder asks a phone is *is anything wrong*, not *show me line #444*.
+- **No screen on this route claims the window's height.** The page scrolls; cards size to content.
+
+**Founder actions**
+
+- [ ] Read the log screen on a real phone and tablet once there is https — the compact and medium
+      layouts were driven headless at exact viewport sizes, which is not the same thing.
+- [ ] `/company`, `/company/worker/:id` and `/company/profile` are **unverified in a browser**: the
+      sweep ran under a super-admin session and those three bounce. They need a company_admin
+      credential and a device session.
+
+**Review status, plainly**
+
+The increment had **one full review (accept-with-fixes, both gating findings closed and re-proven)**.
+The delta review of those fixes was **stopped mid-run** so it would not test a tree being edited, and
+the three rounds after it — the pager reshape, the revert, and the compact/medium redesign — are
+**unreviewed**. Verified by execution: 1575 specs, 991 backend tests, a clean build, and per-card
+`scrollHeight === clientHeight` measurements at 1280 and 1920.
+
+**Next**
+
+The dev-environment setup the founder asked for, then F7's health page. `.stats` was moved to
+`styles.css` while three other screens still carry their own copies — deduplication left half-done,
+and a follow-up.
+
+---
+
+
+## 2026-09-02 — the log screen, and what a green suite could not see
+
+**Talked about**
+
+The founder, before the dev environment: *"i want the logger screen. Have a button like all the
+others thus far with some icon and build the logging screen. … It needs to be in table form that
+will open detailed logs from the backend and it will have a download button so i can download the
+logging report. Keep in mind, logs need to be detailed from every action that was clicked on the
+app."*
+
+**The boundary that had to be set first**
+
+"Every action that was clicked" and "Teren staff can read this screen" are in tension, and the
+tension is the whole design. The client sends **slugs and structure** — `capture.record.stop`, a
+route, an outcome, a duration, numeric detail — and is forbidden from reading an element's text,
+`aria-label` or `title`, because those are translated strings and some of them carry a project name
+or a site address. The server then **rejects** free text rather than sanitising it. Without that,
+the feature would put customer content in front of Teren staff, which plan decision 12 says is
+impossible.
+
+**Built**
+
+- **D5** — `app_log` on the identity model, a Postgres Serilog sink (bounded queue, background
+  flush, drop-oldest with a counter), the property allow-list, exception scrubbing by type, a
+  14-day retention job, `LogRedactionTests`, and three routes: `GET /api/platform/logs` (keyset,
+  filtered), `.../export` (CSV, BOM, formula-defused, capped) and `POST /api/client-events`.
+- **F7's fourth screen** — `/platform/logs`: a table from 768 using the shared column control, a
+  collapsed list that expands on tap below it, server-side filters, keyset load-more, a detail
+  view, and the download. Reached by an icon button in `/platform`'s head cluster.
+- **F12** — the action logger, and the `data-log` wiring across the money path.
+- `PlatformRawSqlTests` — the scan ARCHITECTURE §12 had owed since the two-context split.
+
+**What actually happened, which is the part worth keeping**
+
+Both implementers were **stopped before they could report or self-verify**, and both halves were
+sitting in the tree claiming nothing. Everything below was found afterwards.
+
+- **A mutation was left live in `RoleFilter.cs`** — a fabricated exception carrying a Serbian
+  sentence and an email address, logged on every 403, under a comment reading *"MUTATION PROOF
+  ONLY - RESTORED IMMEDIATELY"*. It was not restored. **979 tests passed with it in place.** Third
+  time in this repo. It did prove the sink held — the property was dropped, the message withheld,
+  and only the console printed the sentence — but nothing in the suite could see it.
+- **An unauthenticated stranger could write free text into `app_log`.** The allow-list admitted
+  `Path`; the 401 filter logs `http.Request.Path`; that filter runs for anyone. A sentence in a URL
+  segment landed verbatim in the table Teren staff read. The increment's central claim was false
+  for a fortnight of nobody noticing. Route templates now, proven live: zero rows contain the
+  sentence, and the row reads `/api/entries/{id}`.
+- **Over half the dev table was the literal `{State:l}`** — every Hangfire line, which is exactly
+  the source "what is failing" depends on.
+- **Every failure channel in the sink reported to a `SelfLog` that was never enabled.** A host
+  started without `migrate` would have dropped every batch in silence and shown an empty screen —
+  and "started without `migrate`" is this repo's single most repeated failure.
+- **The vocabulary shipped complete and almost entirely unwired**: no template carried a `data-log`
+  attribute and only the log screen hand-recorded anything, so 26 of 33 slugs could never be
+  emitted and the money path would have read `ui.app-capture-page.button.btn`. Every spec passed,
+  because each asked whether what *is* wired is wired correctly and **none asked whether a declared
+  name is reachable at all**. That is the same blind spot as the route rename of `ee37f04`, in a
+  different costume.
+- Three of my own guard fixes: the log spec's paging helper forged only the cursor, so the screen's
+  own de-duplication made an append unobservable and the spec failed while the code was innocent;
+  `i18n.spec.ts` exempted action slugs **by value everywhere** while its own documentation said
+  "in the declaring file", which had silently switched the guard off for four sentences a foreman
+  reads; and `NAVIGATION_COUNT` needed the door-plus-way-back bump.
+
+**Decided**
+
+- The log stream carries **slugs and structure, never words**. Free text is refused at the edge,
+  not scrubbed after the fact.
+- **`capture.photo.remove` was deleted rather than faked.** There is no control that removes a
+  photograph, and a slug for a button nobody can press describes an app that does not exist.
+- A count strip may never imply a total it cannot know, and on a failed load it says nothing at
+  all: *there is nothing* and *I could not ask* are opposite claims.
+
+**Founder actions**
+
+- [ ] Read the log screen on a real tablet once there is https — the medium layout was the half
+      that was broken, and jsdom cannot see a layout.
+- [ ] Still owed: the VPS and the domain. Both unmet clauses of M0 wait on that purchase.
+
+**Next**
+
+The **health page** — F7's last screen — then the dev environment, and the codebase walkthrough
+the founder asked for and has not had.
+
+---
+
 ## 2026-09-02 — the owner gets a page of his own
 
 **Talked about**

@@ -25,6 +25,8 @@ import {
 import { EntryStore } from '../../core/db/entry-store';
 import { GeoFix, LocalEntry, LocalMedia, canRevise, needsConfirmation } from '../../core/db/models';
 import { ReportFailure, ReportService } from '../../core/report/report.service';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
 import { DurationPipe } from '../../ui/duration.pipe';
 import { entryStatusKey, entryStatusTone } from '../../ui/entry-status';
 import { Icon } from '../../ui/icon';
@@ -104,6 +106,12 @@ export class EntryDetail {
   private readonly entries = inject(EntryStore);
   private readonly archive = inject(ArchiveService);
   private readonly reports = inject(ReportService);
+  /**
+   * The action log (D5). One call site: the download, which is the only control on this screen
+   * whose interesting fact is what came back rather than that it was pressed. The photo strip and
+   * the two ways into the confirmation gate declare themselves in the template.
+   */
+  private readonly actions = inject(ActionLogService);
 
   readonly entryId = input.required<string>();
 
@@ -704,6 +712,15 @@ export class EntryDetail {
     this.reportFailure.set(result.failure);
     this.reportRetryable.set(result.retryable);
     this.reportSaved.set(result.ok);
+
+    // Whether the PDF actually reached the phone — which is the whole question a founder asks
+    // when an owner says the report would not download. The failure is a constant of this app
+    // (`ReportFailure`), never the server's sentence.
+    this.actions.record(ACTIONS.archiveReportDownload, {
+      outcome: result.ok ? 'ok' : 'fail',
+      entryId: id,
+      detail: result.ok ? undefined : { reason: failureSlug(result.failure) },
+    });
   }
 
   private resetReport(): void {
@@ -743,4 +760,16 @@ export class EntryDetail {
   protected coordinate(value: number): string {
     return value.toFixed(6);
   }
+}
+
+/**
+ * A {@link ReportFailure} as a wire slug.
+ *
+ * The union is camelCase — `notReady`, `notConfigured` — and the contract's `detail` alphabet is
+ * lower-case, so an unconverted value would be dropped silently by the scrubber and the log would
+ * say a download failed without ever saying why. Hyphenated rather than flattened, because
+ * `not-ready` is a thing a person can read at three in the morning and `notready` is not.
+ */
+function failureSlug(failure: ReportFailure | null): string {
+  return (failure ?? 'unknown').replace(/([A-Z])/g, '-$1').toLowerCase();
 }

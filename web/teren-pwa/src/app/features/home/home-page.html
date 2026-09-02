@@ -142,7 +142,7 @@
         <div class="recent__head">
           <h2 class="t-label recent__label">{{ t('home.recent.label') }}</h2>
           <!-- The archive is the buyer's reason to pay; it must be reachable from the front door. -->
-          <button type="button" class="recent__all" (click)="openArchive()">
+          <button type="button" class="recent__all" data-log="archive.open" (click)="openArchive()">
             <span>{{ t('home.recent.all') }}</span>
             <app-icon name="chevron-right" [size]="16" />
           </button>

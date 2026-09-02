@@ -19,6 +19,7 @@ import { WorkerPage } from '../../features/company/worker-page';
 import { PlatformPage } from '../../features/platform/platform-page';
 import { SetPasswordPage } from '../../features/auth/set-password-page';
 import { CompaniesPage } from '../../features/platform/companies-page';
+import { LogsPage } from '../../features/platform/logs-page';
 import { PersonPage } from '../../features/platform/person-page';
 import { ADMIN_SESSION_STORAGE_KEY, AdminSession } from './admin-session';
 import {
@@ -102,6 +103,7 @@ describe('the device gate', () => {
   let platform: string;
   let setPassword: string;
   let platformCompanies: string;
+  let platformLogs: string;
   let platformPerson: string;
   let deepLink: string;
 
@@ -119,6 +121,7 @@ describe('the device gate', () => {
     platform = await routeUrlFor(PlatformPage);
     setPassword = await routeUrlFor(SetPasswordPage);
     platformCompanies = await routeUrlFor(CompaniesPage);
+    platformLogs = await routeUrlFor(LogsPage);
     platformPerson = await routeUrlFor(PersonPage);
     deepLink = `${diary}?${ARCHIVE_ENTRY_PARAM}=${ENTRY_ID}`;
   });
@@ -319,6 +322,7 @@ describe('the device gate', () => {
 
       expect(await follow(platform)).toBe(platform);
       expect(await follow(platformCompanies)).toBe(platformCompanies);
+      expect(await follow(platformLogs)).toBe(platformLogs);
       expect(await follow(platformPerson.replace(':userId', STAFF.userId))).toContain('platform');
     });
 
@@ -487,7 +491,12 @@ describe('the device gate', () => {
         // 2026-09-01 and this spec went red until it was said out loud, and again the same day
         // when the owner's own account (`/company/profile`) did.
         expect(route.canMatch, url).toEqual([requiresCompanyAdmin]);
-      } else if (url === platform || url === platformCompanies || url === platformPerson) {
+      } else if (
+        url === platform ||
+        url === platformCompanies ||
+        url === platformPerson ||
+        url === platformLogs
+      ) {
         // Teren's own surface, on a *third* credential. Named separately from the office branch
         // above rather than folded into "any admin screen", because that folding is precisely the
         // mistake: a super admin has no company, is refused by every evidence route on purpose,

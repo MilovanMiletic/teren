@@ -5,6 +5,8 @@ import { TranslocoService, TranslocoTestingModule } from '@jsverse/transloco';
 import { AdminSession } from '../core/session/admin-session';
 import { AdminSessionService } from '../core/session/admin-session.service';
 import { SessionService } from '../core/session/session.service';
+import { ActionLogService } from '../core/telemetry/action-log.service';
+import { ACTIONS } from '../core/telemetry/actions';
 import { LoginPage } from '../features/auth/login-page';
 import { routeUrlFor } from '../testing/route-table';
 import en from '../../../public/i18n/en.json';
@@ -199,5 +201,50 @@ describe('SessionLink', () => {
 
     expect(button()?.getAttribute('aria-label')).toBe('Sign out — Petar Petrović');
     expect(button()?.textContent).toContain('Sign out');
+  });
+
+  /**
+   * What this control tells the action log (D5).
+   *
+   * It is one button wearing two actions, which is exactly why the slug is recorded in the handler
+   * instead of declared on the element: a `data-log="session.logout"` would file every press of the
+   * *way in* as a sign-out that never happened.
+   *
+   * The order is load-bearing too. `ActionLogService` picks a batch's bearer from the surface the
+   * row was captured on, and the admin token this row needs is gone the line after `signOut()`.
+   */
+  describe('the action log', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+      // `signOut` is a plain `vi.fn()`, so `restoreAllMocks` does not touch the implementation one
+      // of these tests gives it — and `clearAllMocks` in the outer `beforeEach` clears the calls
+      // and not the implementation either. Left behind, it would push into a dead array for ever.
+      signOut.mockReset();
+    });
+
+    it('records the sign-out before the credential it would be sent under is dropped', () => {
+      signedInAs = admin;
+      render();
+      vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+      const order: string[] = [];
+      vi.spyOn(ActionLogService.prototype, 'record').mockImplementation((action) => {
+        order.push(action);
+      });
+      signOut.mockImplementation(() => order.push('signOut'));
+
+      button()?.click();
+
+      expect(order).toEqual([ACTIONS.sessionLogout, 'signOut']);
+    });
+
+    it('records nothing when the same control is the way in', () => {
+      render();
+      vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+
+      button()?.click();
+
+      expect(record).not.toHaveBeenCalled();
+    });
   });
 });

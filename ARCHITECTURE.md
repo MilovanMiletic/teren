@@ -219,6 +219,32 @@ Rules that are not negotiable per screen:
 - Filtering happens on the client, over a list already fetched whole. It stops being right when the
   server stops sending the whole list; the filter then moves into the query and `TableControls`
   keeps its shape.
+- **That case arrived one increment later, on `/platform/logs` (D5), and the shape held**: the same
+  `column-menu` sits in every head, but its output drives the *query* rather than a `computed` over
+  rows in hand. The one thing that could not come with it is the count strip. Every other table
+  says "showing 3 of 12" because it holds all twelve; a keyset-paged stream holds one page and does
+  not know the total, so the log screen says how many lines are loaded and whether the server is
+  holding more behind them — and never a total. A screen that guessed one would be committing the
+  exact deception the loud-filter rule above exists to prevent, on the one screen a founder opens
+  because he already suspects something is wrong.
+
+### Telemetry — what was clicked (D5)
+
+`core/telemetry` records the action vocabulary (`area.thing.verb`) to `POST /api/client-events`:
+route entries, explicit calls at the moments that matter, and a global capture-phase click listener
+for breadth. It buffers in a bounded Dexie store and flushes in batches.
+
+**Its privacy boundary is `action-descriptor.ts`, and it is structural.** A descriptor is built from
+a declared `data-log` slug, the element's tag, and its class names — **never `textContent`,
+`aria-label`, `title` or `value`**, because every one of those is a translated user-facing string and
+some of them carry a project name or a site address. Reading one would ship a customer's commercial
+data into the table Teren staff read. A spec scans the file for the four forbidden accessors, since a
+future edit reaching for `textContent` "to make the logs readable" is the change that would look like
+an improvement.
+
+Two rules keep it away from the money path: it never blocks or throws into a click handler, and it
+drops quietly when the endpoint or the network is gone. Evidence leaving the phone always outranks
+knowing that a button was pressed.
 
 ### Localisation
 
@@ -686,6 +712,19 @@ admits, and a caller of the wrong role learns nothing about its payload shape. A
 | `GET|POST` | `/api/platform/companies` (+ `/{id}/suspend`, `/{id}/resume`) | super_admin | the customers |
 | `GET|POST` | `/api/platform/users` (+ `/{id}/invite`, `/{id}/disable`, `/{id}/enable`) | super_admin | every account, keyset-paged |
 | `GET` | `/api/platform/audit` | super_admin | the admin audit trail |
+| `GET` | `/api/platform/logs` | super_admin | the log stream, keyset-paged over `(at DESC, id DESC)`; `level`, `source`, `company_id`, `entry_id`, `q`, `from`, `to` |
+| `GET` | `/api/platform/logs/export` | super_admin | the same query as a CSV download, capped at 50 000 rows |
+| `POST` | `/api/client-events` | any credential | what was pressed in the app, as slugs |
+
+**`POST /api/client-events` is the one write path open to both credentials** (D5), because the
+founder asked for every action in the app and a foreman's phone is most of the app. It is also the
+only route in the product that accepts input destined for a table Teren staff read, so its
+validation *is* the boundary rather than a convenience: `action` must be a slug
+(`^[a-z][a-z0-9]*(\.[a-z0-9-]+){1,4}$`), `route` may carry an id but **never a query string**, and a
+`detail` value may only be a number, a boolean or a short slug. A free-text value is dropped and the
+key with it; a bad `action` or `route` rejects that event whole. Nothing about a partly bad batch is
+a `4xx` — the answer is always `202 {accepted, rejected}`, because a phone that retried a malformed
+batch would retry it for ever. `company_id` comes from the caller's scope and never from the body.
 
 **`GET /api/me` answers for all three roles, and it is the only description of himself a company
 admin can obtain** (F10, 2026-09-02). He is in no list he may read: `/api/workers` returns
@@ -1006,7 +1045,23 @@ device (id uuid PK, company_id → company, user_id → app_user,
         created_at, last_seen_at, revoked_at, revoked_by_user_id)
 
 activation_code, password_token, admin_session, admin_audit   -- see the plan for columns
+
+app_log (id bigserial PK,               -- the one non-uuid key in the product; it is a firehose
+         at, level, source,             -- level: Verbose | Debug | Information | Warning | Error | Fatal
+         template,                      -- the message template, UNRENDERED
+         message,                       -- rendered from allow-listed properties only
+         properties jsonb NULL,         -- allow-listed names only; an unknown one is dropped
+         exception text NULL,           -- scrubbed: type + stack always, message only by type
+         company_id NULL, entry_id NULL, correlation text NULL)
+--  ix_app_log_at DESC, ix_app_log_level_at, ix_app_log_company_id_at
 ```
+
+`app_log` is in the **identity** model, which is what keeps the log viewer on the super-admin-safe
+side of the split rather than reaching into `TerenDbContext`. Retention is a decision, not a
+default: `Logging:RetentionDays` (14) with a daily Hangfire job, and `Verbose`/`Debug` dropped
+outside Development — without both, the log table becomes the largest object in the nightly backup.
+The sink writes through a bounded queue on a background flush, so a log call never waits on Postgres
+and a database outage costs log lines rather than the request that emitted them.
 
 Four constraints carry the role rules mechanically rather than conventionally, in the taste
 `ck_entry_status` sets: `ck_app_user_company_scope` (`(role = 'super_admin') = (company_id IS NULL)`)
@@ -1028,8 +1083,14 @@ It has its own migration history table, `__EFMigrationsHistory_identity`; `migra
 
 Note the caveat, so nobody over-claims it: this is a **model** barrier, not a connection barrier.
 Both contexts share a connection string, so raw SQL on the identity context can still reach
-`entry`. The barrier holds against every typed route; a source scan for raw `FROM entry|media|report`
-under the platform namespace is owed when D4 ships the log viewer.
+`entry`. The barrier holds against every typed route; a string is not a type. **That scan is no
+longer owed — `PlatformRawSqlTests` (D5) is it**, and D5 is what made it fall due: `LogRetentionJob`
+genuinely needs raw SQL (a set-based chunked `DELETE` over a firehose table, where loading rows to
+delete them would be absurd), so "no raw SQL on this path" stopped being a rule anyone could keep.
+The rule that replaced it is narrower and exact — **raw SQL under `Api/Platform`, `Api/Endpoints`
+and `Infrastructure/Logging` may name `app_log` and nothing that holds evidence** — and it is
+anti-vacuous: a second assertion pins that the one allowed statement exists and deletes `app_log`,
+so "the scan found nothing" can never come to mean "the scan is looking in the wrong place".
 
 `entry.device_id` keeps its original meaning — provenance, which phone captured the evidence —
 distinct from the `created_by_user_id` / `confirmed_by_user_id` attribution columns arriving in D8.
@@ -1037,10 +1098,17 @@ distinct from the `created_by_user_id` / `confirmed_by_user_id` attribution colu
 database. So "revoking a device stamps `revoked_at`, never deletes the row" is a code-level
 discipline backed by a test, not a database guarantee.
 
-- Personal data stays out of URLs, object keys, and logs. This becomes load-bearing at D5, when the
-  super admin's log viewer turns that discipline into a security boundary — enforced there by a
-  property allow-list at the sink, exception scrubbing, and a test that scans every log call site.
-- Personal data stays out of URLs, object keys, and logs.
+- Personal data stays out of URLs, object keys, and logs. **Since D5 this is a security boundary
+  rather than a discipline**, because the super admin's log viewer puts the result on a screen in
+  Teren's office. Three enforcements, not one: a **named property allow-list** at the sink (an
+  unknown property is dropped, not stored, so new logging that wants a new property adds it in a
+  diff a reviewer sees); **exception scrubbing** allow-listed by exception *type* — and
+  `AiProviderException` is deliberately not on that list even though it is ours, because
+  `ClaudeStructureExtractor` folds `ex.Message` from the provider into its own and an allow-list by
+  assembly would have admitted exactly the message the enforcement exists to exclude; and
+  **`LogRedactionTests`**, which reads every `.cs` under `src/` and fails on a log call site that
+  interpolates evidence. The rule there is "the expression, unless it is immediately reduced to a
+  count" — `RawTranscript.Length` and `Recipients.Count` are the discipline, not breaches of it.
 
 ---
 

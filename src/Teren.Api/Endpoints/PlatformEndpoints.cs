@@ -95,6 +95,10 @@ public static class PlatformEndpoints
             .Produces<PlatformUserResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        // D5's two routes join this group rather than making one of their own, so they inherit the
+        // same RoleFilter and cannot be given a different gate by accident.
+        group.MapPlatformLogEndpoints();
+
         group.MapGet("/audit", ListAuditAsync)
             .WithName("ListPlatformAudit")
             .WithSummary("What administrators have done, newest first.")

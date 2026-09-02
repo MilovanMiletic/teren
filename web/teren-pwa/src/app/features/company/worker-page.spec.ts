@@ -9,6 +9,9 @@ import { TranslocoTestingModule } from '@jsverse/transloco';
 import { COMPANY_GATEWAY } from '../../core/company/company-gateway';
 import { MockCompanyGateway } from '../../core/company/mock-company-gateway';
 import { ADMIN_SESSION_STORAGE_KEY, AdminSession } from '../../core/session/admin-session';
+import { describeClick } from '../../core/telemetry/action-descriptor';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
 import { KnobbedGateway, deferred, httpError } from '../../testing/company-gateway-double';
 import { waitUntil } from '../../testing/flush';
 import { routeUrlFor } from '../../testing/route-table';
@@ -912,6 +915,61 @@ describe('WorkerPage', () => {
 
     it('takes every colour from the design tokens', () => {
       expect(rules).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    });
+  });
+
+  /**
+   * What a foreman's page tells the action log (D5).
+   *
+   * This is the one screen in the app that puts a live credential on the glass, so it is the one
+   * screen where the log has something to say about credentials — and both slugs record that a
+   * code was *minted* or *taken off the screen*, never what it was. The `detail` contract makes
+   * that structural rather than careful: a `Q4KZ-8M2P` is not a slug the scrubber would keep.
+   */
+  describe('the action log', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('names each of the three ways a code leaves the screen', async () => {
+      await render();
+
+      const copyCode = button('Kopiraj kod');
+      const copyMessage = button('Kopiraj poruku');
+      const unfold = element.querySelector('.message__summary');
+
+      expect(describeClick(copyCode)).toBe(ACTIONS.companyCodeReveal);
+      expect(describeClick(copyMessage)).toBe(ACTIONS.companyCodeReveal);
+      expect(describeClick(unfold)).toBe(ACTIONS.companyCodeReveal);
+    });
+
+    it('records a minted code as a fact, and never the code itself', async () => {
+      await render();
+      await press('Napravi novi kod');
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+
+      await press('Da, napravi novi');
+
+      expect(record).toHaveBeenCalledWith(ACTIONS.companyCodeIssue, { outcome: 'ok' });
+      const said = JSON.stringify(record.mock.calls);
+      expect(said).not.toContain(shownCode() ?? 'nothing');
+      expect(said).not.toContain(MockCompanyGateway.LIVE_CODE);
+    });
+
+    /**
+     * The dangerous half. An issue that got no verdict may already have superseded the code the man
+     * is holding, and a log that says only "he pressed it" sends the next person looking in the
+     * wrong place.
+     */
+    it('records an issue that got no verdict as a failure', async () => {
+      gateway.issueError = httpError(500);
+      await render();
+      await press('Napravi novi kod');
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+
+      await press('Da, napravi novi');
+
+      expect(record).toHaveBeenCalledWith(ACTIONS.companyCodeIssue, { outcome: 'fail' });
     });
   });
 });

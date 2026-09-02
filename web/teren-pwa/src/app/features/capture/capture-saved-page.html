@@ -74,7 +74,18 @@
     <div class="grow"></div>
 
     <div class="column column--focused footer">
-      <button type="button" class="btn btn--primary" [disabled]="busy()" (click)="done()">
+      <!--
+        "Gotovo" is the hand-over to the outbox, so the log calls it that. Declared on the control
+        rather than recorded in the handler on purpose: this is the money path, and an attribute
+        adds no code between the tap and `draft → queued`.
+      -->
+      <button
+        type="button"
+        class="btn btn--primary"
+        data-log="capture.send"
+        [disabled]="busy()"
+        (click)="done()"
+      >
         {{ t('capture.saved.done') }}
       </button>
     </div>

@@ -96,7 +96,16 @@
         </button>
         <span class="actions__label" aria-hidden="true">{{ t('capture.record.stop') }}</span>
       }
-      <button type="button" class="btn btn--tertiary btn--row actions__cancel" (click)="cancel()">
+      <!--
+        The one control in the app that throws captured audio away, so it names itself for the
+        action log rather than arriving as `ui.button.btn`.
+      -->
+      <button
+        type="button"
+        class="btn btn--tertiary btn--row actions__cancel"
+        data-log="capture.record.discard"
+        (click)="cancel()"
+      >
         {{ t('capture.record.cancel') }}
       </button>
     </div>

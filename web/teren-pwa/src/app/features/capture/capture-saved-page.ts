@@ -16,6 +16,8 @@ import { switchMap } from 'rxjs';
 import { EntryNotOpenError, EntryStore } from '../../core/db/entry-store';
 import { LocalEntry, LocalMedia } from '../../core/db/models';
 import { PhotoCaptureService } from '../../core/media/photo-capture.service';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
 import { AppHeader } from '../../ui/app-header';
 import { DurationPipe } from '../../ui/duration.pipe';
 import { Icon } from '../../ui/icon';
@@ -45,6 +47,12 @@ export class CaptureSavedPage {
   private readonly router = inject(Router);
   private readonly entries = inject(EntryStore);
   private readonly photos = inject(PhotoCaptureService);
+  /**
+   * The action log (D5). Only the photo path calls it: "Gotovo" declares itself on the control
+   * (`data-log="capture.send"`), and a file input cannot, because the interesting facts are how
+   * many pictures came back and whether the entry would still take them.
+   */
+  private readonly actions = inject(ActionLogService);
   protected readonly plural = inject(PluralService);
 
   /** Route parameter, bound by `withComponentInputBinding()`. */
@@ -113,10 +121,24 @@ export class CaptureSavedPage {
         await this.entries.addPhoto(this.entryId(), photo);
       }
       this.entry.set((await this.entries.getEntry(this.entryId())) ?? null);
+      // A count, never a file name: `count` is a number and the contract's `detail` takes numbers.
+      this.actions.record(ACTIONS.capturePhotoAdd, {
+        outcome: 'ok',
+        entryId: this.entryId(),
+        detail: { count: files.length },
+      });
     } catch (error) {
       // An entry that has moved on cannot take new photos; say which of the two went wrong rather
       // than blaming the camera for a queueing decision.
-      this.photoError.set(error instanceof EntryNotOpenError ? 'rejected' : 'failed');
+      const rejected = error instanceof EntryNotOpenError;
+      this.photoError.set(rejected ? 'rejected' : 'failed');
+      // `blocked` and `fail` are different facts: the first is the entry refusing, the second is
+      // the camera or the store. One slug, two outcomes, and no sentence between them.
+      this.actions.record(ACTIONS.capturePhotoAdd, {
+        outcome: rejected ? 'blocked' : 'fail',
+        entryId: this.entryId(),
+        detail: { count: files.length },
+      });
     } finally {
       this.busy.set(false);
     }

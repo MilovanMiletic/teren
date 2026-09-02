@@ -11,6 +11,8 @@ import {
   PlatformStatus,
   serverAnswered,
 } from '../../core/platform/platform.service';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
 import { AppHeader } from '../../ui/app-header';
 import { ColumnMenu } from '../../ui/column-menu';
 import { Icon } from '../../ui/icon';
@@ -20,6 +22,7 @@ import { ModalSheet } from '../../ui/modal-sheet';
 import { SelectField } from '../../ui/select-field';
 import { SessionLink } from '../../ui/session-link';
 import { SortDirection, TableControls } from '../../ui/table-controls';
+import { TablePager } from '../../ui/table-pager';
 import { ViewportService } from '../../ui/viewport.service';
 import { platformReasonFor } from './platform-reason';
 import {
@@ -47,6 +50,16 @@ interface PeopleGroup {
 
 /** Which tab of the add dialog is showing. The two are different requests, not one with a flag. */
 type AddTab = 'company_admin' | 'super_admin';
+
+/**
+ * The bands, in the order the screen draws them — **the order of reach.**
+ *
+ * The people who can see everything, then the people who can see one company, then the people who
+ * can see one day's work; an owner reading down the page is reading outwards from himself. Declared
+ * once because two copies of it is how the order a page is *cut* in comes apart from the order it
+ * is *drawn* in, which is exactly the defect the review found (2026-09-02).
+ */
+const BANDS: PeopleGroupKey[] = ['staff', 'admins', 'workers'];
 
 /**
  * Teren's own surface (`plans/profile-and-identity.md` §8, §10.3 — F7): **every account in the
@@ -107,6 +120,7 @@ type AddTab = 'company_admin' | 'super_admin';
     ModalSheet,
     SelectField,
     SessionLink,
+    TablePager,
     TranslocoDirective,
   ],
   templateUrl: './platform-page.html',
@@ -115,6 +129,7 @@ type AddTab = 'company_admin' | 'super_admin';
 export class PlatformPage {
   private readonly platform = inject(PlatformService);
   private readonly router = inject(Router);
+  private readonly actions = inject(ActionLogService);
 
   protected readonly viewport = inject(ViewportService);
 
@@ -152,38 +167,103 @@ export class PlatformPage {
   });
 
   /**
-   * The directory, grouped and sorted.
+   * Everybody the filters left, **in the order the screen draws them**: banded by reach, sorted
+   * inside each band, then flattened.
    *
-   * The group order is fixed rather than sorted: staff, then customers' administrators, then
-   * foremen. It is the order of *reach* — the people who can see everything, then the people who
-   * can see one company, then the people who can see one day's work — and an owner reading down
-   * the page is reading outwards from himself.
+   * ## Why the flattening happens here and not after the slice
+   *
+   * This was wrong until the review of 2026-09-02, and it was wrong in the way that is hardest to
+   * see from the code: the list was sorted flat, the *page* was cut from that flat order, and the
+   * page was only then regrouped. So a page's **membership** was chosen by the sort while its
+   * **order** was chosen by the band — two different orders, one screen. Driven at 1280 with
+   * seventeen accounts, the default state sort put no `Teren tim` band on page 1 at all: the
+   * founder's own staff were on page 2 and the three company admins were split across both. And
+   * sorting by name ascending gave a page reading V, Z, S, T, U, L, M under a column head claiming
+   * ascending — each band correct within itself, the page incoherent.
+   *
+   * A real directory is one or two staff, a handful of administrators and many foremen, so *a first
+   * page with no staff band* is the ordinary case rather than a corner: the reader concludes Teren
+   * has no staff. Which is the same misreading the loud count strip exists to prevent, arrived at
+   * from a third direction.
+   *
+   * Slicing the drawn order fixes all of it at once, and it is what `/company` already does with
+   * the owner as entry zero. A page is then a window onto exactly what the eye would have scrolled
+   * past.
+   *
+   * Paging still cuts *through* the bands rather than inside them: a per-band page size would draw
+   * up to thirty rows under a control promising ten.
    */
-  protected readonly groups = computed<PeopleGroup[]>(() => {
+  private readonly listed = computed(() => {
     const kept = this.people().filter((person) =>
       this.controls.passes((key) => this.cellText(person, key)),
     );
-    const sorted = sortPeople(kept, this.controls.sort());
-    const order: PeopleGroupKey[] = ['staff', 'admins', 'workers'];
-
-    return (
-      order
-        .map((key) => ({
-          key,
-          rows: sorted
-            .filter((person) => groupOf(person) === key)
-            .map((person) => ({ person, chips: personChips(person) })),
-        }))
-        // A group with nothing in it prints a heading over air — which, with a filter live, reads as
-        // rows that failed to load rather than rows that were asked not to appear.
-        .filter((group) => group.rows.length > 0)
+    const sort = this.controls.sort();
+    return BANDS.flatMap((band) =>
+      sortPeople(
+        kept.filter((person) => groupOf(person) === band),
+        sort,
+      ),
     );
   });
 
-  /** How many accounts the directory is drawing, against how many there are. */
-  protected readonly shown = computed(() =>
-    this.groups().reduce((total, group) => total + group.rows.length, 0),
+  /**
+   * The directory, banded — **of the page on screen**.
+   *
+   * The slice is a contiguous window onto an order that is already banded, so filtering it per band
+   * both preserves the drawn order and drops the bands this page has nobody in: a page holding only
+   * foremen prints one heading, not three over air — which, with a filter live, would read as rows
+   * that failed to load rather than rows that were asked not to appear.
+   */
+  protected readonly groups = computed<PeopleGroup[]>(() => {
+    const page = this.controls.slice(this.listed());
+
+    return BANDS.map((key) => ({
+      key,
+      rows: page
+        .filter((person) => groupOf(person) === key)
+        .map((person) => ({ person, chips: personChips(person) })),
+    })).filter((group) => group.rows.length > 0);
+  });
+
+  /** How many accounts answer the filters, against how many there are. Never the page's count. */
+  protected readonly shown = computed(() => this.listed().length);
+
+  // ---- paging (ten rows a page, `ui/table-controls.ts`) ----------------------------------------
+
+  protected readonly page = computed(() => this.controls.pageOn(this.shown()));
+  protected readonly pageCount = computed(() => this.controls.pageCount(this.shown()));
+
+  /** The first and last row numbers on screen, one-based — what the count strip prints. */
+  protected readonly firstOnPage = computed(() =>
+    this.shown() === 0 ? 0 : (this.page() - 1) * this.controls.pageSize + 1,
   );
+
+  protected readonly lastOnPage = computed(() =>
+    Math.min(this.shown(), this.page() * this.controls.pageSize),
+  );
+
+  /**
+   * Which of the four sentences the count strip says — see `company-page.ts`, which reasons the
+   * same four out in full. They are four because a filter and a second page are independent facts
+   * and neither may be allowed to imply the other.
+   */
+  protected readonly countKey = computed(() => {
+    if (this.pageCount() > 1) {
+      return this.controls.filtering() ? 'table.page.filteredRange' : 'table.page.range';
+    }
+    return this.controls.filtering() ? 'table.filter.showing' : 'table.page.total';
+  });
+
+  protected readonly countParams = computed(() => ({
+    from: this.firstOnPage(),
+    to: this.lastOnPage(),
+    shown: this.shown(),
+    total: this.people().length,
+  }));
+
+  protected goToPage(page: number): void {
+    this.controls.goTo(page);
+  }
 
   protected readonly staffCount = computed(
     () => this.people().filter((person) => groupOf(person) === 'staff').length,
@@ -317,12 +397,28 @@ export class PlatformPage {
    * same person — and so the route table, not this call site, owns the shape of the address.
    */
   protected openPerson(person: Person): void {
+    // The press, not the person. A name is the one thing on this row that must not travel: it
+    // belongs to a real human being, and this event lands in the table Teren staff read.
+    this.actions.record(ACTIONS.platformUserOpen, {});
     void this.router.navigate(['/platform/user', person.id]);
   }
 
   /** To the customers. Both screens point at each other, so neither is a dead end. */
   protected openCompanies(): void {
     void this.router.navigate(['/platform/companies']);
+  }
+
+  /**
+   * To the log (D5).
+   *
+   * **This control is the only way in.** A route can be registered, guarded correctly and fully
+   * tested and still be unreachable — that is what "the super admin pages aren't wired in" turned
+   * out to mean on 2026-09-01, and the defect lived entirely in the combination of three
+   * individually correct guards. So the way in is pressed in a spec and followed through the real
+   * route table, not asserted as a path.
+   */
+  protected openLogs(): void {
+    void this.router.navigate(['/platform/logs']);
   }
 
   protected openAdd(): void {

@@ -11,6 +11,8 @@ import { EntryStore } from '../../core/db/entry-store';
 import { TEREN_DB, TerenDb } from '../../core/db/teren-db';
 import { DEMO_PROJECTS } from '../../core/projects/project-source';
 import { ProjectService } from '../../core/projects/project.service';
+import { describeClick } from '../../core/telemetry/action-descriptor';
+import { ACTIONS } from '../../core/telemetry/actions';
 import { ViewportService } from '../../ui/viewport.service';
 import { captureEntry } from '../../testing/capture-fixture';
 import { flushLiveQueries, waitUntil } from '../../testing/flush';
@@ -237,7 +239,9 @@ describe('ArchivePage', () => {
     expect(element.querySelectorAll('.row')).toHaveLength(2);
     // And the banner no longer claims this is only what the phone holds, because it is not.
     expect(element.querySelector('.partial')!.textContent).toContain('prikaz možda nije potpun');
-    expect(element.querySelector('.partial')!.textContent).not.toContain('samo ono što je na ovom telefonu');
+    expect(element.querySelector('.partial')!.textContent).not.toContain(
+      'samo ono što je na ovom telefonu',
+    );
   });
 
   // ------------------------------------------------- the way back, while the window is open
@@ -333,5 +337,38 @@ describe('ArchivePage', () => {
     const element = await render();
 
     expect(element.querySelector('.head__title')!.textContent).toContain('Dnevnik');
+  });
+
+  /**
+   * What the archive tells the action log (D5).
+   *
+   * Both are plain presses with nothing to say beyond which control was pressed, so both declare
+   * themselves on the element — no component change, and no code between the tap and the
+   * navigation. The assertions go through `describeClick` rather than reading the attribute back,
+   * because an attribute the descriptor cannot reach is an attribute that records nothing: a slug
+   * on a wrapper, or more than eight levels above the button, would pass a `getAttribute` check
+   * and still leave the log saying `ui.button.row-button`.
+   */
+  describe('the action log', () => {
+    it('names the row that opens a day', async () => {
+      archive.listEntries.mockResolvedValue({ status: 'ok', items: [listItem({ id: 'srv-1' })] });
+      const element = await render();
+      await waitForRows(element, 1);
+
+      expect(describeClick(element.querySelector('.row'))).toBe(ACTIONS.archiveEntryOpen);
+      // …and from the deepest thing under a muddy thumb, not only from the button itself.
+      expect(describeClick(element.querySelector('.row__title'))).toBe(ACTIONS.archiveEntryOpen);
+    });
+
+    it('names the way back into the gate on the row that offers it', async () => {
+      archive.listEntries.mockResolvedValue({
+        status: 'ok',
+        items: [listItem({ id: 'srv-open', status: 'confirmed', reported_at: null })],
+      });
+      const element = await render();
+      await waitForRows(element, 1);
+
+      expect(describeClick(element.querySelector('.revise__action'))).toBe(ACTIONS.confirmOpen);
+    });
   });
 });

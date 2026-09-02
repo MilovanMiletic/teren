@@ -6,6 +6,8 @@ import { ActivationService } from '../../core/auth/activation.service';
 import { ConnectivityService } from '../../core/connectivity.service';
 import { RETURN_URL_PARAM } from '../../core/session/return-url';
 import { Session } from '../../core/session/session';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
 import en from '../../../../public/i18n/en.json';
 import sr from '../../../../public/i18n/sr.json';
 import { ActivatePage } from './activate-page';
@@ -348,4 +350,59 @@ describe('ActivatePage', () => {
     button.click();
     fixture.detectChanges();
   }
+
+  /**
+   * What activation tells the action log (D5).
+   *
+   * The outcome, and nothing else. A code is a live single-use credential to a company's diaries
+   * and a username is a man's durable identity: neither may appear on a log line, and the
+   * `detail` contract would not carry them even if a future edit tried — but it is worth a spec
+   * saying so on the one screen where both are in a variable a keystroke away.
+   */
+  describe('the action log', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('records an activation that worked, carrying neither the name nor the code', async () => {
+      render();
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+      type(field('activate-username'), 'zoran.jovanovic');
+      type(field('activate-code'), 'DEM0TEST');
+
+      await submit();
+
+      expect(record).toHaveBeenCalledWith(ACTIONS.sessionActivate, { outcome: 'ok' });
+      const said = JSON.stringify(record.mock.calls);
+      expect(said).not.toContain('zoran');
+      expect(said).not.toContain('DEM0');
+    });
+
+    it('records a refused code as a failure', async () => {
+      activation.activate.mockResolvedValue({
+        ok: false,
+        failure: 'rejected',
+        session: null,
+        released: 0,
+      });
+      render();
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+      type(field('activate-username'), 'zoran.jovanovic');
+      type(field('activate-code'), 'DEM0TEST');
+
+      await submit();
+
+      expect(record).toHaveBeenCalledWith(ACTIONS.sessionActivate, { outcome: 'fail' });
+    });
+
+    it('records nothing for a submit that never reached the server', async () => {
+      render();
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+
+      await submit();
+
+      expect(activation.activate).not.toHaveBeenCalled();
+      expect(record).not.toHaveBeenCalled();
+    });
+  });
 });

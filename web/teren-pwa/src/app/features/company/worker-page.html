@@ -203,7 +203,18 @@
             }
 
             <div class="block__actions">
-              <button type="button" class="btn btn--row btn--solid" (click)="onCopyCode()">
+              <!--
+                The three controls by which a live activation code leaves this screen — copied,
+                shared, or unfolded — all declare the same slug. What an admin does with a
+                credential is the auditable half of decision 13, and the log records that it left,
+                never what it was.
+              -->
+              <button
+                type="button"
+                class="btn btn--row btn--solid"
+                data-log="company.code.reveal"
+                (click)="onCopyCode()"
+              >
                 <app-icon name="copy" [size]="18" />
                 {{ t('company.code.copy') }}
               </button>
@@ -212,7 +223,12 @@
                     Decision 13 made easy rather than merely required: one worker's ready-made
                     message, in his language, for one chat.
                   -->
-                <button type="button" class="btn btn--row btn--primary" (click)="onCopyMessage()">
+                <button
+                  type="button"
+                  class="btn btn--row btn--primary"
+                  data-log="company.code.reveal"
+                  (click)="onCopyMessage()"
+                >
                   <app-icon name="share" [size]="18" />
                   {{ t('company.code.copyMessage') }}
                 </button>
@@ -231,7 +247,7 @@
 
             @if (state.shareText; as message) {
               <details class="message">
-                <summary class="t-meta message__summary">
+                <summary class="t-meta message__summary" data-log="company.code.reveal">
                   {{ t('company.code.messageLabel') }}
                 </summary>
                 <p class="message__text">{{ message }}</p>

@@ -4,6 +4,8 @@ import { TranslocoDirective } from '@jsverse/transloco';
 
 import { AdminSessionService } from '../core/session/admin-session.service';
 import { SessionService } from '../core/session/session.service';
+import { ActionLogService } from '../core/telemetry/action-log.service';
+import { ACTIONS } from '../core/telemetry/actions';
 import { Icon } from './icon';
 
 /**
@@ -156,6 +158,16 @@ export class SessionLink {
   private readonly router = inject(Router);
   private readonly admins = inject(AdminSessionService);
   private readonly devices = inject(SessionService);
+  /**
+   * The action log (D5).
+   *
+   * Recorded here rather than declared on the control, because this is one button wearing two
+   * actions: the same element is the way out for a signed-in admin and the way *in* for everybody
+   * else, and a `data-log="session.logout"` on it would file half its presses as a sign-out that
+   * never happened. `session.login` belongs to the form on `/login`, which is where an answer
+   * exists to record.
+   */
+  private readonly actions = inject(ActionLogService);
 
   /**
    * `'out'` to offer the way out, `'in'` to offer the way in, `null` to render nothing.
@@ -186,6 +198,9 @@ export class SessionLink {
    */
   protected act(state: 'in' | 'out'): void {
     if (state === 'out') {
+      // Before the credential goes: `ActionLogService` chooses a batch's bearer from the surface
+      // the row was captured on, and the admin token it would need is gone one line later.
+      this.actions.record(ACTIONS.sessionLogout);
       this.admins.signOut();
     }
     void this.router.navigate(['/login']);

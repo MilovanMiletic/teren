@@ -5,6 +5,8 @@ import { TranslocoTestingModule } from '@jsverse/transloco';
 import { ActivationService } from '../../core/auth/activation.service';
 import { ConnectivityService } from '../../core/connectivity.service';
 import { RETURN_URL_PARAM } from '../../core/session/return-url';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
 import en from '../../../../public/i18n/en.json';
 import sr from '../../../../public/i18n/sr.json';
 import { LoginPage } from './login-page';
@@ -280,5 +282,69 @@ describe('LoginPage', () => {
     // an absence on the screen whose whole job is to be trusted with a credential; it returns
     // with D7.
     expect(element.textContent).not.toContain('Zaboravljena lozinka');
+  });
+
+  /**
+   * What the sign-in tells the action log (D5).
+   *
+   * Recorded after the server answers rather than declared on the submit button, because "somebody
+   * tried to sign in" and "somebody signed in" are the two facts every locked-out-owner support
+   * call turns on, and a press is neither. The address is never on the wire: the role is one of
+   * three constants of this product, and an email is the one thing on this screen that must not
+   * travel.
+   */
+  describe('the action log', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('records a sign-in that worked, with the role and never the address', async () => {
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+      type(field('login-email'), 'milan@gradnja.rs');
+      type(field('login-password'), 'a real password');
+
+      await submit();
+
+      expect(record).toHaveBeenCalledWith(ACTIONS.sessionLogin, {
+        outcome: 'ok',
+        detail: { role: 'company_admin' },
+      });
+      const said = JSON.stringify(record.mock.calls);
+      expect(said).not.toContain('gradnja.rs');
+      expect(said).not.toContain('a real password');
+    });
+
+    it('records a refused sign-in as a failure', async () => {
+      activation.login.mockResolvedValue({
+        ok: false,
+        failure: 'rejected',
+        role: null,
+        displayName: null,
+      });
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+      type(field('login-email'), 'milan@gradnja.rs');
+      type(field('login-password'), 'wrong');
+
+      await submit();
+
+      expect(record).toHaveBeenCalledWith(ACTIONS.sessionLogin, {
+        outcome: 'fail',
+        detail: undefined,
+      });
+    });
+
+    /**
+     * A submit that never left the screen is not an attempt. Recording one would put a row in the
+     * log for every stray tap on an empty form, and the founder reading that stream would see
+     * failures where there was only an empty box.
+     */
+    it('records nothing at all when the form never asked the server', async () => {
+      const record = vi.spyOn(ActionLogService.prototype, 'record');
+
+      await submit();
+
+      expect(activation.login).not.toHaveBeenCalled();
+      expect(record).not.toHaveBeenCalled();
+    });
   });
 });

@@ -302,3 +302,36 @@ export function canRevise(
 ): boolean {
   return serverStatus === 'confirmed' && !reportedAt;
 }
+
+/**
+ * One recorded action, waiting for a network (D5, `core/telemetry/action-log.service.ts`).
+ *
+ * ## Why it is on disk at all
+ *
+ * The same reason everything else on this device is: a screen that was closed, a tab the phone
+ * killed, a reload in the middle of a batch. An in-memory array would lose exactly the actions
+ * around a crash, which are the actions a log exists to explain.
+ *
+ * ## Why it is the one table that may be thrown away
+ *
+ * Every other row in this store is evidence and nothing deletes it before the server confirms it
+ * (PROJECT.md principle 3). These are not evidence. The buffer is **bounded** and drops its oldest
+ * rows on overflow, because a log that could grow without limit would eventually take the storage
+ * quota that a day's photographs need — the one way telemetry could cost a foreman his work.
+ *
+ * `seq` is an auto-incrementing primary key, so key order is arrival order: the flush takes the
+ * head, the trim takes the head, and no secondary index is needed for either.
+ */
+export interface BufferedEvent {
+  /** Auto-incremented by Dexie. Never set by hand. */
+  seq?: number;
+  /**
+   * Which credential this action was performed under — see `core/telemetry/log-surface.ts`.
+   *
+   * Stored on the row rather than resolved at flush time, because a batch written while a foreman
+   * was recording must not be sent under an admin session that was opened ten minutes later.
+   */
+  surface: 'device' | 'admin';
+  /** The event, exactly as it will go on the wire. Composed and scrubbed before it got here. */
+  event: unknown;
+}

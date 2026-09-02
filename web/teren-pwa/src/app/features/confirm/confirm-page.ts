@@ -40,6 +40,8 @@ import {
 } from '../../core/confirm/entry-draft';
 import { EntryStore } from '../../core/db/entry-store';
 import { LocalEntry, LocalMedia } from '../../core/db/models';
+import { ActionLogService } from '../../core/telemetry/action-log.service';
+import { ACTIONS } from '../../core/telemetry/actions';
 import { AppHeader } from '../../ui/app-header';
 import { entryStatusKey, entryStatusTone } from '../../ui/entry-status';
 import { Icon } from '../../ui/icon';
@@ -54,6 +56,15 @@ import { ObjectUrlCache } from '../../ui/object-url-cache';
  * screen that rendered an empty form over either would invite a person to type a day's record
  * into something that cannot accept it.
  */
+/**
+ * The parts of the day a person can correct, as the action log names them.
+ *
+ * A closed union of constants written in this file — the contract's `detail` alphabet takes a
+ * slug and nothing else, and the whole point is that what a foreman *typed* never travels.
+ */
+type EditedField =
+  'work' | 'headcount' | 'roles' | 'materials' | 'blockers' | 'hidden-work' | 'notes';
+
 export type ConfirmState =
   /** The local read has not answered yet. */
   | 'loading'
@@ -142,6 +153,8 @@ export class ConfirmPage {
   private readonly archive = inject(ArchiveService);
   private readonly confirmations = inject(ConfirmService);
   private readonly status = inject(AppStatus);
+  /** The action log (D5). See {@link noteEdit} and {@link attempt} for what this screen tells it. */
+  private readonly actions = inject(ActionLogService);
 
   /** Bound from the route (`withComponentInputBinding`). */
   readonly entryId = input.required<string>();
@@ -195,6 +208,12 @@ export class ConfirmPage {
   private readonly urls = new ObjectUrlCache();
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+
+  /** Which parts of this entry a person has already been recorded as correcting. */
+  private readonly edited = new Set<EditedField>();
+
+  /** The entry {@link edited} is about, so a second day on the same screen starts empty. */
+  private editedOf = '';
 
   private readonly media = toSignal(
     toObservable(this.entryId).pipe(switchMap((id) => this.entries.watchMedia(id))),
@@ -552,24 +571,55 @@ export class ConfirmPage {
 
   // ---- Editing ------------------------------------------------------------------------------
 
+  /**
+   * Say that a person corrected this part of the day — **once per part, per entry.**
+   *
+   * ## Why it is not one event per keystroke
+   *
+   * Every field on this screen runs through `draft.update()`, and a foreman typing a material name
+   * produces one of those per character. Recording each would put a hundred rows in a five-hundred
+   * row buffer for one entry and push the morning's captures out of it, which is the one thing
+   * `MAX_BUFFERED_EVENTS` exists to prevent. The question the log is actually asked is *did he
+   * correct the AI, and where* — which is a set of at most seven answers per entry.
+   *
+   * `field` is a constant of this file, never anything typed: the group's name, not its contents.
+   * The set is keyed on the entry so the same screen showing a different day starts fresh.
+   */
+  private noteEdit(field: EditedField): void {
+    const id = this.entryId();
+    if (this.editedOf !== id) {
+      this.editedOf = id;
+      this.edited.clear();
+    }
+    if (this.edited.has(field)) {
+      return;
+    }
+    this.edited.add(field);
+    this.actions.record(ACTIONS.confirmEdit, { entryId: id, detail: { field } });
+  }
+
   /** The typed text of whichever field raised the event. */
   protected text(event: Event): string {
     return (event.target as HTMLInputElement | HTMLTextAreaElement).value;
   }
 
   protected addWork(): void {
+    this.noteEdit('work');
     this.draft.update((d) => ({ ...d, workDone: [...d.workDone, newWorkItem()] }));
   }
 
   protected removeWork(id: string): void {
+    this.noteEdit('work');
     this.draft.update((d) => ({ ...d, workDone: d.workDone.filter((row) => row.id !== id) }));
   }
 
   protected patchWork(id: string, patch: Partial<DraftWorkItem>): void {
+    this.noteEdit('work');
     this.draft.update((d) => ({ ...d, workDone: patchRow(d.workDone, id, patch) }));
   }
 
   protected patchWorkQuantity(id: string, patch: { value?: string; unit?: string }): void {
+    this.noteEdit('work');
     this.draft.update((d) => ({
       ...d,
       workDone: d.workDone.map((row) =>
@@ -579,34 +629,42 @@ export class ConfirmPage {
   }
 
   protected setHeadcountTotal(value: string): void {
+    this.noteEdit('headcount');
     this.draft.update((d) => ({ ...d, headcountTotal: value }));
   }
 
   protected addRole(): void {
+    this.noteEdit('roles');
     this.draft.update((d) => ({ ...d, roles: [...d.roles, newRole()] }));
   }
 
   protected removeRole(id: string): void {
+    this.noteEdit('roles');
     this.draft.update((d) => ({ ...d, roles: d.roles.filter((row) => row.id !== id) }));
   }
 
   protected patchRole(id: string, patch: Partial<DraftRole>): void {
+    this.noteEdit('roles');
     this.draft.update((d) => ({ ...d, roles: patchRow(d.roles, id, patch) }));
   }
 
   protected addMaterial(): void {
+    this.noteEdit('materials');
     this.draft.update((d) => ({ ...d, materials: [...d.materials, newMaterial()] }));
   }
 
   protected removeMaterial(id: string): void {
+    this.noteEdit('materials');
     this.draft.update((d) => ({ ...d, materials: d.materials.filter((row) => row.id !== id) }));
   }
 
   protected patchMaterial(id: string, patch: Partial<DraftMaterial>): void {
+    this.noteEdit('materials');
     this.draft.update((d) => ({ ...d, materials: patchRow(d.materials, id, patch) }));
   }
 
   protected patchMaterialQuantity(id: string, patch: { value?: string; unit?: string }): void {
+    this.noteEdit('materials');
     this.draft.update((d) => ({
       ...d,
       materials: d.materials.map((row) =>
@@ -623,6 +681,7 @@ export class ConfirmPage {
    * "not delivered" for every line the foreman did not mention.
    */
   protected cycleDelivered(id: string): void {
+    this.noteEdit('materials');
     this.draft.update((d) => ({
       ...d,
       materials: d.materials.map((row) =>
@@ -650,30 +709,37 @@ export class ConfirmPage {
   }
 
   protected addBlocker(): void {
+    this.noteEdit('blockers');
     this.draft.update((d) => ({ ...d, blockers: [...d.blockers, newBlocker()] }));
   }
 
   protected removeBlocker(id: string): void {
+    this.noteEdit('blockers');
     this.draft.update((d) => ({ ...d, blockers: d.blockers.filter((row) => row.id !== id) }));
   }
 
   protected patchBlocker(id: string, patch: Partial<DraftBlocker>): void {
+    this.noteEdit('blockers');
     this.draft.update((d) => ({ ...d, blockers: patchRow(d.blockers, id, patch) }));
   }
 
   protected addHiddenWork(): void {
+    this.noteEdit('hidden-work');
     this.draft.update((d) => ({ ...d, hiddenWork: [...d.hiddenWork, newHiddenWork()] }));
   }
 
   protected removeHiddenWork(id: string): void {
+    this.noteEdit('hidden-work');
     this.draft.update((d) => ({ ...d, hiddenWork: d.hiddenWork.filter((row) => row.id !== id) }));
   }
 
   protected patchHiddenWork(id: string, patch: Partial<DraftHiddenWork>): void {
+    this.noteEdit('hidden-work');
     this.draft.update((d) => ({ ...d, hiddenWork: patchRow(d.hiddenWork, id, patch) }));
   }
 
   protected setNotes(value: string): void {
+    this.noteEdit('notes');
     this.draft.update((d) => ({ ...d, notes: value }));
   }
 
@@ -690,6 +756,7 @@ export class ConfirmPage {
     if (!transcript) {
       return;
     }
+    this.noteEdit('notes');
     this.draft.update((d) => ({
       ...d,
       notes: d.notes.trim() ? `${d.notes.trim()}\n${transcript}` : transcript,
@@ -730,7 +797,16 @@ export class ConfirmPage {
     this.failure.set(null);
     this.failureRetryable.set(false);
 
-    const result = await run(this.entryId());
+    const entryId = this.entryId();
+    const result = await run(entryId);
+
+    // Before the state below is written, and before anything navigates: the gate is the money
+    // path's last step, and whether it went through is the fact worth having.
+    this.actions.record(verbatim ? ACTIONS.confirmVerbatim : ACTIONS.confirmSend, {
+      outcome: result.ok ? 'ok' : 'fail',
+      entryId,
+      detail: result.ok ? undefined : { retryable: result.retryable },
+    });
 
     this.sending.set(false);
     if (result.entry) {

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Diagnostics;
+using Teren.Api.Logging;
 using Teren.Core.Storage;
 
 namespace Teren.Api.Errors;
@@ -22,9 +23,11 @@ public sealed class StorageUnavailableExceptionHandler(
             return false;
         }
 
+        // The route template, not the URL: this handler runs for anonymous callers too, and a
+        // path segment is whatever the caller typed (see LoggableRoute).
         logger.LogError(
-            exception, "Storage unavailable while serving {Method} {Path}.",
-            httpContext.Request.Method, httpContext.Request.Path);
+            exception, "Storage unavailable while serving {Method} {Route}.",
+            httpContext.Request.Method, LoggableRoute.Of(httpContext));
 
         httpContext.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
         httpContext.Response.Headers.RetryAfter = RetryAfterSeconds.ToString();

@@ -19,6 +19,7 @@ import { ApiProjectSource } from './core/projects/api-project-source';
 import { PROJECT_SOURCE } from './core/projects/project-source';
 import { ProjectService } from './core/projects/project.service';
 import { RescueService } from './core/rescue.service';
+import { ActionLogService } from './core/telemetry/action-log.service';
 import { UploadService } from './core/sync/upload.service';
 import { AVAILABLE_LANGUAGES, LOCALE_BY_LANGUAGE, activeLanguage } from './i18n';
 import { TranslocoHttpLoader } from './transloco-loader';
@@ -56,8 +57,15 @@ export const appConfig: ApplicationConfig = {
       const rescue = inject(RescueService);
       const status = inject(AppStatus);
       const uploads = inject(UploadService);
+      const actions = inject(ActionLogService);
 
       rescue.watch();
+
+      // D5: what was pressed, on which screen, and what came of it. Started here rather than in a
+      // component because the interesting presses happen on screens that come and go, and because
+      // the first thing worth recording is that the app started at all. It never blocks a click,
+      // never throws into a handler and never competes with the upload queue — see the service.
+      actions.start();
 
       // The sync loop is started, never awaited. It runs for the life of the app and reports on
       // the pending screen; making bootstrap wait for a network call would put the record button

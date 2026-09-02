@@ -38,6 +38,9 @@ public sealed class IdentityModelTests(TerenTestApp app) : ApiTestBase(app)
         nameof(ActivationCode),
         nameof(AdminAudit),
         nameof(AdminSession),
+        // D5. The log stream is mapped here rather than on the evidence model on purpose: it is
+        // what keeps the super admin's log viewer compiled against a context with no Entry in it.
+        nameof(AppLog),
         nameof(AppUser),
         nameof(Company),
         nameof(Device),

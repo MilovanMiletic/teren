@@ -1,12 +1,16 @@
 import { Injectable, inject } from '@angular/core';
 
 import { classifyApiError } from '../api/api-failure';
+import { FileSaver } from '../report/file-saver';
+import { filenameFromContentDisposition, safeFilename } from '../report/report-filename';
 import { AdminSessionService } from '../session/admin-session.service';
 import { PLATFORM_GATEWAY } from './platform-gateway';
 import {
   CreateAdminRequest,
   InviteSentResponse,
   PlatformCompanyResponse,
+  PlatformLogQuery,
+  PlatformLogResponse,
   PlatformUserResponse,
 } from './platform-types';
 
@@ -143,6 +147,47 @@ export interface InviteResult {
 }
 
 /**
+ * One line of the server's log, narrowed (D5).
+ *
+ * **`id` stays a string.** It is a `bigserial`, and a JSON number in a browser loses precision
+ * above 2^53 — nothing here ever coerces it, because by the time it could the value would already
+ * be wrong. It is a cursor key and a `track` expression, never arithmetic.
+ *
+ * `message` is required and everything else is not, which is the one judgement in this shape: a
+ * row with no rendered message is a row the screen cannot draw a line for, and drawing an empty
+ * one would read as a log the server failed to send rather than as a log line.
+ */
+export interface LogRecord {
+  id: string;
+  at: string | null;
+  /** One of the six Serilog levels, as stored. Translated only where it is *shown*. */
+  level: string;
+  source: string | null;
+  /** The template, `{Placeholders}` intact — what makes a hundred lines one kind of line. */
+  template: string | null;
+  message: string;
+  properties: Record<string, unknown> | null;
+  /** Scrubbed server-side. Shown on demand, and **never searched** (contract §1). */
+  exception: string | null;
+  companyId: string | null;
+  entryId: string | null;
+  correlation: string | null;
+}
+
+export interface LogListResult {
+  status: PlatformStatus;
+  logs: LogRecord[];
+  /** Opaque and keyset. Null means this really is the last page of this filter. */
+  nextCursor: string | null;
+}
+
+export interface LogExportResult {
+  status: PlatformStatus;
+  /** What the file was actually saved as. Null unless the bytes reached the browser. */
+  filename: string | null;
+}
+
+/**
  * Teren's own surface: customers, accounts, and the links that let people in.
  *
  * **Never sends without a credential.** Every method answers `notSignedIn` rather than issuing a
@@ -154,6 +199,7 @@ export interface InviteResult {
 export class PlatformService {
   private readonly gateway = inject(PLATFORM_GATEWAY);
   private readonly admins = inject(AdminSessionService);
+  private readonly saver = inject(FileSaver);
 
   async listCustomers(query: { q?: string; cursor?: string } = {}): Promise<CustomerListResult> {
     if (!this.admins.signedIn()) {
@@ -304,6 +350,65 @@ export class PlatformService {
     }
   }
 
+  /**
+   * One keyset page of the server's log.
+   *
+   * **Filtered on the server**, unlike every other list on this surface — see the gateway for why.
+   * The cursor is passed straight back out again without being read: it is the server's own
+   * bookmark, and a client that parsed it would be a client that breaks when the ordering changes.
+   */
+  async listLogs(query: PlatformLogQuery = {}): Promise<LogListResult> {
+    if (!this.admins.signedIn()) {
+      return { status: 'notSignedIn', logs: [], nextCursor: null };
+    }
+    try {
+      const response = await this.gateway.listLogs(query);
+      return {
+        status: 'ok',
+        logs: (response?.logs ?? []).map(toLogRecord).filter(isPresent),
+        nextCursor: text(response?.next_cursor),
+      };
+    } catch (error) {
+      return { status: classify(error), logs: [], nextCursor: null };
+    }
+  }
+
+  /**
+   * The same query as a file, handed to the browser.
+   *
+   * The bytes are fetched with the admin bearer and only then given to the browser as a download,
+   * because a plain `<a href>` cannot carry an `Authorization` header — the same reason
+   * `ReportService` exists rather than a link on the archive screen, and the same `FileSaver`.
+   *
+   * A `200` with no bytes is reported as a failure rather than saved: an empty CSV looks to a
+   * founder exactly like a log with nothing in it, which is the one wrong conclusion this screen
+   * must never invite.
+   */
+  async exportLogs(query: PlatformLogQuery = {}): Promise<LogExportResult> {
+    if (!this.admins.signedIn()) {
+      return { status: 'notSignedIn', filename: null };
+    }
+    try {
+      const download = await this.gateway.exportLogs(query);
+      if (!download.body || download.body.size === 0) {
+        return { status: 'unavailable', filename: null };
+      }
+
+      const filename = safeFilename(
+        filenameFromContentDisposition(download.contentDisposition),
+        // Neutral and untranslated, exactly as the report's fallback is: the file may be opened on
+        // a machine that has never heard of this app, and a Serbian sentence in a filename is not
+        // a name, it is a note.
+        `teren-logs-${stamp()}`,
+        'csv',
+      );
+      this.saver.save(download.body, filename);
+      return { status: 'ok', filename };
+    } catch (error) {
+      return { status: classify(error), filename: null };
+    }
+  }
+
   async setDisabled(userId: string, disabled: boolean): Promise<PersonResult> {
     if (!this.admins.signedIn()) {
       return { status: 'notSignedIn', person: null };
@@ -420,4 +525,47 @@ function count(value: unknown): number {
 
 function isPresent<T>(value: T | null): value is T {
   return value !== null;
+}
+
+/**
+ * Narrowed from the wire.
+ *
+ * A row with no id or no rendered message is dropped rather than drawn: the id is what a keyset
+ * cursor and a `track` expression are built on, and an empty line in a log reads as a server that
+ * failed to send something rather than as a thing that happened.
+ *
+ * The level falls back to `Information` rather than to an empty string. A blank in the one column
+ * that says how alarmed to be is worse than a slightly wrong guess, and a level this build has
+ * never heard of still prints as itself.
+ */
+function toLogRecord(response: PlatformLogResponse | null): LogRecord | null {
+  const id = text(response?.id);
+  const message = text(response?.message);
+  if (!id || !message) {
+    return null;
+  }
+  return {
+    id,
+    at: text(response?.at),
+    level: text(response?.level) ?? 'Information',
+    source: text(response?.source),
+    template: text(response?.template),
+    message,
+    properties:
+      response?.properties && typeof response.properties === 'object' ? response.properties : null,
+    exception: text(response?.exception),
+    companyId: text(response?.company_id),
+    entryId: text(response?.entry_id),
+    correlation: text(response?.correlation),
+  };
+}
+
+/** `20260902-1812` — the shape the server's own filename uses, for when it cannot be read. */
+function stamp(): string {
+  const now = new Date();
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  return (
+    `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
+    `-${pad(now.getHours())}${pad(now.getMinutes())}`
+  );
 }

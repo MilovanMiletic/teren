@@ -115,21 +115,21 @@
       -->
       <section class="card people wide" [attr.aria-label]="t('company.people.caption')">
         <!--
-          Only while a filter is live, and at every width. A table quietly showing three of twelve
-          rows is the one state in which this screen can make an owner believe a foreman has been
-          removed from his company, so the count and the way out of it are printed rather than left
-          to a tinted funnel in one column head.
+          **At every width, and now always** (founder, 2026-09-02: ten rows a page, and never hide
+          the count). A table quietly showing three of twelve rows is the one state in which this
+          screen can make an owner believe a foreman has been removed from his company — and with
+          paging, "ten of twenty-four" is that same state arrived at from the other direction. So
+          the strip says which slice of which total is on screen, keeps the filtered total distinct
+          from the unfiltered one, and only turns loud when a filter is actually live.
         -->
-        @if (controls.filtering()) {
-          <div class="table-bar" role="status">
-            <span class="t-meta">
-              {{ t('table.filter.showing', { shown: shown(), total: total() }) }}
-            </span>
+        <div class="table-bar" [class.table-bar--quiet]="!controls.filtering()" role="status">
+          <span class="t-meta">{{ t(countKey(), countParams()) }}</span>
+          @if (controls.filtering()) {
             <button type="button" class="table-bar__clear" (click)="controls.clearFilters()">
               {{ t('table.filter.clearAll') }}
             </button>
-          </div>
-        }
+          }
+        </div>
 
         @if (viewport.atLeastMedium()) {
           <!--
@@ -195,7 +195,7 @@
                 group heading with him, or the table prints an empty "VLASNIK FIRME" over nothing
                 and reads as a row that failed to load.
               -->
-              @if (directorRow(); as boss) {
+              @if (pagedDirector(); as bossName) {
                 <tbody>
                   <tr class="group">
                     <!--
@@ -232,7 +232,7 @@
                         (click)="$event.stopPropagation(); openAccount()"
                       >
                         <span class="person__who">
-                          <span class="person__name">{{ boss.displayName }}</span>
+                          <span class="person__name">{{ bossName }}</span>
                           <span class="t-meta person__second">
                             {{ t('company.people.passwordAccount') }}
                           </span>
@@ -257,9 +257,12 @@
                     <span class="group__inner">
                       {{ t('company.people.foremen') }}
                       <!--
-                        The count of what is **drawn**, not of what exists. With a filter live the
-                        two differ, and a band saying 12 over three rows is the screen contradicting
-                        itself; the strip above the table is where "3 of 12" is said in full.
+                        The count of what **answers the filter**, not of what exists and not of
+                        what this page happens to hold. With a filter live the first two differ, and
+                        a band saying 12 over three rows is the screen contradicting itself; with
+                        paging the second and third differ too, and a band that counted the page
+                        would make a company of twenty-four look like a company of ten. Which slice
+                        of which total is on screen is said in full in the strip above the table.
                       -->
                       <span class="t-num group__count">{{ rows().length }}</span>
                     </span>
@@ -286,13 +289,17 @@
                   </tr>
                 }
 
-                @for (row of rows(); track row.worker.id) {
+                @for (row of pagedRows(); track row.worker.id) {
                   <!--
                       The whole row opens the man's page; the button inside the name cell is the
                       control a keyboard and a screen reader use, and it stops the event so one
                       click is one navigation.
                     -->
-                  <tr class="person person--open" (click)="open(row.worker)">
+                  <tr
+                    class="person person--open"
+                    data-log="company.worker.open"
+                    (click)="open(row.worker)"
+                  >
                     <th scope="row" class="cell cell--person">
                       <button
                         type="button"
@@ -337,12 +344,12 @@
               foreman into an endless scroll on the screen this replaced.
             -->
           <div class="list">
-            @if (directorRow(); as boss) {
+            @if (pagedDirector(); as bossName) {
               <h2 class="t-label list__group">{{ t('profile.role.company_admin') }}</h2>
               <button type="button" class="row-button row row--you" (click)="openAccount()">
                 <span class="row__text">
                   <span class="row__top">
-                    <span class="person__name">{{ boss.displayName }}</span>
+                    <span class="person__name">{{ bossName }}</span>
                     <span class="t-meta person__second">
                       {{ t('company.people.passwordAccount') }}
                     </span>
@@ -416,8 +423,13 @@
               </p>
             }
 
-            @for (row of rows(); track row.worker.id) {
-              <button type="button" class="row-button row" (click)="open(row.worker)">
+            @for (row of pagedRows(); track row.worker.id) {
+              <button
+                type="button"
+                class="row-button row"
+                data-log="company.worker.open"
+                (click)="open(row.worker)"
+              >
                 <span class="row__text">
                   <span class="row__top">
                     <span class="person__name">{{ row.worker.displayName }}</span>
@@ -443,6 +455,13 @@
             }
           </div>
         }
+
+        <!--
+          One control for both renderings, outside the branch that chooses between them: the table
+          from 768 up and the row list below it are two views of one list, and two pagers would be
+          two places for the page number to drift.
+        -->
+        <app-table-pager [page]="page()" [pageCount]="pageCount()" (goTo)="goToPage($event)" />
       </section>
 
       @if (addOpen()) {

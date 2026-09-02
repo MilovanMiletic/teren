@@ -88,37 +88,59 @@ export type ColumnKind = 'text' | 'date' | 'state' | 'number';
   },
   template: `
     <ng-container *transloco="let t">
-      <button
-        type="button"
-        class="sort"
-        [class.sort-pill]="variant() === 'pill'"
-        [class.sort-pill--on]="variant() === 'pill' && sort() !== null"
-        [attr.aria-pressed]="variant() === 'pill' ? sort() !== null : null"
-        (click)="toggled.emit()"
-      >
-        <span class="sort__label">{{ label() }}</span>
-        @if (sort(); as direction) {
-          <app-icon
-            name="chevron-down"
-            [size]="14"
-            class="sort__arrow"
-            [class.sort__arrow--asc]="direction === 'asc'"
-          />
-        }
-      </button>
+      @if (sortable()) {
+        <button
+          type="button"
+          class="sort"
+          [class.sort-pill]="variant() === 'pill'"
+          [class.sort-pill--on]="variant() === 'pill' && sort() !== null"
+          [attr.aria-pressed]="variant() === 'pill' ? sort() !== null : null"
+          (click)="toggled.emit()"
+        >
+          <span class="sort__label">{{ label() }}</span>
+          @if (sort(); as direction) {
+            <app-icon
+              name="chevron-down"
+              [size]="14"
+              class="sort__arrow"
+              [class.sort__arrow--asc]="direction === 'asc'"
+            />
+          }
+        </button>
+      } @else {
+        <!--
+          A heading rather than a button, because on this column nothing happens when it is
+          pressed. The arrow still shows when a direction is passed in: the log stream is always
+          newest first and saying so is worth a glyph, where a control that visibly did nothing
+          would be the dead-button defect the header link already cost this repo a day over.
+        -->
+        <span class="sort sort--static">
+          <span class="sort__label">{{ label() }}</span>
+          @if (sort(); as direction) {
+            <app-icon
+              name="chevron-down"
+              [size]="14"
+              class="sort__arrow"
+              [class.sort__arrow--asc]="direction === 'asc'"
+            />
+          }
+        </span>
+      }
 
-      <button
-        #trigger
-        type="button"
-        class="more"
-        [class.more--on]="filtered()"
-        [attr.aria-label]="t('table.menu', { column: label() })"
-        [attr.aria-expanded]="open()"
-        [attr.aria-controls]="id"
-        (click)="toggle()"
-      >
-        <app-icon name="filter" [size]="14" />
-      </button>
+      @if (filterable()) {
+        <button
+          #trigger
+          type="button"
+          class="more"
+          [class.more--on]="filtered()"
+          [attr.aria-label]="t('table.menu', { column: label() })"
+          [attr.aria-expanded]="open()"
+          [attr.aria-controls]="id"
+          (click)="toggle()"
+        >
+          <app-icon name="filter" [size]="14" />
+        </button>
+      }
 
       @if (open()) {
         <!--
@@ -139,29 +161,31 @@ export type ColumnKind = 'text' | 'date' | 'state' | 'number';
         >
           <span class="t-label menu__title">{{ label() }}</span>
 
-          <button
-            type="button"
-            class="menu__item"
-            [class.menu__item--on]="sort() === 'asc'"
-            (click)="choose('asc')"
-          >
-            <span>{{ t('table.sort.' + kind() + '.asc') }}</span>
-            @if (sort() === 'asc') {
-              <app-icon name="check" [size]="16" class="menu__tick" />
-            }
-          </button>
+          @if (sortable()) {
+            <button
+              type="button"
+              class="menu__item"
+              [class.menu__item--on]="sort() === 'asc'"
+              (click)="choose('asc')"
+            >
+              <span>{{ t('table.sort.' + kind() + '.asc') }}</span>
+              @if (sort() === 'asc') {
+                <app-icon name="check" [size]="16" class="menu__tick" />
+              }
+            </button>
 
-          <button
-            type="button"
-            class="menu__item"
-            [class.menu__item--on]="sort() === 'desc'"
-            (click)="choose('desc')"
-          >
-            <span>{{ t('table.sort.' + kind() + '.desc') }}</span>
-            @if (sort() === 'desc') {
-              <app-icon name="check" [size]="16" class="menu__tick" />
-            }
-          </button>
+            <button
+              type="button"
+              class="menu__item"
+              [class.menu__item--on]="sort() === 'desc'"
+              (click)="choose('desc')"
+            >
+              <span>{{ t('table.sort.' + kind() + '.desc') }}</span>
+              @if (sort() === 'desc') {
+                <app-icon name="check" [size]="16" class="menu__tick" />
+              }
+            </button>
+          }
 
           <label class="menu__filter">
             <span class="t-label">{{ t('table.filter.label') }}</span>
@@ -243,6 +267,11 @@ export type ColumnKind = 'text' | 'date' | 'state' | 'number';
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+
+    /* Not a button, so no pointer and no hover: it is a heading that happens to carry an arrow. */
+    .sort--static {
+      cursor: default;
     }
 
     .sort__arrow {
@@ -462,7 +491,8 @@ export type ColumnKind = 'text' | 'date' | 'state' | 'number';
     }
 
     @media (hover: hover) and (pointer: fine) {
-      .sort:hover,
+      /* Never the static heading: a colour that changes under the pointer promises a press. */
+      .sort:not(.sort--static):hover,
       .more:hover {
         color: var(--color-ink);
       }
@@ -491,6 +521,26 @@ export class ColumnMenu {
   readonly filter = input('');
 
   readonly variant = input<'header' | 'pill'>('header');
+
+  /**
+   * Whether this column can be re-ordered at all.
+   *
+   * True everywhere but the log stream (D5), which is keyset-paged over `(at DESC, id DESC)` on
+   * the server: there is one order and the client cannot ask for another. A label that sorted
+   * nothing would be the dead control this component's own header link once was — so with this
+   * false the label is a heading, the menu holds only the filter, and a direction passed in still
+   * draws its arrow to say what the fixed order is.
+   */
+  readonly sortable = input(true);
+
+  /**
+   * Whether this column can be filtered.
+   *
+   * False on a column the server offers no parameter for. With both this and {@link sortable}
+   * false the control is a plain heading — which is the honest rendering of a column that answers
+   * no questions, and better than a funnel that opens an empty menu.
+   */
+  readonly filterable = input(true);
 
   /** The label was pressed: pick this column up, or turn it round. */
   readonly toggled = output<void>();

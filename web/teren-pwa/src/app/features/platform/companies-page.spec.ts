@@ -3,6 +3,7 @@ import { Router, provideRouter } from '@angular/router';
 import { TranslocoTestingModule } from '@jsverse/transloco';
 
 import { MockPlatformGateway } from '../../core/platform/mock-platform-gateway';
+import { PlatformCompanyResponse } from '../../core/platform/platform-types';
 import { PLATFORM_GATEWAY } from '../../core/platform/platform-gateway';
 import { ADMIN_SESSION_STORAGE_KEY, AdminSession } from '../../core/session/admin-session';
 import { KnobbedPlatformGateway, platformHttpError } from '../../testing/platform-gateway-double';
@@ -435,7 +436,12 @@ describe('CompaniesPage', () => {
       await press('Prikaži sve');
 
       expect(listedNames()).toEqual(['Elektro Nikolić d.o.o.', 'Vodoinstal Petrović d.o.o.']);
-      expect(element.querySelector('.table-bar')).toBeNull();
+      // The strip stays and goes quiet — see `company-page.spec.ts`, which reasons it out: the
+      // count is printed always since paging, and the tint goes on meaning one thing only.
+      const cleared = element.querySelector('.table-bar');
+      expect(cleared?.classList.contains('table-bar--quiet')).toBe(true);
+      expect(cleared?.textContent).toContain('Ukupno 2');
+      expect(text()).not.toContain('Prikaži sve');
     });
 
     it('says a filter is why the list is empty, not that Teren has no customers', async () => {
@@ -708,6 +714,103 @@ describe('CompaniesPage', () => {
       expect(element.querySelector('.pop')?.textContent).toContain(
         'Poslovođe i dalje mogu da snimaju',
       );
+    });
+  });
+
+  // ---- Ten rows a page ---------------------------------------------------------------------------
+
+  describe('paging', () => {
+    /** More customers than fit on a page, generated so a row can be named exactly. */
+    function customers(size: number): PlatformCompanyResponse[] {
+      return Array.from({ length: size }, (_, index) => {
+        const n = String(index + 1).padStart(2, '0');
+        return {
+          id: `77777777-7777-7777-7777-0000000000${n}`,
+          name: `Gradnja ${n} d.o.o.`,
+          created_at: '2026-08-05T09:00:00.000Z',
+          suspended_at: null,
+          user_count: 2,
+          active_user_count: 2,
+        };
+      });
+    }
+
+    function pages(): string[] {
+      return [...element.querySelectorAll('.pager__page')].map((n) => n.textContent?.trim() ?? '');
+    }
+
+    async function goToPage(number: string): Promise<void> {
+      const target = [...element.querySelectorAll<HTMLButtonElement>('.pager__page')].find(
+        (candidate) => candidate.textContent?.trim() === number,
+      );
+      if (!target) {
+        throw new Error(`no page control reading "${number}"; there are: ${pages().join(', ')}`);
+      }
+      target.click();
+      await settle();
+    }
+
+    it('draws ten customers to a page', async () => {
+      gateway.extraCompanies.push(...customers(14));
+      await render();
+
+      expect(listedNames()).toHaveLength(10);
+      expect(pages()).toEqual(['1', '2']);
+      expect(element.querySelector('.table-bar')?.textContent).toContain('Prikazano 1–10 od 16');
+    });
+
+    it('moves to the second page and draws the rest of them', async () => {
+      gateway.extraCompanies.push(...customers(14));
+      await render();
+
+      await goToPage('2');
+
+      expect(listedNames()).toHaveLength(6);
+      expect(element.querySelector('.table-bar')?.textContent).toContain('Prikazano 11–16 od 16');
+    });
+
+    /**
+     * **The rewind matters most on this screen**, because the button beside a customer's name
+     * suspends him: a founder standing on page 2 of an answer to a question he asked on page 1 is a
+     * founder acting on a row he did not mean to be looking at.
+     */
+    it('goes back to the first page the moment the list becomes a different list', async () => {
+      gateway.extraCompanies.push(...customers(14));
+      await render();
+      await goToPage('2');
+
+      await filterBy('Firma', 'gradnja');
+
+      expect(element.querySelector('[aria-current="page"]')?.textContent?.trim()).toBe('1');
+      expect(listedNames()[0]).toBe('Gradnja 01 d.o.o.');
+    });
+
+    it('goes back to the first page when the order is changed', async () => {
+      gateway.extraCompanies.push(...customers(14));
+      await render();
+      await goToPage('2');
+
+      await sortByColumn('Firma');
+
+      expect(element.querySelector('[aria-current="page"]')?.textContent?.trim()).toBe('1');
+    });
+
+    it('says which slice of which total, without letting paging look like filtering', async () => {
+      gateway.extraCompanies.push(...customers(14));
+      await render();
+
+      await filterBy('Firma', 'gradnja');
+
+      const bar = element.querySelector('.table-bar');
+      expect(bar?.textContent).toContain('Prikazano 1–10 od 14');
+      expect(bar?.textContent).toContain('filtrirano iz 16');
+    });
+
+    it('draws no pager over two customers, and still says how many', async () => {
+      await render();
+
+      expect(element.querySelector('.pager')).toBeNull();
+      expect(element.querySelector('.table-bar')?.textContent).toContain('Ukupno 2');
     });
   });
 });
