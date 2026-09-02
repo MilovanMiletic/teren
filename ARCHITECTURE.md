@@ -153,7 +153,13 @@ No secret is ever committed.
 have neither, and an API that refused to start without them would make the entire upload path —
 which needs neither — impossible to run or test. A missing key is logged loudly once at start-up
 and then parks entries in `needs_review` with an honest reason, never a silent success. Everything
-else required (`Storage`, `Auth`) still refuses to boot when empty (`ValidateOnStart`).
+else required (`Storage`) still refuses to boot when empty (`ValidateOnStart`). **`Auth:DeviceToken`
+is optional** (it has been since the token flip, and 2026-09-02 made that explicit): it is only the
+demo device's server-side credential, `seed` provisions no phone without it, and the host logs one
+NOTE at start-up. `Logging:ClientEvents:RateLimitPerMinute` (60) bounds `POST /api/client-events`
+per client address plus a hash of the presented bearer, because that limiter runs before any
+credential is checked and a single looping phone must not evict the server's own error lines from
+the log queue.
 
 **Two traps worth writing down.** `Newtonsoft.Json` is pinned to 13.0.4 in both `Teren.Api` and
 `Teren.Infrastructure`: Hangfire pulls in 11.0.1 transitively, which trips NU1903 (a known
@@ -624,11 +630,23 @@ Rules that fall out of it:
   **Trade-off, accepted:** if a pass dies holding the claim, that 409 stands until the sweeper
   marks the row failed — up to `Reporting:StaleAfter` (30 min) — during which a correction is
   told to come back later. A rare crash window against a routine correctness hazard.
-- **A `sent` report whose entry was never sealed is swept up.** The report-enqueue predicate is
-  `r.id IS NULL OR r.status IN ('failed','sent')`; without `sent`, a crash between recording the
-  hand-over and stamping `reported_at` left the client holding a report the contractor's archive
-  said was never sent, permanently and silently (B6 review G2). The pass seals such a report, it
-  never re-sends it.
+- **A `sent` report whose entry was never sealed is swept up — and sealed only if the entry still
+  holds what went out.** The report-enqueue predicate is `r.id IS NULL OR r.status IN
+  ('failed','sent')`; without `sent`, a crash between recording the hand-over and stamping
+  `reported_at` left the client holding a report the contractor's archive said was never sent,
+  permanently and silently (B6 review G2). The pass seals such a report, it never re-sends it.
+  **The seal is conditional on content (2026-09-02):** the 409-while-`sending` check and the
+  post-claim re-read of `corrected` leave one window — a confirm whose check ran before the claim
+  and whose write landed after the re-read — in which the old code stamped `reported_at` on
+  content that never left. `SealAsync` now stamps only `WHERE corrected = <the document that was
+  rendered>` (jsonb equality, so a re-serialisation of the same document still seals), and every
+  claim records `report.corrected_sha256` so the recovery pass in another process can make the
+  same comparison without the document. Zero rows means a person changed the record after the
+  relay took custody: the entry gets the **terminal** reason `superseded_after_send`, the report
+  row keeps its truthful `sent`, and it is logged as critical. Terminal because `ux_report_entry_id`
+  plus the absence of `sent → sending` means the newer content can never get its own report — the
+  documented answer is a new entry with `supersedes_entry_id`. Pre-column rows (no hash) seal
+  unconditionally, logged as such.
 - **The report sweep only picks up entries with no `failure_reason` at all** — i.e. nothing has
   gone wrong that anyone was told about, so the only explanation is a lost enqueue. Anything that
   failed with a reason waits for a person, the same call B4 made for `needs_review`. The retry
@@ -665,7 +683,8 @@ Rules that fall out of it:
 | `GET` | `/api/entries` | archive list, filtered by project and date range |
 | `GET` | `/api/entries/{id}/media/{mediaId}` | stream one photo or voice note — authenticated bytes, never a presigned GET (§8) |
 | `GET` | `/api/entries/{id}/report` | stream the PDF that was sent (B6) |
-| `GET` | `/health` | liveness for the deploy |
+| `GET` | `/health` | liveness: Kestrel answers, nothing more |
+| `GET` | `/health/ready` | readiness (2026-09-02): `SELECT 1` on both contexts, no pending migration on either history, a Hangfire server heartbeat within 2 min when the job server is enabled. 503 with a plain body naming only the failing check. The compose healthcheck and `deploy.sh`'s verify step read this one |
 | — | `/hangfire` | job dashboard, behind auth |
 
 **Polling, not SignalR.** Processing takes roughly 20–60 seconds and exactly one screen cares.
@@ -692,7 +711,7 @@ window rate limit by client IP.
 | Method | Route | Purpose |
 |---|---|---|
 | `POST` | `/auth/activate` | `{username, activation_code, device_name}` → a device token. Single use |
-| `POST` | `/auth/activation-code` | `{username}` → **always 202**, whether or not the username exists |
+| `POST` | `/auth/activation-code` | `{username}` → **always 202**, whether or not the username exists. **The handler writes nothing** (2026-09-02): it enqueues `WorkerCodeMailJob` with the worker's id (or an empty id) and the job mints a fresh code *only after* it has confirmed the worker, his email, his company and a configured relay — so a request that cannot mail supersedes nothing, and nobody can invalidate a foreman's live code by typing his username. Before this the route superseded the code and mailed nothing |
 | `POST` | `/auth/login` | `{email, password}` → session token, role, company. Dummy-verifies an unknown email so the two answers cost the same wall-clock |
 | `POST` | `/auth/password` | `{token, password}` — serves invite *and* reset, consumes the token, revokes existing sessions |
 
@@ -1169,10 +1188,14 @@ environment before device binding (C5) and production hardening (C7).
   `TEREN_DEV_SSH_KNOWN_HOSTS` from `ssh-keyscan`, which pins the host key); without them it logs a
   notice and exits green. It deploys the exact SHA CI approved, one deploy at a time, and scrubs
   `.env` and the key from the runner afterwards. Secrets never enter the repository.
-- **A seam that must close before the first real run:** `deploy/web.Dockerfile` still substitutes a
-  device-token placeholder that D7/F9 removed from `environment.ts`, and stops with `FATAL` when
-  `TEREN_DEVICE_TOKEN` is anything but the committed default. The token is now only the demo device's
-  server-side credential (provisioned by `seed`); the bundle carries none.
+- **The seam that would have failed the first real run is closed (2026-09-02, same day).**
+  `deploy/web.Dockerfile` used to substitute a device-token placeholder that D7/F9 had removed from
+  `environment.ts`, and stopped with `FATAL` on any non-default `TEREN_DEVICE_TOKEN`; `deploy.sh`
+  required the variable. The substitution is deleted, the variable is optional and server-side only,
+  and `DeployContractTests` reads `deploy/` off disk to keep it that way. Proven by
+  `deploy.sh --target local --seed` running to `Deployed` with `/health/ready` answering `Healthy`
+  through Caddy — which also caught that the `@backend` matcher listed `/health` exactly and would
+  have served the SPA shell for `/health/ready`; both Caddyfiles now match `/health/*`.
 
 ### Deployment and monitoring
 
@@ -1235,7 +1258,8 @@ that file has the detail.
   2026-08-29 browser-upload verification proved less than it appeared to: it showed that an
   *unconfigured* store lets everything through. The local stack now pins MinIO to the app origin,
   and a wrong origin is refused.
-- **Monitoring:** `/health`, Hangfire dashboard behind Basic auth (unreachable rather than open
+- **Monitoring:** `/health` for liveness and **`/health/ready`** for the truth (database on both
+  contexts, both migration histories current, a job-server heartbeat — §7), Hangfire dashboard behind Basic auth (unreachable rather than open
   when unconfigured), Serilog to stdout with the entry id on pipeline lines, json-file logging
   capped at 10 MB × 5 so a small VPS disk is not a scheduled outage. Email alerts on failed jobs
   and any observability platform still wait until something actually hurts.

@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Teren.Api.Tests.Infrastructure;
 using Teren.Core.Entities;
 using Teren.Core.Reporting;
@@ -259,5 +260,54 @@ public sealed class ReportSweepTests(TerenTestApp app) : ApiTestBase(app)
 
         App.Pipeline.Enqueued.ShouldBe([(uploaded, TestIds.CompanyA)]);
         App.Pipeline.Reports.ShouldBe([(confirmed, TestIds.CompanyA)]);
+    }
+
+    // ------------------------------------------------------- what the scan costs
+
+    [Fact]
+    public async Task The_abandoned_report_scan_has_an_index_to_read()
+    {
+        // FailAbandonedReportsAsync runs `WHERE status = 'sending' AND attempt_started_at < …`
+        // every minute for the life of the box, and `report` carried no index on either column —
+        // so the one query in the product that runs unconditionally, for ever, was a sequential
+        // scan over a table that only grows (a report row is never deleted).
+        //
+        // Partial rather than an index on `status`: after the first week almost every row is
+        // `sent`, and an index Postgres declines to use is a write cost with no read benefit.
+        var indexes = await ReportIndexesAsync();
+
+        var definition = indexes
+            .Where(i => i.Name == "ix_report_sending_attempt")
+            .Select(i => i.Definition)
+            .SingleOrDefault()
+            .ShouldNotBeNull(
+                "the sweeper's report scan has no index. It is not a slow query today — it is a "
+                + "slow query in six months, on the one statement nothing ever stops running.");
+
+        definition.ShouldContain("attempt_started_at", Case.Sensitive);
+        definition.ShouldContain("status", Case.Sensitive);
+        definition.ShouldContain("sending", Case.Sensitive);
+
+        // Anti-vacuous: the reader itself works, and it is reading `report`.
+        indexes.Select(i => i.Name).ShouldContain("ux_report_entry_id");
+    }
+
+    private async Task<List<(string Name, string Definition)>> ReportIndexesAsync()
+    {
+        await using var db = App.CreateDbContext(companyId: null);
+        await using var command = db.Database.GetDbConnection().CreateCommand();
+
+        await db.Database.OpenConnectionAsync(Ct);
+        command.CommandText =
+            "SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'report'";
+
+        var rows = new List<(string, string)>();
+        await using var reader = await command.ExecuteReaderAsync(Ct);
+        while (await reader.ReadAsync(Ct))
+        {
+            rows.Add((reader.GetString(0), reader.GetString(1)));
+        }
+
+        return rows;
     }
 }

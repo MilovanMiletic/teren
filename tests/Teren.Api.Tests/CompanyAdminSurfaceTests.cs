@@ -72,7 +72,43 @@ public sealed class CompanyAdminSurfaceTests(TerenTestApp app) : ApiTestBase(app
         // Creating a worker you cannot then activate is not a finished action.
         var code = body.GetProperty("activation_code");
         code.GetText("code").Length.ShouldBe(ActivationCodeFormat.Length + 1);   // XKD4-7HMP
-        code.GetText("email_delivery").ShouldBe("not_configured");
+
+        // `not_sent`, not `not_configured`: this host has a relay (the fixture's IMailSender says
+        // so) and this route still does not mail a code — an admin reads it to one man, in one
+        // message, on one screen (§2 decision 13). It answered `not_configured` unconditionally
+        // until 2026-09-02, which was a plain untruth on any host with a relay.
+        code.GetText("email_delivery").ShouldBe("not_sent");
+    }
+
+    [Fact]
+    public async Task Without_a_relay_the_code_says_so_rather_than_saying_not_sent()
+    {
+        // The other half of the same answer, and the half that was unprovable while the fixture
+        // held a real SmtpMailSender: on a host with no relay, "not sent" would understate it —
+        // email is not a channel here at all, and the admin has to read the code out.
+        App.Mail.Configured = false;
+
+        using var owner = await GivenCompanyAdminClientAsync();
+
+        var response = await owner.PostJson(
+            "/api/workers",
+            new JsonObject
+            {
+                ["display_name"] = "Nenad Ilić",
+                ["email"] = "nenad@primer.test",
+            });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Created, await response.TextAsync());
+
+        var created = await response.JsonAsync();
+        created.GetProperty("activation_code").GetText("email_delivery")
+            .ShouldBe("not_configured");
+
+        // And the read route agrees — one helper answers for both, which is why they cannot drift.
+        var workerId = created.GetProperty("worker").GetGuid("id");
+        var read = await owner.Get($"/api/workers/{workerId}/activation-code");
+        read.StatusCode.ShouldBe(HttpStatusCode.OK, await read.TextAsync());
+        (await read.JsonAsync()).GetText("email_delivery").ShouldBe("not_configured");
     }
 
     [Fact]

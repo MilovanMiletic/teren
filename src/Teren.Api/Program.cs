@@ -16,9 +16,11 @@ using Teren.Core.Reporting;
 using Teren.Infrastructure.Processing;
 using Teren.Infrastructure.Reporting;
 using Teren.Api.Contracts;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Teren.Api.Auth;
+using Teren.Api.Health;
 using Teren.Api.Platform;
 using Teren.Api.Endpoints;
 using Teren.Api.Jobs;
@@ -141,6 +143,11 @@ builder.Services.AddScoped<PlatformDirectory>();
 builder.Services.AddSingleton<IMailSender, SmtpMailSender>();
 builder.Services.AddScoped<AdminInviteJob>();
 
+// D6's worker half: mails one man his own activation code, and — the point of it being a job —
+// mints that code inside itself, so an unauthenticated request that cannot mail supersedes
+// nothing. See WorkerCodeMailJob.
+builder.Services.AddScoped<WorkerCodeMailJob>();
+
 // Session lifetimes, credential TTLs and the rate-limit window. Bound from the same Auth section;
 // every value in it is a security parameter and every one is pinned by a test.
 builder.Services
@@ -174,6 +181,28 @@ builder.Services.AddRateLimiter(limiter =>
             // a small VPS; the honest answer is "not now, try again in N seconds".
             QueueLimit = 0,
         }));
+
+    // D5's ingress, bounded per caller (Logging:ClientEvents:RateLimitPerMinute, 60). The body
+    // cap on that route bounds one request; nothing bounded a client, and the queue it feeds
+    // drops the OLDEST row when full — so one phone in a retry loop could push every server-side
+    // line out of the table Teren staff read to find out what is wrong. See
+    // ClientEventRateLimitPolicy for why the partition is the credential's hash and not the
+    // principal (this is middleware; the auth filter has not run yet).
+    var clientEventLimit = builder.Configuration
+        .GetSection(LoggingOptions.SectionName)
+        .Get<LoggingOptions>()?.ClientEvents.RateLimitPerMinute
+        ?? new ClientEventOptions().RateLimitPerMinute;
+
+    limiter.AddPolicy(
+        ClientEventRateLimitPolicy.Name,
+        http => RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: ClientEventRateLimitPolicy.PartitionKey(http),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = clientEventLimit,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
 
     limiter.OnRejected = async (context, ct) =>
     {
@@ -222,6 +251,19 @@ if (args.Contains(DemoResetGuard.CommandName))
     {
         builder.Services.AddSingleton<IDemoJobPurge, NoDemoJobPurge>();
     }
+}
+
+// Readiness (see Health/ReadinessChecks.cs). /health stays the constant it always was — liveness
+// — and this is the route a deploy and a container healthcheck ask, because the failure this
+// project actually keeps having is a host that boots, answers `ok`, and cannot serve a request:
+// an un-migrated schema. The job-server check is registered only where a job server is expected.
+var readiness = builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseReadyCheck>(ReadinessChecks.Database)
+    .AddCheck<MigrationsReadyCheck>(ReadinessChecks.Migrations);
+
+if (builder.Configuration.GetValue("Hangfire:Enabled", defaultValue: true))
+{
+    readiness.AddCheck<JobServerReadyCheck>(ReadinessChecks.JobServer);
 }
 
 builder.Services.AddSingleton<IValidator<CreateEntryRequest>, CreateEntryRequestValidator>();
@@ -429,7 +471,16 @@ app.UseCors();
 // client address rather than the proxy's.
 app.UseRateLimiter();
 
+// Liveness: the process is up and answering. A constant on purpose — a liveness probe that goes
+// red because a database blinked is a probe that restarts a healthy process.
 app.MapGet("/health", () => Results.Ok(new HealthResponse("ok", "teren-api")));
+
+// Readiness: can this host actually serve a request. Both migration histories, both contexts, and
+// the job server where one is expected. `deploy.sh` and the container healthcheck ask this one.
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    ResponseWriter = ReadinessEndpoint.WriteAsync,
+});
 
 // The public door: activation, login, set-password. DELIBERATELY NOT under /api, so that
 // TenancyTests.Every_api_route_sits_behind_the_token stays literally true rather than

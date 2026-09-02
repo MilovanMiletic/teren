@@ -208,4 +208,41 @@ public sealed class AdminInviteJobTests(TerenTestApp app) : ApiTestBase(app)
         mail.Subject.ShouldNotContain(token);
         mail.ToAddress.ShouldBe("jedan@gradnja.rs");
     }
+
+    /// <summary>
+    /// The link's lifetime is <c>Auth:PasswordTokenLifetime</c> and not a literal.
+    ///
+    /// <para>
+    /// It was <c>TimeSpan.FromHours(48)</c> in this job until 2026-09-02, on a class that was
+    /// already injecting <c>IOptions&lt;AuthOptions&gt;</c> for <c>AppUrl</c>. That option is
+    /// validated, pinned by a test, and is what <c>/auth/password</c>, <c>invite-admin</c> and the
+    /// platform route all measure a token against — so on a host that shortened it, the emailed
+    /// link lived longer than the setting said and the mail's own "valid for N hours" sentence was
+    /// printed from the literal rather than from the truth. One answer to "how long is a link good
+    /// for".
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task The_link_lives_exactly_as_long_as_the_configured_lifetime()
+    {
+        var admin = await GivenAdminAsync("rok@gradnja.rs");
+        var lifetime = TimeSpan.FromHours(3);
+
+        var before = DateTime.UtcNow;
+        var mail = await App.RunInviteJobAsync(
+            admin.Id, admin.Id, Ct, passwordTokenLifetime: lifetime);
+
+        await using var identity = App.CreateIdentityDbContext();
+        var token = await identity.PasswordTokens.SingleAsync(t => t.UserId == admin.Id, Ct);
+
+        token.ExpiresAt.ShouldBeGreaterThanOrEqualTo(before.Add(lifetime).AddSeconds(-5));
+        token.ExpiresAt.ShouldBeLessThanOrEqualTo(
+            DateTime.UtcNow.Add(lifetime).AddSeconds(5),
+            "the row's expiry came from the literal 48 hours rather than from the option");
+
+        // And the sentence the recipient reads agrees with the row he was given.
+        mail!.TextBody.ShouldContain("3");
+        mail.TextBody.ShouldNotContain("48");
+        mail.HtmlBody.ShouldNotContain("48");
+    }
 }

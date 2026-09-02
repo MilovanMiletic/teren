@@ -37,7 +37,7 @@ permissions:
 
 jobs:
   backend:
-    name: Backend — build and 991 tests over Postgres
+    name: Backend — build and tests over Postgres
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -60,7 +60,7 @@ jobs:
         run: dotnet test --no-build --configuration Release
 
   frontend:
-    name: Frontend — build and 1575 specs
+    name: Frontend — build and specs
     runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:

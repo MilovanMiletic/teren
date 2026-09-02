@@ -37,9 +37,10 @@ public interface IObjectStorage
     /// <para>
     /// It returns <see cref="StoredObjectContent"/> rather than a bare stream so a caller that is
     /// answering an HTTP request can set <c>Content-Length</c> and <c>Content-Type</c> from what
-    /// storage actually holds instead of guessing. **That is the shape the photo read path will
-    /// need too** — closing the media-read gap in ARCHITECTURE §8 is a matter of adding an
-    /// endpoint over this method, not of adding another one beside it.
+    /// storage actually holds instead of guessing. <b>The photo read path is built on exactly
+    /// that</b> — <c>GET /api/entries/{id}/media/{mediaId}</c> (C3, closed 2026-08-31) is an
+    /// endpoint over this method rather than another one beside it, and it verifies the bytes
+    /// through <c>VerifiedObjectReader</c> before anybody is handed them.
     /// </para>
     /// <para>
     /// Because it moves whole files it uses the bulk client, not the phone-facing budget. The

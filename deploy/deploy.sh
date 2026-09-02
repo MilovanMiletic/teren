@@ -121,8 +121,9 @@ TEREN_STORAGE_REGION=us-east-1
 TEREN_STORAGE_FORCE_PATH_STYLE=true
 TEREN_STORAGE_DOCKER_NETWORK=teren-localprod_default
 
-# The committed default, so the PWA bundle and the API agree without a rebuild.
-TEREN_DEVICE_TOKEN=teren-dev-device-token-not-a-secret
+# Empty on purpose: the bundle carries no device token (D7/F9), so a value here would only
+# provision a demo device row whose credential nobody holds. Activate a phone at /auth/activate.
+TEREN_DEVICE_TOKEN=
 
 TEREN_STT_AZURE_KEY=
 TEREN_STT_AZURE_REGION=
@@ -178,9 +179,12 @@ log "1/7 Preflight"
 check_disk 1 --warn
 docker info >/dev/null 2>&1 || die "Docker is not running."
 
+# TEREN_DEVICE_TOKEN is deliberately NOT here. Since D7/F9 the PWA bundle carries no token at
+# all, so this value is only the *demo device's* server-side credential; empty means "provision no
+# demo device", which is a working host, not a broken one (see the note further down).
 required=(TEREN_STACK TEREN_DOMAIN TEREN_DB_NAME TEREN_DB_USER TEREN_DB_PASSWORD
           TEREN_STORAGE_ENDPOINT TEREN_STORAGE_ACCESS_KEY TEREN_STORAGE_SECRET_KEY
-          TEREN_STORAGE_BUCKET TEREN_DEVICE_TOKEN)
+          TEREN_STORAGE_BUCKET)
 if [ "$target" = "remote" ]; then
   required+=(TEREN_SSH_HOST TEREN_REMOTE_DIR TEREN_APP_ORIGIN)
 fi
@@ -198,9 +202,15 @@ done
 if [ -z "${TEREN_HANGFIRE_USER:-}" ] || [ -z "${TEREN_HANGFIRE_PASSWORD:-}" ]; then
   note "WARNING: no Hangfire dashboard credentials — /hangfire will refuse every request."
 fi
-if [ "${TEREN_DEVICE_TOKEN}" = "teren-dev-device-token-not-a-secret" ] && [ "$target" = "remote" ]; then
-  note "WARNING: deploying with the committed default device token. Anyone who finds the URL can post entries."
-  note "         Acceptable for a demo box with no real data (ARCHITECTURE section 12) and nothing else."
+# Auth__DeviceToken is one device's credential now, not the authentication system (ARCHITECTURE
+# §12). Both states are legitimate and both are worth saying out loud, because each one is a
+# 401 somebody would otherwise debug from the wrong end.
+if [ -z "${TEREN_DEVICE_TOKEN:-}" ]; then
+  note "NOTE: no Auth__DeviceToken — this host provisions no demo device. Phones activate at"
+  note "      /auth/activate with a username and a code; nothing is baked into the bundle."
+elif [ "${TEREN_DEVICE_TOKEN}" = "teren-dev-device-token-not-a-secret" ] && [ "$target" = "remote" ]; then
+  note "WARNING: the demo device's token is the value published in this repository. Anyone who"
+  note "         reads the repo holds a working credential to the demo company on this box."
 fi
 note "target=${target}  stack=${TEREN_STACK}  domain=${TEREN_DOMAIN}"
 
@@ -214,10 +224,9 @@ if [ "$do_build" -eq 1 ]; then
   check_disk 3
 
   note "web: ${TEREN_WEB_IMAGE}"
-  # The device token is a BUILD-time input for the PWA and a RUN-time input for the API. Passing
-  # the same variable to both here is what keeps the two halves of that one shared secret equal.
+  # No build args. The bundle carries no credential of any kind since D7/F9 — the device token
+  # that used to be substituted here is a server-side value only (see web.Dockerfile).
   docker build "${build_args[@]}" -f "${here}/web.Dockerfile" \
-    --build-arg "TEREN_DEVICE_TOKEN=${TEREN_DEVICE_TOKEN}" \
     -t "${TEREN_WEB_IMAGE}" "$repo"
   check_disk 3
 else
@@ -324,13 +333,17 @@ else
     || die "could not apply bucket CORS on ${TEREN_SSH_HOST}. The stack is up, but a browser will not be able to upload media to it."
 fi
 
+# /health/ready and not /health, deliberately. The liveness route is a constant: it answers `ok`
+# on a host whose schema was never migrated, which is this repository's most repeated failure and
+# exactly what a deploy is in a position to catch. Readiness asks both migration histories, both
+# contexts and the job server. See src/Teren.Api/Health/ReadinessChecks.cs.
 log "Verifying"
 if [ "$target" = "local" ]; then
   # -k: Caddy signs with its own internal CA here. That is the one thing the local rehearsal
   # cannot prove about production, where the certificate is a real one from Let's Encrypt.
-  probe=(curl -fsS -k --max-time 20 "https://localhost:8443/health")
+  probe=(curl -fsS -k --max-time 20 "https://localhost:8443/health/ready")
 else
-  probe=(curl -fsS --max-time 60 "https://${TEREN_DOMAIN}/health")
+  probe=(curl -fsS --max-time 60 "https://${TEREN_DOMAIN}/health/ready")
 fi
 
 health=""
@@ -339,14 +352,15 @@ for i in $(seq 1 30); do
   # A first deploy waits on ACME here; issuance normally takes seconds, occasionally longer.
   sleep 2
 done
-[ -n "$health" ] || die "the stack is up but /health did not answer through the proxy. Check: docker compose logs web api"
-note "/health through the proxy: ${health}"
+[ -n "$health" ] || die "the stack is up but /health/ready did not answer through the proxy. A 503 here names the check that failed — read it with: curl -k https://localhost:8443/health/ready, then: docker compose logs web api"
+note "/health/ready through the proxy: ${health}"
 
 log "Deployed"
 if [ "$target" = "local" ]; then
   cat <<LOCALDONE
     app        https://localhost:8443           (self-signed: the browser will warn once)
-    health     https://localhost:8443/health
+    health     https://localhost:8443/health    liveness (a constant)
+    ready      https://localhost:8443/health/ready   migrations, both contexts, the job server
     jobs       https://localhost:8443/hangfire  (${TEREN_HANGFIRE_USER})
     storage    https://localhost:9443           MinIO console http://127.0.0.1:9101
     mail       http://127.0.0.1:8125            every report lands here, nothing is sent

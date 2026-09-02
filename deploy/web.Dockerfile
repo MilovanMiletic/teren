@@ -22,24 +22,18 @@ RUN npm ci
 
 COPY web/teren-pwa/ ./
 
-# The M0 static device token is compiled into the bundle (ARCHITECTURE §12), so a staging box
-# that wants a token other than the committed throwaway has to substitute it at *build* time.
-# This is the seam for that, and it is fail-loud: if the placeholder is not found — because the
-# committed default changed — the build stops rather than silently shipping a bundle whose token
-# does not match the server's Auth__DeviceToken. That mismatch would present as every upload
-# returning 401 with the app insisting it is configured.
+# NO DEVICE TOKEN IS BAKED INTO THE BUNDLE, and there is deliberately no seam for one.
 #
-# Leave it empty and the committed default is used, which is the correct choice for a demo box
-# holding no real data.
-ARG TEREN_DEVICE_TOKEN=""
-RUN if [ -n "$TEREN_DEVICE_TOKEN" ]; then \
-      grep -q "teren-dev-device-token-not-a-secret" src/environments/environment.ts \
-        || { echo "FATAL: device-token placeholder not found in src/environments/environment.ts" >&2; exit 1; }; \
-      sed -i "s|teren-dev-device-token-not-a-secret|${TEREN_DEVICE_TOKEN}|g" src/environments/environment.ts; \
-      echo "Device token substituted at build time."; \
-    else \
-      echo "Using the committed default device token."; \
-    fi
+# Until D7/F9 (2026-08-31) this stage substituted a build-arg into a placeholder in
+# src/environments/environment.ts, because the M0 compromise compiled one shared device token into
+# the app. That token is gone — `environment.deviceToken` is '' in both environment files, and a
+# spec pins it empty — so the substitution had nothing left to find and its fail-loud `grep`
+# stopped every `deploy.sh` run on both targets with "FATAL: device-token placeholder not found".
+#
+# Do not put it back. A working credential compiled into a public bundle is readable from devtools
+# by anyone, and while it existed the activation gate could not bite. A phone earns its own
+# credential at /auth/activate; `Auth__DeviceToken` survives on the *server* only, as the demo
+# device's token that `seed` provisions into the device table (ARCHITECTURE §12).
 
 # `ng build` defaults to the production configuration (angular.json), which is what turns on
 # outputHashing and the service worker.

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Teren.Api.Auth;
 using Teren.Api.Contracts;
+using Teren.Api.Jobs;
 using Teren.Api.Validation;
 using Teren.Core.Entities;
 using Teren.Core.Identity;
@@ -237,18 +238,29 @@ public static class AuthEndpoints
     /// runtime.
     /// </para>
     /// <para>
-    /// <b>Why this is safe to leave unauthenticated even though it kills the live code.</b>
-    /// Anyone who knows a username can supersede the code his boss just sent him, which is a
-    /// nuisance. It is bounded by the IP rate limiter, and by only ever issuing when the worker
-    /// actually has an address: a code nobody can be sent is not worth destroying a usable one
-    /// for. The alternative — leaving the old code live — would put two typeable codes on one
-    /// worker, which the database refuses outright (<c>ux_activation_code_live</c>).
+    /// <b>THIS REQUEST WRITES NOTHING, and that is the fix of 2026-09-02.</b> It used to mint here
+    /// — supersede the worker's live code and insert a fresh one — and then log a
+    /// <c>TODO(D6)</c> where the mail should have gone. So an unauthenticated caller who knew a
+    /// username, and usernames are guessable (<c>UsernameFormat.Propose</c> derives one from a
+    /// display name; company and worker names are public), could invalidate the code a foreman was
+    /// about to type on a site, and produce nothing in its place. The mint now lives inside
+    /// <see cref="Jobs.WorkerCodeMailJob"/>, past every reason not to send, so a request that
+    /// cannot mail supersedes nothing.
+    /// </para>
+    /// <para>
+    /// <b>The job is enqueued unconditionally, and that is what keeps the answer uniform.</b>
+    /// Deciding eligibility here would put a supersede, an insert and an audit row on one branch
+    /// and nothing on the other, which §10.3 requires to stay invisible <em>at runtime</em> — it
+    /// is the leak <c>ActivationCodes.BurnIssueCostAsync</c> existed to compensate for, by
+    /// spending statements on purpose. With no branch there is nothing to compensate: two lookups
+    /// and one enqueue, whoever asked. The job resolves the same user id again and does the whole
+    /// decision where a stopwatch cannot reach it.
     /// </para>
     /// </summary>
     private static async Task<IResult> RequestActivationCodeAsync(
         ActivationCodeRequestBody request,
         TerenIdentityDbContext db,
-        IOptions<AuthOptions> options,
+        IInviteQueue mailJobs,
         ILogger<ActivationCode> logger,
         CancellationToken ct)
     {
@@ -258,7 +270,7 @@ public static class AuthEndpoints
         // lookup below is deliberately not short-circuited either: a request that skips a round
         // trip is answered measurably sooner, and this route's whole promise is that the answer
         // is the same either way. Byte-identical was never enough on its own.
-        var worker = await db.Users.FirstOrDefaultAsync(
+        var worker = await db.Users.AsNoTracking().FirstOrDefaultAsync(
             u => u.Username == username
                 && u.Role == AppUserRole.Worker
                 && u.DisabledAt == null,
@@ -266,38 +278,20 @@ public static class AuthEndpoints
 
         var companyId = worker?.CompanyId ?? Guid.Empty;
 
-        var companyLive = await db.Companies.AnyAsync(
-            c => c.Id == companyId && c.SuspendedAt == null, ct);
+        // Read here as well as in the job, even though the job's read is the one that decides:
+        // dropping it would make an unknown username one round trip cheaper than a known one.
+        await db.Companies.AnyAsync(c => c.Id == companyId && c.SuspendedAt == null, ct);
 
-        if (worker?.Email is not null && companyLive)
-        {
-            // The actor is the worker himself, which is exactly what the audit column should say.
-            await ActivationCodes.IssueAsync(
-                db,
-                worker,
-                worker.Id,
-                AdminAuditActions.ActivationCodeSelfRequested,
-                options.Value.ActivationCodeLifetime,
-                ct);
+        // Guid.Empty for an unknown username — the job returns immediately on it. An id, never
+        // the name that was typed: a Hangfire argument is serialised into its storage and kept in
+        // job history (ARCHITECTURE §12).
+        mailJobs.EnqueueWorkerCodeMail(worker?.Id ?? Guid.Empty);
 
-            // TODO(D6): hand the plaintext to the mail job here. Until IMailSender exists the code
-            // is issued and visible to the admin on the worker surface, which is the fallback the
-            // whole design keeps deliberately available — but the self-service path is not
-            // *self*-service until this line sends something.
-            logger.LogInformation(
-                "Activation code re-issued on request for user {UserId}; no mail transport yet, "
-                + "so it is readable only on the admin surface.", worker.Id);
-        }
-        else
-        {
-            // Otherwise nothing is written — and the writes are paid for anyway. Without this the
-            // route still leaks by stopwatch: a username with an address on file costs a supersede
-            // and an insert that an unknown username does not, and §10.3 requires precisely that
-            // distinction to stay invisible at runtime.
-            await ActivationCodes.BurnIssueCostAsync(db, ct);
-        }
+        logger.LogInformation(
+            "Activation-code mail requested for {UserId}; nothing is minted until the job has "
+            + "somewhere to send it.", worker?.Id ?? Guid.Empty);
 
-        // Byte-identical whether or not anything happened above.
+        // Byte-identical whether or not anything happens in the job.
         return TypedResults.Accepted((string?)null);
     }
 

@@ -91,6 +91,31 @@ public static class ReportFailure
     /// </summary>
     public const string Superseded = "superseded";
 
+    /// <summary>
+    /// <b>A report was delivered, and the entry now holds different content, so it was not
+    /// sealed.</b>
+    /// <para>
+    /// The sibling of <see cref="Superseded"/> from the other side of the relay call. There, a
+    /// newer confirmation arrived before anything was sent and the pass simply released its claim.
+    /// Here the document had already gone out — the confirmation's read beat the claim and its
+    /// write landed after the pass re-read <c>corrected</c>, which is a window neither check can
+    /// close on its own — and <c>reported_at</c> is irreversible, so it is not stamped on content
+    /// nobody received.
+    /// </para>
+    /// <para>
+    /// <b>Terminal until a person acts, and it cannot be otherwise.</b> <c>ux_report_entry_id</c>
+    /// allows one report per entry and there is no <c>sent → sending</c> transition, so the newer
+    /// content can never get its own report of this entry; sending a second document for one day
+    /// is exactly what §6 refuses. The product's answer is the one it already has for a correction
+    /// after a report: a new entry carrying <c>supersedes_entry_id</c>.
+    /// </para>
+    /// <para>
+    /// Not <see cref="IsCustodyUnknown"/>: custody here is <em>known</em> — the client has the
+    /// earlier version. What is not true is that the archive's current version was ever sent.
+    /// </para>
+    /// </summary>
+    public const string SupersededAfterSend = "superseded_after_send";
+
     /// <summary>Anything the report pass did not anticipate. Still visible, still not lost.</summary>
     public const string Unexpected = "unexpected";
 

@@ -96,7 +96,12 @@ commits himself is set aside for this one commit, not changed.
   **`deploy-dev.yml`** (`deploy/deploy.sh` from the runner after a green CI on `main`; dormant until
   `TEREN_DEV_ENV`, `TEREN_DEV_SSH_KEY` and `TEREN_DEV_SSH_KNOWN_HOSTS` exist). Documented in
   ARCHITECTURE §13 and CLAUDE.md. Both files parse; the backend's exact commands were run locally
-  before pushing; the first real run is the push itself.
+  before pushing; the first real run is the push itself. *The push itself stalled: Git Credential
+  Manager held no GitHub token, and a headless `git push` hangs on the sign-in dialog. The founder
+  signed in; all three commits went up together.* **First CI run on `6b92329`: green — backend 158 s
+  (991 tests over Testcontainers Postgres on the runner), frontend 67 s (1636 specs). `Deploy dev`
+  ran after it, found no secrets, logged its notice and exited green, exactly as designed.** The job
+  names had spec counts baked in and were already stale; renamed.
 - Founder, in the same message: *"run the full code review in parallel for the frontend and the
   backend with our senior subagents to check the state of the code and to know how good it is."*
   Two whole-codebase state reviews launched against `c97c0e1`, read-only, graded A–F with a top-ten
@@ -244,6 +249,72 @@ and asserts the premise (seed removed → 3 red). The reviewer's fake-timer draf
 during `stopping`**: it is the only way out of a recorder that has stopped answering, and the counter
 makes the race harmless. Suite **1636/1636**; build clean; live proof re-run on this build, 22,938 B /
 6437 ms against 23,430 B / 6573 ms.
+
+**Backend fix increment — implementer's report (review pending below)**
+
+- **1 (HIGH) deploy chain — fixed and PROVEN.** `web.Dockerfile`'s substitution block deleted;
+  `TEREN_DEVICE_TOKEN` optional, dropped from `required` and the build arg; README §4/§8 rewritten;
+  `DeployContractTests` (5) reads `deploy/` off disk. **`deploy.sh --target local --seed` ran to
+  `Deployed`** — `/health/ready` Healthy over https on 8443, `/` 200, `/ngsw.json` 200,
+  `/api/projects` 401, then `--down`. *Trap found on the way:* Caddy's `@backend` matcher listed
+  `/health` exactly, so `/health/ready` would have been served the SPA shell and "verified" an HTML
+  page; both Caddyfiles now match `/health/*`, pinned by a test.
+- **2 seal/confirm race — closed.** New `report.corrected_sha256`; `SealAsync` seals only where the
+  row still holds the rendered `corrected` (**jsonb equality**, so a re-serialisation still seals);
+  the recovery pass compares the stored hash; 0 rows → new terminal reason `superseded_after_send`
+  on the entry, report row keeps its truthful `sent`, logged critical. Not a new report status —
+  marking a `sent` row failed would break `ck_report_sent_at` and destroy the custody record.
+  `ReportCustodyTests` +3 incl. the interleave; both halves mutation-proven (2 red / 1 red).
+- **3 `/auth/activation-code` — the handler writes nothing.** It enqueues `WorkerCodeMailJob`
+  unconditionally with an id (never the typed name); the job mints *inside itself* after
+  worker/email/company/relay checks. That deleted the 82-line hand-calibrated timing compensation
+  (`BurnIssueCostAsync` and friends) — with no branch there is nothing to compensate.
+  `EmailDelivery.NotSent` where a relay exists; `WorkerCodeMailJobTests` (8); the statement-shape
+  test proves all three branches issue the identical sequence and none writes. Mutation-proven twice.
+- **4 `/health/ready`** — `ReadinessChecks.cs`: `SELECT 1` on both contexts, no pending migration on
+  either history, a job-server heartbeat ≤ 2 min; `ReadinessTests` (4) on a minimal `TestServer`.
+  *Defect of the implementer's own worth reading:* the first draft booted a second `Program` host,
+  and `UseSerilog` repoints the **static** `Log.Logger`, so an unrelated log-ingress test a class
+  away went red with an empty table. **5** partial index `ix_report_sending_attempt`, applied to the
+  dev database, test reads `pg_indexes`. **6** `/api/client-events` limited to 60/min per
+  address + SHA-256 of the bearer (the limiter runs before auth). **7** invite lifetime from options.
+  **8** comment rot fixed, and `BoundedRetry.cs`'s "the one retry loop" made *true*:
+  `EntryProcessor` now delegates to it, with a guard that only one place in the product sleeps
+  between attempts. *Unasked:* five readiness property names added to the log allow-list, because
+  otherwise they would have rendered as literal `{PendingCount}` — the `{State:l}` defect again.
+- Build: one warning (the known `CS9107`). **Tests 1020/1020** (+29). *Open, named:* the remote
+  deploy path is still unexercised; `JobServerReadyCheck` has no test (Hangfire is off in the test
+  host — its only proof is the rehearsal's container going healthy); nothing walks log call sites to
+  check every property name is allow-listed; the rehearsal left the machine at 5.0 GB free
+  (`docker image prune` reclaims it).
+
+**Backend fix increment — reviewer: accept-with-fixes.** Build one warning, **1020/1020**
+reproduced, 40-file diff read hunk by hunk, tree byte-identical afterwards. Both gating items were
+**false comments introduced by the increment that fixed comment rot**: `WorkerCodeMailJob.cs:91`
+said "the route checks this too" when the route now checks nothing by design, and
+`AuthRateLimitPolicy.cs:28` claimed a flood of invented tokens "cannot mint an unbounded number of
+partitions" when every distinct `Authorization` value is a new one — what bounds memory is the
+limiter's idle eviction. Both rewritten to say the true thing. *The reviewer could not execute its
+mutations:* **Docker Desktop died mid-run because C: hit 31 MB free** — the founder's Postgres, MinIO
+and Mailpit with it — and restarting it was outside the reviewer's permissions. Coordinator: scratch
+build outputs deleted, `docker desktop restart`, engine up in ~10 s, `docker compose up -d`, all three
+containers healthy. Then the reviewer's staged mutation copy (M1: seal predicate removed; M2: mint
+moved above the relay check) was run: **3 red of 20** — the two expected, plus
+`Nothing_automatic_resolves_a_delivered_report_whose_entry_moved_on`, which the reviewer had mapped
+to M3 but which M1 also reaches because the recovery path ends in the same seal. Every red is a
+mutation target; the 17 others green; the real tree 1020/1020. **Now proven by execution.**
+Non-gating, carried: `superseded_after_send` is correct on the server and **a dead end on the
+phone** — the PWA reads `failure_reason` nowhere, a `confirmed`-unreported entry routes back to the
+confirm gate, and the foreman can loop forever with no visible cause; the documented answer
+(`supersedes_entry_id`) has no frontend gesture yet. Also: `/health/ready` is public and unlimited
+(four round trips a hit); `JobServerReadyCheck` counts any server row, so a crash-restart reads ready
+for up to 2 min; `ReportOutcome.Sent` is returned for the not-sealed outcome, so the sweeper counts
+it as success and the `LogCritical` is the only signal.
+**Environment, for the founder:** the disk is at **98 %** (5.8 GB free). Docker's VHDX grows under
+1020 tests over a thousand scratch databases and gives space back only when the distro stops; a full
+`dotnet test` took the engine down once today. `src/Teren.Api/bin` and `tests/.../bin` hold Debug and
+Release side by side (~600 MB); `docker builder prune` reclaimed 2.8 GB inside the VHDX. Several GB
+need freeing before "re-run both suites after every review" is safe on this machine.
 
 **Frontend fix increment — delta review: ACCEPT, whole increment now accept.** All three mutations
 re-run in the reviewer's isolated copy: exactly 1, 3 and 3 red as claimed; 1636/1636 and a clean build

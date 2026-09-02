@@ -140,17 +140,26 @@ looks healthy — and it presents as a CORS error, because a browser's complaint
 or wrongly-signed host is indistinguishable from a preflight refusal. If uploads fail and CORS looks
 like the culprit, check this first.
 
-### The device token has two homes
+### The device token has one home now, and it is optional
 
-The M0 static device token (ARCHITECTURE §12) is one shared secret that lives in two places: the
-`Auth__DeviceToken` environment variable on the server, and a string compiled into the PWA bundle.
-`deploy.sh` passes the same `TEREN_DEVICE_TOKEN` to both — as a run-time variable for the API and as
-a build arg for `web.Dockerfile`, which substitutes it into the bundle. If they ever disagree, every
-request returns 401 while the app insists it is configured.
+It used to have two: the `Auth__DeviceToken` environment variable on the server, and a string
+compiled into the PWA bundle, which `web.Dockerfile` substituted at build time from a
+`TEREN_DEVICE_TOKEN` build arg. **D7/F9 (2026-08-31) removed the second half** — the bundle carries
+no credential, because a working token readable from devtools by anyone is not a credential, and
+while it existed the activation gate could not bite.
 
-Leaving it as the committed default means anyone who finds the URL can post entries. That is
-acceptable for a demo box holding no real data, and for nothing else. Generate one with
-`openssl rand -hex 32`.
+The build-time seam outlived it by two days and broke both targets: `web.Dockerfile` grepped for a
+placeholder that `environment.ts` no longer contains and stopped with `FATAL`, and `deploy.sh`
+refused to run at all without `TEREN_DEVICE_TOKEN` set. Both are gone (2026-09-02); there is no
+build arg and the variable is no longer required.
+
+What survives is one row. `seed` provisions the demo worker a `device` whose `token_hash` is
+SHA-256 of `Auth__DeviceToken`, so that one phone can be handed a token without activating it.
+**Leave it empty** unless you want that: an empty value provisions no demo device and says so once
+at start-up, phones activate at `/auth/activate` with a username and a one-time code, and nothing
+about the app depends on it. If you do set it, generate it (`openssl rand -hex 32`) — a value
+anyone else knows is a working credential to the demo company — and it must be at least 16
+characters.
 
 ### The Hangfire dashboard
 
@@ -265,12 +274,22 @@ and left the database with no application tables at all).
 **Uploads fail and it looks like CORS.** Check `Storage__PublicEndpoint` before anything else (§4),
 then the bucket's CORS (§6). Both present as a preflight failure in the browser console.
 
-**Every request 401s but the app looks configured.** The device token compiled into the bundle does
-not match `Auth__DeviceToken` on the server (§4). Rebuild the web image with the right
-`TEREN_DEVICE_TOKEN`.
+**Every request 401s.** Nothing is baked into the bundle any more (§4), so this is not a mismatch —
+the browser is holding no session, or the one it holds was revoked. A fresh install lands on
+`/welcome`; a phone needs a username and an activation code, which its company's admin issues at
+`/company`. `Auth__DeviceToken` is not involved unless you deliberately set it for the demo phone.
 
 **A bare Npgsql `42703 column does not exist`.** Migrations did not run. `deploy.sh` always runs
-them; a manual `docker compose up -d` does not.
+them; a manual `docker compose up -d` does not. **Since 2026-09-02 the box says so itself**:
+`curl -k https://$TEREN_DOMAIN/health/ready` answers 503 with `migrations: N migration(s) pending`,
+naming which context is behind, and the container healthcheck asks the same route. `/health` is
+liveness only and still answers `ok` on such a host — deliberately, because a liveness probe that
+goes red on a database blink restarts a healthy process.
+
+**What readiness does *not* cover.** It asks the schema, the two contexts and the job server's
+heartbeat. It says nothing about a missing time-zone database, an unset AI key or an absent relay:
+each of those is a working host that cannot do one job, and each is warned about at deploy time and
+recorded on the entry (`failure_reason`) rather than turned into an outage.
 
 **Entries sit in `needs_review`.** Read `failure_reason` on the entry — it names the missing key.
 `deploy.sh` warns at deploy time about every key whose absence leaves a working host that cannot do

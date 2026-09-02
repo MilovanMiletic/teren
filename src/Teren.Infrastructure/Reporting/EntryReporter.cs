@@ -20,7 +20,17 @@ public enum ReportOutcome
     /// pass holds the claim. Never a state change.</summary>
     Skipped,
 
-    /// <summary>The relay took custody and the entry is sealed.</summary>
+    /// <summary>
+    /// The relay took custody, and — in every ordinary case — the entry is sealed.
+    /// <para>
+    /// Deliberately not "sealed", because two states hand the message over and then refuse the
+    /// stamp, and both are reported as facts rather than smoothed into a failure: the claim on the
+    /// row was gone before the send could be recorded, and the entry changed under the pass after
+    /// the document had already gone out (<c>superseded_after_send</c>). <c>Failed</c> would be a
+    /// lie in the one direction that costs the most — it means "nothing left the building" — and
+    /// <c>Skipped</c> promises no state change. The entry carries the truth in either case.
+    /// </para>
+    /// </summary>
     Sent,
 
     /// <summary>Nothing left the building; the reason is on the entry and, where one exists, on
@@ -128,12 +138,19 @@ public sealed class EntryReporter(
             case ReportStatus.Sent:
                 // The relay took custody but the entry was never sealed — the pass died in the
                 // gap between those two writes. Finish it rather than send a second copy.
+                //
+                // **Through the same comparison the sealing pass makes**, and for the same
+                // reason: the entry may have moved since that document went out, and this path is
+                // reached a minute later by a sweep rather than microseconds later by the pass
+                // that rendered it, so it is the *wider* window of the two. What was sent is
+                // recorded on the row (report.corrected_sha256), which is the only thing a
+                // different process can compare against.
                 logger.LogWarning(
                     "Entry {EntryId} has a report already handed over at {SentAt} but was never "
-                    + "sealed; sealing it now instead of sending again.",
+                    + "sealed; finishing it instead of sending again.",
                     entryId, existing.SentAt);
-                await SealAsync(entryId, ct);
-                return ReportOutcome.Sent;
+
+                return await SealDeliveredAsync(entry, existing, ct);
         }
 
         if (existing is { Status: ReportStatus.Failed }
@@ -505,7 +522,12 @@ public sealed class EntryReporter(
             return ReportOutcome.Sent;
         }
 
-        await SealAsync(entry.Id, ct);
+        // The rendered document, not the row: this pass knows exactly what it laid out, and the
+        // seal is refused if the entry is no longer that. See SealAsync.
+        if (!await SealAsync(entry.Id, entry.Corrected, ct))
+        {
+            return await RecordSupersededAfterSendAsync(entry.Id, ct);
+        }
 
         logger.LogInformation(
             "Entry {EntryId} reported: {Recipients} recipient(s), {Photos} photo(s), "
@@ -626,6 +648,7 @@ public sealed class EntryReporter(
                         .SetProperty(r => r.AttemptStartedAt, now)
                         .SetProperty(r => r.PdfObjectKey, objectKey)
                         .SetProperty(r => r.PdfSha256, pdfSha256)
+                        .SetProperty(r => r.CorrectedSha256, Sha256Of(entry.Corrected))
                         .SetProperty(r => r.Recipients, snapshot)
                         .SetProperty(r => r.FailureReason, (string?)null),
                     ct);
@@ -644,6 +667,8 @@ public sealed class EntryReporter(
             PeriodEnd = entry.EntryDate,
             PdfObjectKey = objectKey,
             PdfSha256 = pdfSha256,
+            // What this document says, so a later pass can ask whether the entry still says it.
+            CorrectedSha256 = Sha256Of(entry.Corrected),
             // A snapshot, not a reference: editing the project's distribution list next month
             // must never rewrite who this report went to.
             Recipients = snapshot,
@@ -685,17 +710,43 @@ public sealed class EntryReporter(
     // ------------------------------------------------------------------ terminal writes
 
     /// <summary>
-    /// Stamps <c>reported_at</c> — the irreversible write.
+    /// Stamps <c>reported_at</c> — the irreversible write. True when this pass sealed the entry.
     /// <para>
     /// Conditional on the entry still being <c>confirmed</c> and unreported, which is both the
     /// claim check and what keeps the Postgres immutability trigger out of it: the trigger
     /// rejects any UPDATE whose OLD row already carries <c>reported_at</c>, and this predicate
     /// can never select one.
     /// </para>
+    /// <para>
+    /// <b>And conditional on <c>corrected</c> still being the document that was sent.</b> That
+    /// clause closes the last gap between the confirm endpoint's refusal and this pass's own
+    /// re-read, neither of which can close it alone: <c>/confirm</c> checks for a <c>sending</c>
+    /// row and then writes, the pass claims and then re-reads, and a confirmation whose check ran
+    /// before the claim and whose write landed after the re-read passed both. What it cost was the
+    /// one write that cannot be taken back — <c>reported_at</c> on content the client never
+    /// received, with the archive then contradicting the report itself. The comparison is in the
+    /// same statement as the stamp, so there is nothing left to race.
+    /// </para>
+    /// <para>
+    /// <b>Compared as <c>jsonb</c>, not as text, and that is deliberate.</b> The column is
+    /// <c>jsonb</c> and EF sends the parameter as one, so Postgres compares the two documents
+    /// semantically — key order and whitespace do not enter into it. A hash of the string would
+    /// have been the stricter check and the wrong one: it would refuse a seal over a
+    /// re-serialisation that says exactly the same thing. (The <em>row</em> stores a hash, in
+    /// <c>report.corrected_sha256</c>, because the recovery path runs in another process and has
+    /// no document to compare — see <see cref="SealDeliveredAsync"/>.)
+    /// </para>
     /// </summary>
-    private async Task SealAsync(Guid entryId, CancellationToken ct)
+    private async Task<bool> SealAsync(Guid entryId, string? corrected, CancellationToken ct)
     {
-        var sealedRows = await db.Entries
+        // Written as two predicates rather than one because `e.Corrected == corrected` with a
+        // null parameter translates to `corrected = NULL`, which is never true — so a legitimately
+        // empty document would never seal.
+        var claim = corrected is null
+            ? db.Entries.Where(e => e.Corrected == null)
+            : db.Entries.Where(e => e.Corrected == corrected);
+
+        var sealedRows = await claim
             .Where(e => e.Id == entryId
                         && e.Status == EntryStatus.Confirmed
                         && e.ReportedAt == null)
@@ -706,13 +757,108 @@ public sealed class EntryReporter(
                     .SetProperty(e => e.FailureReason, (string?)null),
                 ct);
 
-        if (sealedRows != 1)
+        if (sealedRows == 1)
+        {
+            return true;
+        }
+
+        logger.LogWarning(
+            "Entry {EntryId}: the report went out but the entry was no longer `confirmed`, "
+            + "unreported and holding the content that was sent, so it was not sealed by this "
+            + "pass.", entryId);
+
+        return false;
+    }
+
+    /// <summary>
+    /// Finishes a report the relay already took: seals the entry if it still holds what went out,
+    /// and refuses to if it does not.
+    /// <para>
+    /// The two answers are different facts and neither may be papered over. If the entry moved on
+    /// (a re-confirmation that raced the seal), the client holds one version and the archive holds
+    /// another; sealing would assert that the archive's version was sent, and a second report of
+    /// the same day is what <c>ux_report_entry_id</c> and ARCHITECTURE §6 exist to prevent. So it
+    /// stops, visibly, and a person decides — the correction path after a report is a new entry
+    /// with <c>supersedes_entry_id</c>.
+    /// </para>
+    /// <para>
+    /// A row from before <c>corrected_sha256</c> existed cannot be compared. It is sealed as it
+    /// always was, and the log says the check was unavailable rather than implying one happened.
+    /// </para>
+    /// </summary>
+    private async Task<ReportOutcome> SealDeliveredAsync(
+        Entry entry, Report report, CancellationToken ct)
+    {
+        if (report.CorrectedSha256 is null)
         {
             logger.LogWarning(
-                "Entry {EntryId}: the report went out but the entry was no longer `confirmed` "
-                + "and unreported, so it was not sealed by this pass.", entryId);
+                "Entry {EntryId}: report {ReportId} predates corrected_sha256, so what was sent "
+                + "cannot be compared with what the entry holds; sealing it as before.",
+                entry.Id, report.Id);
+
+            await SealAsync(entry.Id, entry.Corrected, ct);
+            return ReportOutcome.Sent;
         }
+
+        if (!string.Equals(report.CorrectedSha256, Sha256Of(entry.Corrected), StringComparison.Ordinal))
+        {
+            return await RecordSupersededAfterSendAsync(entry.Id, ct);
+        }
+
+        if (!await SealAsync(entry.Id, entry.Corrected, ct))
+        {
+            // The hashes agreed a moment ago and the conditional stamp still found nothing, so
+            // something changed between the two — the same race, one turn later.
+            return await RecordSupersededAfterSendAsync(entry.Id, ct);
+        }
+
+        return ReportOutcome.Sent;
     }
+
+    /// <summary>
+    /// A document was delivered and the entry is not it. Says so on the entry and stops.
+    /// <para>
+    /// <c>LogCritical</c> because nothing automatic can resolve this and nothing should try: the
+    /// report row keeps its truthful <c>sent</c> — the relay did take that message — and the entry
+    /// stays <c>confirmed</c> with a reason, which is the state the report sweeper deliberately
+    /// leaves alone. A replayed confirmation clears the reason and re-queues; the pass then lands
+    /// on the recovery path above, compares again, and writes the same reason back, so the state
+    /// is re-derived rather than laundered.
+    /// </para>
+    /// </summary>
+    private async Task<ReportOutcome> RecordSupersededAfterSendAsync(
+        Guid entryId, CancellationToken ct)
+    {
+        var reason = ReportFailure.Describe(
+            ReportFailure.SupersededAfterSend,
+            "a report of an earlier version of this entry has already been delivered, and the "
+            + "version held now was never sent — so the entry is not sealed. A correction after a "
+            + "report is a new entry referencing this one; nothing automatic sends a second "
+            + "document for the same day");
+
+        logger.LogCritical(
+            "Entry {EntryId}: the report was delivered and the entry has since changed, so it is "
+            + "NOT sealed. The client holds the earlier version; the archive holds a newer one. "
+            + "Resolve by hand — a correction after a report is a new entry.", entryId);
+
+        await db.Entries
+            .Where(e => e.Id == entryId
+                        && e.Status == EntryStatus.Confirmed
+                        && e.ReportedAt == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(e => e.FailureReason, reason), ct);
+
+        return ReportOutcome.Sent;
+    }
+
+    /// <summary>
+    /// The hash recorded on a report row, over the <c>corrected</c> document as Postgres handed it
+    /// back. Both sides of the comparison are read from the same normalised column, so the string
+    /// is stable across passes.
+    /// </summary>
+    internal static string? Sha256Of(string? corrected) =>
+        corrected is null
+            ? null
+            : Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(corrected)));
 
     /// <summary>
     /// Hands the claim back because the entry moved underneath this pass, having sent nothing.

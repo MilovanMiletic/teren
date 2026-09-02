@@ -417,4 +417,82 @@ public sealed class ClientEventTests(TerenTestApp app) : ApiTestBase(app)
         row.At.ShouldBeGreaterThanOrEqualTo(before.AddSeconds(-1));
         row.At.ShouldBeLessThanOrEqualTo(DateTime.UtcNow.AddSeconds(1));
     }
+
+    // ---------------------------------------------------------------- the rate limit
+
+    /// <summary>
+    /// The cap on the body bounds one request; nothing bounded a caller.
+    /// <para>
+    /// <b>Why that mattered more here than on an ordinary route.</b> The queue behind this one is
+    /// bounded and drops the <em>oldest</em> row when full — right for a stuck writer, and wrong
+    /// for a loud client: one phone in a retry loop would push every server-side line out of the
+    /// table Teren staff read to find out what is going wrong. The limiter is middleware, so it
+    /// runs before the auth filter; the credential's hash is the only per-caller thing that exists
+    /// at that point, which is why the partition is that and not the principal.
+    /// </para>
+    /// <para>
+    /// Deliberately driven with a bogus token: the 429 arrives <em>before</em> the 401, and using
+    /// a token no other test shares keeps this test's sixty requests out of the fixture device's
+    /// bucket — a fixed window is a minute long and the suite runs in one.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_client_that_floods_the_route_is_refused_before_it_can_fill_the_queue()
+    {
+        var limit = App.Factory.Services
+            .GetRequiredService<IOptions<LoggingOptions>>().Value.ClientEvents.RateLimitPerMinute;
+
+        limit.ShouldBe(60, "the shipped allowance for a phone; generous, and not unbounded");
+
+        using var loud = App.CreateClientWithToken("trn_d_not-a-real-token-flooder");
+
+        for (var i = 1; i <= limit; i++)
+        {
+            var allowed = await loud.PostJson("/api/client-events", Batch(Event()));
+
+            // Refused on the credential, which is the auth filter's job — the point is that the
+            // limiter let it through to be judged.
+            allowed.StatusCode.ShouldBe(
+                HttpStatusCode.Unauthorized,
+                $"request {i} of {limit} should still be inside the window's allowance");
+        }
+
+        var refused = await loud.PostJson("/api/client-events", Batch(Event()));
+
+        refused.StatusCode.ShouldBe(HttpStatusCode.TooManyRequests);
+        refused.Headers.RetryAfter.ShouldNotBeNull(
+            "a phone has to be told how long to wait, or it retries into the same wall");
+
+        // Problem details like every other refusal in this API, and it names no account.
+        var body = await refused.TextAsync();
+        body.ShouldContain("Too many requests");
+        body.ShouldNotContain("trn_d_", Case.Sensitive, "the credential is never echoed back");
+    }
+
+    [Fact]
+    public async Task One_loud_client_cannot_spend_another_client_s_allowance()
+    {
+        // The partition, asserted rather than assumed. A global limiter on this route would let
+        // one phone in a retry loop silence every other phone's telemetry — and, worse, an
+        // admin's browser posts to the same route.
+        var limit = App.Factory.Services
+            .GetRequiredService<IOptions<LoggingOptions>>().Value.ClientEvents.RateLimitPerMinute;
+
+        using var loud = App.CreateClientWithToken("trn_d_not-a-real-token-noisy");
+
+        for (var i = 0; i <= limit; i++)
+        {
+            (await loud.PostJson("/api/client-events", Batch(Event()))).Dispose();
+        }
+
+        (await loud.PostJson("/api/client-events", Batch(Event()))).StatusCode
+            .ShouldBe(HttpStatusCode.TooManyRequests, "the arrange did not exhaust the window");
+
+        // The ordinary caller, entirely unaffected — and this one is the real device token, so it
+        // proves the route still works rather than merely that it answers something.
+        var quiet = await Client.PostJson("/api/client-events", Batch(Event()));
+
+        quiet.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+        (await quiet.JsonAsync()).GetProperty("accepted").GetInt32().ShouldBe(1);
+    }
 }

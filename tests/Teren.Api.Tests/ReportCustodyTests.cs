@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using System.Net;
 using System.Text.Json.Nodes;
 using Teren.Api.Tests.Infrastructure;
@@ -347,5 +348,159 @@ public sealed class ReportCustodyTests(TerenTestApp app) : ApiTestBase(app)
         (await SweepAsync()).ReportsQueued.ShouldBe(
             1, "a released claim leaves work the sweeper is meant to find");
         App.Pipeline.Reports.ShouldContain((entryId, TestIds.CompanyA));
+    }
+
+    // ================================================================ sealed vs sent
+
+    [Fact]
+    public async Task A_confirmation_that_lands_while_the_relay_holds_the_message_does_not_seal()
+    {
+        // THE TOCTOU THE SEAL NOW CLOSES, and it is the last gap between two checks that each
+        // look complete on their own:
+        //
+        //   * /confirm refuses a CHANGED confirmation while a report row is `sending`
+        //     (EntryEndpoints) — but it reads the report table and then writes the entry, and
+        //     those are two statements.
+        //   * the pass re-reads `corrected` after taking its claim (step 4a below) — but that is
+        //     a read, and a write that commits after it is invisible to it.
+        //
+        // Interleave them the wrong way — the confirm's check runs before the claim exists, its
+        // write lands after the pass's re-read — and both are satisfied while the pass sends v1
+        // and stamps `reported_at` on v2. That stamp is irreversible: a Postgres trigger makes the
+        // row immutable and undeletable, so the contractor's own archive would permanently
+        // contradict the report his client is holding.
+        //
+        // Arranged as the write half of that confirmation, on the database, during the relay call
+        // — because the endpoint's own guard is what stops it being reachable through the API in
+        // the ordinary case, and this test is about the case where the guard has already been
+        // passed. (A_changed_confirmation_is_refused_while_a_report_is_sending covers the guard.)
+        var entryId = await GivenConfirmedEntryAsync();
+        var sent = DefaultCorrected();
+
+        var raced = DefaultCorrected();
+        raced["notes"] = "Ispravka koja je stigla dok je izveštaj već bio kod relaya.";
+
+        Delivery.WhileSending = async () =>
+        {
+            Delivery.WhileSending = null;
+            await using var db = App.CreateDbContext(TestIds.CompanyA);
+            await db.Entries
+                .Where(e => e.Id == entryId)
+                .ExecuteUpdateAsync(
+                    s => s
+                        .SetProperty(e => e.Corrected, raced.ToJsonString())
+                        .SetProperty(e => e.ConfirmedAt, DateTime.UtcNow),
+                    Ct);
+        };
+
+        // The relay did take the message, and the pass says so rather than pretending otherwise.
+        (await ReportAsync(entryId)).ShouldBe(ReportOutcome.Sent);
+
+        Delivery.Sent.Count.ShouldBe(1, "the document had already gone out; that cannot be undone");
+        Renderer.LastRendered!.Content.Notes.ShouldBe(
+            sent["notes"]!.GetValue<string>(), "what went out is the version that was rendered");
+
+        var entry = (await LoadEntryAsync(entryId))!;
+        entry.ReportedAt.ShouldBeNull(
+            "reported_at must never be stamped on content the client did not receive");
+        entry.Status.ShouldBe(EntryStatus.Confirmed);
+        ReportFailure.CodeOf(entry.FailureReason)
+            .ShouldBe(ReportFailure.SupersededAfterSend);
+
+        // The report row keeps the truth about itself: that message really was handed over.
+        var report = (await LoadReportAsync(entryId))!;
+        report.Status.ShouldBe(ReportStatus.Sent);
+        report.SentAt.ShouldNotBeNull();
+        report.CorrectedSha256.ShouldNotBeNull("the pass records what it laid out");
+    }
+
+    [Fact]
+    public async Task Nothing_automatic_resolves_a_delivered_report_whose_entry_moved_on()
+    {
+        // The state above, re-visited by the sweeper's own pass a minute later — which is the
+        // WIDER window of the two, because `case ReportStatus.Sent` is the recovery for a process
+        // that died before sealing and it runs in a different process from the one that rendered.
+        // It used to seal unconditionally, so it would have finished the job the sealing pass had
+        // just refused, and quietly.
+        var entryId = await GivenConfirmedEntryAsync();
+
+        Delivery.WhileSending = async () =>
+        {
+            Delivery.WhileSending = null;
+            await using var db = App.CreateDbContext(TestIds.CompanyA);
+            await db.Entries
+                .Where(e => e.Id == entryId)
+                .ExecuteUpdateAsync(s => s.SetProperty(e => e.Corrected, ChangedCorrected()), Ct);
+        };
+
+        (await ReportAsync(entryId)).ShouldBe(ReportOutcome.Sent);
+        (await LoadEntryAsync(entryId))!.ReportedAt.ShouldBeNull();
+
+        // A replayed confirmation clears the reason and re-queues — a wire retry, not a person —
+        // and the pass must land in exactly the same place rather than sealing on the second look.
+        (await ConfirmAsync(entryId, JsonNode.Parse(ChangedCorrected())!)).StatusCode
+            .ShouldBe(HttpStatusCode.OK);
+
+        (await ReportAsync(entryId)).ShouldBe(ReportOutcome.Sent);
+
+        Delivery.Sent.Count.ShouldBe(1, "a second document for the same day is never sent");
+
+        var entry = (await LoadEntryAsync(entryId))!;
+        entry.Status.ShouldBe(EntryStatus.Confirmed);
+        entry.ReportedAt.ShouldBeNull(
+            "the archive's version was never sent, and a correction after a report is a NEW entry");
+        ReportFailure.CodeOf(entry.FailureReason).ShouldBe(ReportFailure.SupersededAfterSend);
+
+        // And the sweep leaves it alone: an entry carrying a reason waits for a person, exactly as
+        // custody-unknown does.
+        App.Pipeline.Reset();
+        (await SweepAsync()).ReportsQueued.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_delivered_report_that_still_matches_its_entry_is_sealed_by_the_recovery()
+    {
+        // The positive control for the two above, and the reason the comparison had to be a
+        // comparison rather than a refusal: the ordinary crash-before-seal case must still finish.
+        // This one goes through the recorded hash rather than the legacy null path, because the
+        // pass that sent it wrote one.
+        var entryId = await GivenConfirmedEntryAsync();
+
+        Delivery.WhileSending = async () =>
+        {
+            Delivery.WhileSending = null;
+
+            // The pass dies after the relay's 250 and before the stamp: the row is already
+            // `sent`, so re-running the pass takes the recovery branch.
+            await using var db = App.CreateDbContext(TestIds.CompanyA);
+            await db.Reports
+                .Where(r => r.EntryId == entryId)
+                .ExecuteUpdateAsync(
+                    s => s
+                        .SetProperty(r => r.Status, ReportStatus.Sent)
+                        .SetProperty(r => r.SentAt, DateTime.UtcNow),
+                    Ct);
+        };
+
+        (await ReportAsync(entryId)).ShouldBe(ReportOutcome.Sent);
+
+        var report = (await LoadReportAsync(entryId))!;
+        report.CorrectedSha256.ShouldNotBeNull();
+
+        (await ReportAsync(entryId)).ShouldBe(ReportOutcome.Sent);
+
+        Delivery.Sent.Count.ShouldBe(1, "the relay already has this report");
+
+        var entry = (await LoadEntryAsync(entryId))!;
+        entry.Status.ShouldBe(EntryStatus.Reported);
+        entry.ReportedAt.ShouldNotBeNull();
+        entry.FailureReason.ShouldBeNull();
+    }
+
+    private static string ChangedCorrected()
+    {
+        var changed = DefaultCorrected();
+        changed["notes"] = "Druga verzija, poslata nikada.";
+        return changed.ToJsonString();
     }
 }

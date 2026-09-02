@@ -22,6 +22,14 @@ public static class EmailDelivery
     /// <summary>The person has no address on file. Read the code to him instead.</summary>
     public const string NoAddress = "no_address";
 
+    /// <summary>
+    /// A relay exists and this code was not mailed, because the route that produced it never
+    /// mails one: an admin reads a code to one man, in one message (§2 decision 13). It replaced
+    /// <see cref="NotConfigured"/> on those two routes on 2026-09-02, which had become a plain
+    /// untruth on any host with a relay.
+    /// </summary>
+    public const string NotSent = "not_sent";
+
     /// <summary>Handed to a background job (D6). Never sent inside the request.</summary>
     public const string Queued = "queued";
 }

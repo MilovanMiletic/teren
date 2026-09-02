@@ -358,39 +358,38 @@ public sealed class EntryProcessor(
     // ------------------------------------------------------------------ helpers
 
     /// <summary>
-    /// Bounded retry around one external call. Only failures that could plausibly succeed on a
-    /// second attempt are retried; a rejected key, a mangled request or a corrupted file are
+    /// Bounded retry around one external call, and it is <see cref="BoundedRetry"/> — the same
+    /// loop the report pass uses.
+    /// <para>
+    /// It was a second copy of that loop until 2026-09-02, identical line for line while
+    /// <c>BoundedRetry</c>'s own comment claimed to be "the one retry loop in the background
+    /// pipeline". Two copies of a retry policy is how the worst-case wall clock of a pass drifts
+    /// away from the stale window that is supposed to outlast it — <c>PipelineOptionsTests</c>
+    /// recomputes that budget from the shipped defaults, and it can only do so while there is one
+    /// place to read them from.
+    /// </para>
+    /// <para>
+    /// Only failures that could plausibly succeed on a second attempt are retried
+    /// (<see cref="IsRetryable"/>); a rejected key, a mangled request or a corrupted file are
     /// raised immediately, because repeating them only delays the honest answer.
+    /// </para>
+    /// <para>
+    /// The retry line now names the entry as <c>SubjectId</c> rather than <c>EntryId</c>. It is
+    /// still on the line either way: <c>ProcessAsync</c> opens a log scope carrying
+    /// <c>EntryId</c>, which is one of the four properties the D5 sink lifts into its own column.
+    /// </para>
     /// </summary>
-    private async Task<T> WithRetriesAsync<T>(
-        string operation, Guid entryId, Func<CancellationToken, Task<T>> action, CancellationToken ct)
-    {
-        var delay = _options.RetryDelay;
-
-        for (var attempt = 1; ; attempt++)
-        {
-            try
-            {
-                return await action(ct);
-            }
-            catch (Exception ex) when (IsRetryable(ex) && attempt < _options.MaxAttempts)
-            {
-                logger.LogWarning(
-                    ex,
-                    "Entry {EntryId}: {Operation} attempt {Attempt} of {MaxAttempts} failed; "
-                    + "retrying in {DelayMs} ms.",
-                    entryId, operation, attempt, _options.MaxAttempts,
-                    (long)delay.TotalMilliseconds);
-
-                if (delay > TimeSpan.Zero)
-                {
-                    await Task.Delay(delay, ct);
-                }
-
-                delay += delay;
-            }
-        }
-    }
+    private Task<T> WithRetriesAsync<T>(
+        string operation, Guid entryId, Func<CancellationToken, Task<T>> action, CancellationToken ct) =>
+        BoundedRetry.RunAsync(
+            operation,
+            entryId,
+            _options.MaxAttempts,
+            _options.RetryDelay,
+            IsRetryable,
+            logger,
+            action,
+            ct);
 
     private static bool IsRetryable(Exception ex) => ex switch
     {

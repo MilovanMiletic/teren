@@ -105,4 +105,24 @@ public sealed class ClientEventOptions
     /// the route being a way to push megabytes into the log table.</summary>
     [Range(1_024, 1_048_576)]
     public int MaxBodyBytes { get; set; } = 64 * 1024;
+
+    /// <summary>
+    /// Batches per minute per credential (and address). <b>The body cap bounds one request; this
+    /// bounds a caller.</b>
+    /// <para>
+    /// The queue behind this route is bounded and drops the <em>oldest</em> row when it is full,
+    /// which is right for a stuck writer and wrong for a loud client: one phone in a retry loop
+    /// would push out every server-side line about whatever is actually going wrong, on precisely
+    /// the screen a founder reads to find out. So the caller is bounded too.
+    /// </para>
+    /// <para>
+    /// Sixty is deliberately generous. The app batches on a timer, so a healthy phone sends a
+    /// handful an hour; a week of queued events after a long offline spell is a few batches back to
+    /// back. This refuses a runaway, not a busy day — and a 429 costs a phone nothing but a wait,
+    /// because these events are telemetry and the route already promises never to make a client
+    /// retry for ever.
+    /// </para>
+    /// </summary>
+    [Range(1, 10_000)]
+    public int RateLimitPerMinute { get; set; } = 60;
 }

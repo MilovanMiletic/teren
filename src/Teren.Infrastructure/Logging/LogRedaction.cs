@@ -59,20 +59,26 @@ public static class LogProperties
         // Counts and sizes.
         "Attempt", "Bytes", "Count", "DeclaredBytes", "Deleted", "Enqueued", "FailedCount",
         "InputTokens", "Kilobytes", "Length", "MaxAttempts", "MaxFilesPerRequest", "MediaCount",
-        "Megabytes", "OutputTokens", "Parked", "Photos", "RecipientCount", "Recipients",
-        "ReportsFailed", "ReportsQueued", "Requested", "Skipped", "StoredBytes",
-        "SupersededCount", "Total",
+        "Megabytes", "OutputTokens", "Parked", "PendingCount", "Photos", "RecipientCount",
+        "Recipients", "ReportsFailed", "ReportsQueued", "Requested", "ServerCount", "Skipped",
+        "StoredBytes", "SupersededCount", "Total",
 
         // Durations, schedules and clock stamps.
-        "DelayMs", "ElapsedMs", "ExpiresAt", "LockTimeout", "ReportedAt", "SentAt", "StaleMinutes",
-        "SweepCron", "TimeZoneId", "Timestamp",
+        "DelayMs", "ElapsedMs", "ExpiresAt", "LockTimeout", "MaxAgeSeconds", "ReportedAt",
+        "SentAt", "StaleMinutes", "SweepCron", "TimeZoneId", "Timestamp",
 
         // Providers, transports and the machine's own configuration. `BrandLogoPath` is the one
         // filesystem path on this list and it is named after its one setting on purpose: a general
         // `Path` was how the caller's own URL reached this table (see below).
-        "AppLabel", "BrandLogoPath", "Bucket", "CacheRead", "CodeLabel", "Default",
-        "DevelopmentEnvironment", "EnabledSetting", "Host", "Locale", "Model", "Port", "Provider",
-        "Realm", "Security", "Transport", "UsernameLabel", "VersionKey", "Wordmark", "Workspace",
+        // `DbContextName` and `Pending` belong to the readiness checks and are named as narrowly
+        // as `BrandLogoPath` is, for the same reason: `DbContextName` can only ever be one of two
+        // `nameof` values, and `Pending` is a list of EF migration ids off the shipped assembly.
+        // Neither can be written from outside the process. A general `Context` was the first
+        // draft, and a name that general is the `Path` mistake with a new label.
+        "AppLabel", "BrandLogoPath", "Bucket", "CacheRead", "CodeLabel", "DbContextName",
+        "Default", "DevelopmentEnvironment", "EnabledSetting", "Host", "Locale", "Model",
+        "Pending", "Port", "Provider", "Realm", "Security", "Transport", "UsernameLabel",
+        "VersionKey", "Wordmark", "Workspace",
 
         // Outcomes, states and codes — the vocabulary the pipeline branches on.
         "CommandName", "ConfirmFlag", "DeleteGuardTrigger", "EntryDate", "FailureCode", "Language",

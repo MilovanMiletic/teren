@@ -22,6 +22,18 @@ public interface IInviteQueue
     /// screen**: the account exists and nobody can get into it, which is a thing a founder has to
     /// be told rather than left to discover.</summary>
     bool EnqueueInvite(Guid userId, Guid actorUserId);
+
+    /// <summary>
+    /// The worker half: mail one man his own activation code (<see cref="WorkerCodeMailJob"/>).
+    /// <para>
+    /// <b>The answer is deliberately not reported to anyone</b>, unlike an invite's.
+    /// <c>POST /auth/activation-code</c> is unauthenticated and answers 202 whatever happens —
+    /// telling the caller whether a job was queued would say whether that username exists and has
+    /// an address on file, which is the one fact §10.3 exists to hide. The queue and the job log
+    /// what happened; the response never does.
+    /// </para>
+    /// </summary>
+    void EnqueueWorkerCodeMail(Guid userId);
 }
 
 /// <summary>Hangfire behind the seam.</summary>
@@ -36,6 +48,9 @@ public sealed class HangfireInviteQueue(
         logger.LogInformation("Invite mail queued for {UserId}.", userId);
         return true;
     }
+
+    public void EnqueueWorkerCodeMail(Guid userId) =>
+        jobs.Enqueue<WorkerCodeMailJob>(job => job.RunAsync(userId, CancellationToken.None));
 }
 
 /// <summary>
@@ -57,4 +72,11 @@ public sealed class DisabledInviteQueue(ILogger<DisabledInviteQueue> logger) : I
             + "{UserId}. The account exists and is waiting for a password.", userId);
         return false;
     }
+
+    public void EnqueueWorkerCodeMail(Guid userId) =>
+        // Nothing is minted here, which is the safe direction: with no job server the worker's
+        // live code survives and his admin reads him one off /company.
+        logger.LogWarning(
+            "Background jobs are disabled (Hangfire:Enabled=false); no activation-code mail was "
+            + "sent for {UserId}, and his live code is untouched.", userId);
 }

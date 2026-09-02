@@ -34,6 +34,9 @@ public sealed class ReportConfiguration : IEntityTypeConfiguration<Report>
         builder.Property(r => r.PeriodEnd).HasColumnName("period_end").IsRequired();
         builder.Property(r => r.PdfObjectKey).HasColumnName("pdf_object_key");
         builder.Property(r => r.PdfSha256).HasColumnName("pdf_sha256").HasMaxLength(64);
+        builder.Property(r => r.CorrectedSha256)
+            .HasColumnName("corrected_sha256")
+            .HasMaxLength(64);
         builder.Property(r => r.Recipients).HasColumnName("recipients").HasColumnType("jsonb");
         builder.Property(r => r.Status)
             .HasColumnName("status")
@@ -76,6 +79,17 @@ public sealed class ReportConfiguration : IEntityTypeConfiguration<Report>
             .IsUnique()
             .HasFilter("entry_id IS NOT NULL")
             .HasDatabaseName("ux_report_entry_id");
+
+        // The sweeper's report scan, once a minute, for ever:
+        //   WHERE status = 'sending' AND attempt_started_at < @cutoff
+        // Partial rather than an index on `status`, because that column is a two-value
+        // distribution after the first week — nearly every row is `sent` — and an index Postgres
+        // will not use is a write cost with no read benefit. This one indexes only the rows the
+        // question is about (a handful, briefly) and carries the timestamp the predicate ranges
+        // over, so the scan is an index scan over an index the size of the in-flight set.
+        builder.HasIndex(r => r.AttemptStartedAt)
+            .HasFilter("status = 'sending'")
+            .HasDatabaseName("ix_report_sending_attempt");
 
         builder.HasIndex(r => new { r.ProjectId, r.PeriodStart })
             .IsDescending(false, true)

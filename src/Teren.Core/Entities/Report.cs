@@ -76,6 +76,30 @@ public sealed class Report
     /// </summary>
     public string? PdfSha256 { get; set; }
 
+    /// <summary>
+    /// SHA-256 of the <c>entry.corrected</c> document this report's PDF was laid out from.
+    /// <para>
+    /// <b>It exists so that a later pass can ask "is the entry still the thing that was sent?"</b>
+    /// The confirm endpoint refuses a changed confirmation while a report row is <c>sending</c>,
+    /// and the pass re-reads <c>corrected</c> after taking its claim — but the two checks are not
+    /// one atomic act, so a confirmation whose read happened before the claim and whose write
+    /// landed after the re-read slipped between them. The consequence was the expensive one:
+    /// <c>reported_at</c> — irreversible, trigger-enforced — stamped on content the client never
+    /// received, with the contractor's own archive then contradicting the report he sent.
+    /// </para>
+    /// <para>
+    /// The seal is now conditional on the entry's <c>corrected</c> still being that document, and
+    /// this column is what lets the <em>recovery</em> path (a <c>sent</c> report whose entry was
+    /// never sealed) ask the same question in a different process, where the rendered document is
+    /// long gone.
+    /// </para>
+    /// <para>
+    /// Nullable for rows written before this column existed. Those cannot be compared, so they are
+    /// sealed as they always were, with a log line saying the check was not available.
+    /// </para>
+    /// </summary>
+    public string? CorrectedSha256 { get; set; }
+
     /// <summary>JSON: [{name, email, role}] — snapshot of who it was sent to, as the distribution
     /// list stood at that moment. Editing the project later never rewrites history.</summary>
     public string? Recipients { get; set; }

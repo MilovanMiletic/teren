@@ -292,24 +292,33 @@ public sealed class ActivationTests(TerenTestApp app) : ApiTestBase(app)
     }
 
     [Fact]
-    public async Task Asking_for_a_code_issues_one_when_the_worker_has_an_address()
+    public async Task Asking_for_a_code_writes_nothing_at_all_even_for_a_worker_with_an_address()
     {
-        await using (var identity = App.CreateIdentityDbContext())
-        {
-            var worker = await identity.Users.SingleAsync(u => u.Id == TestIds.WorkerA, Ct);
-            worker.Email = "zoran@vodoinstal-petrovic.test";
-            await identity.SaveChangesAsync(Ct);
-        }
+        // THE FIX OF 2026-09-02, and the assertion is about what did NOT happen. This route used
+        // to mint here — supersede the man's live code, insert a fresh one, write an audit row —
+        // and then log a TODO where the mail should have been. It is unauthenticated and takes a
+        // username, and usernames are guessable (UsernameFormat.Propose derives one from a display
+        // name; company and worker names are public), so a stranger could destroy the code a
+        // foreman was standing on a site holding, and put nothing in its place.
+        //
+        // Minting now happens inside WorkerCodeMailJob, past every reason not to send. The request
+        // reads two rows and queues a job.
+        await GivenEmailAsync(TestIds.WorkerA, "zoran@vodoinstal-petrovic.test");
 
-        await RequestCode(DemoSeeder.WorkerUsername);
+        var live = await GivenLiveCodeAsync();
+
+        (await RequestCode(DemoSeeder.WorkerUsername)).StatusCode
+            .ShouldBe(HttpStatusCode.Accepted);
 
         var codes = await LoadActivationCodesAsync(TestIds.WorkerA);
-        codes.Count.ShouldBe(1);
-        codes[0].CodeDisplay.ShouldNotBeNull();
-        codes[0].CreatedByUserId.ShouldBe(TestIds.WorkerA);
+        codes.Count.ShouldBe(1, "the request superseded nothing and inserted nothing");
+        codes[0].SupersededAt.ShouldBeNull();
 
         (await LoadAuditAsync()).Select(a => a.Action)
-            .ShouldContain(AdminAuditActions.ActivationCodeSelfRequested);
+            .ShouldNotContain(AdminAuditActions.ActivationCodeSelfRequested);
+
+        // And the credential he is holding still works, which is the whole point.
+        (await Activate(DemoSeeder.WorkerUsername, live)).StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
     [Fact]
@@ -324,6 +333,37 @@ public sealed class ActivationTests(TerenTestApp app) : ApiTestBase(app)
 
         (await LoadActivationCodesAsync(TestIds.WorkerA)).Count.ShouldBe(1);
         (await Activate(DemoSeeder.WorkerUsername, live)).StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task The_request_queues_nothing_it_can_report_and_says_nothing_either_way()
+    {
+        // The test host runs with Hangfire__Enabled=false, so the route reaches
+        // DisabledInviteQueue and no job runs — and the answer is 202 with an empty body all the
+        // same, for a real worker and for a username nobody has.
+        //
+        // That the response says nothing is the §10.3 property: reporting whether a job was
+        // queued would report whether that username exists AND has an address on file, which is
+        // exactly the fact the whole timing-levelling exercise exists to hide.
+        await GivenEmailAsync(TestIds.WorkerA, "zoran@vodoinstal-petrovic.test");
+
+        var known = await RequestCode(DemoSeeder.WorkerUsername);
+        var unknown = await RequestCode("no.such.person");
+
+        known.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+        unknown.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+        (await known.TextAsync()).ShouldBe(await unknown.TextAsync());
+
+        (await LoadActivationCodesAsync(TestIds.WorkerA)).ShouldBeEmpty(
+            "with no job server nothing is minted, which is the safe direction");
+    }
+
+    private async Task GivenEmailAsync(Guid userId, string email)
+    {
+        await using var identity = App.CreateIdentityDbContext();
+        await identity.Users
+            .Where(u => u.Id == userId)
+            .ExecuteUpdateAsync(u => u.SetProperty(x => x.Email, email), Ct);
     }
 
     // ------------------------------------------------------------ the wire shape

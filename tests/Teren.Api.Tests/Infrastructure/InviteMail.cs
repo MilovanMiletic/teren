@@ -16,7 +16,19 @@ namespace Teren.Api.Tests.Infrastructure;
 /// </summary>
 public sealed class CapturingMailSender(bool configured = true) : IMailSender
 {
-    public bool IsConfigured { get; } = configured;
+    /// <summary>
+    /// Settable, because "is there a relay on this host" is now a branch the product answers
+    /// differently rather than a fact about the world.
+    /// <para>
+    /// The two admin code routes say <c>not_sent</c> where a relay exists and
+    /// <c>not_configured</c> where none does, and the second half was unprovable while the fixture
+    /// carried a fixed answer — the shipped code said <c>not_configured</c> unconditionally for
+    /// two days after D6 gave every host a relay, and no test could see it.
+    /// </para>
+    /// </summary>
+    public bool Configured { get; set; } = configured;
+
+    public bool IsConfigured => Configured;
 
     /// <summary>Every message, in order. A list rather than a single slot: the supersede tests send
     /// twice and the second message is the interesting one.</summary>
@@ -28,6 +40,12 @@ public sealed class CapturingMailSender(bool configured = true) : IMailSender
     {
         Sent.Add(message);
         return Task.CompletedTask;
+    }
+
+    public void Reset()
+    {
+        Sent.Clear();
+        Configured = true;
     }
 }
 

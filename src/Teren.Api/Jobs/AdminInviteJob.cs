@@ -23,12 +23,15 @@ namespace Teren.Api.Jobs;
 /// </para>
 ///
 /// <para>
-/// <b>What the founder therefore does not see.</b> When a relay is configured, adding an
-/// administrator no longer puts a link on his screen — there is nothing to put there, and the
-/// person is being emailed. §9's escape hatch is unchanged and lives where it always did:
-/// <c>POST /api/platform/users/{id}/invite</c>, the button on <c>/platform/user/:userId</c>, which
-/// mints inline and hands the link back to be read down the phone. Two verbs, two behaviours,
-/// both honest.
+/// <b>What the founder therefore does not see — and there is no longer a second door.</b> When a
+/// relay is configured, adding an administrator no longer puts a link on his screen: there is
+/// nothing to put there, and the person is being emailed. <c>POST /api/platform/users/{id}/invite</c>
+/// — the button on <c>/platform/user/:userId</c> — used to be §9's escape hatch and mint inline so
+/// a founder could read a set-password URL down the phone; on 2026-09-01 the founder removed
+/// exactly that (*"bad behavior, i don't like that"*), so it queues **this job** and returns no
+/// token and no link (<c>PlatformDirectory.InviteAsync</c>). Nothing in the request path ever holds
+/// the plaintext. The terminal-only bootstrap <c>invite-admin</c> is what remains for a host with
+/// no relay, which is a real cost and is written down where it is paid.
 /// </para>
 ///
 /// <para>
@@ -46,8 +49,19 @@ public sealed class AdminInviteJob(
     Microsoft.Extensions.Options.IOptions<AuthOptions> authOptions,
     Microsoft.Extensions.Logging.ILogger<AdminInviteJob> logger)
 {
-    /// <summary>How long the emailed link lives. The same 48 hours the platform route mints.</summary>
-    public static readonly TimeSpan Lifetime = TimeSpan.FromHours(48);
+    /// <summary>
+    /// How long the emailed link lives: <c>Auth:PasswordTokenLifetime</c>, and nothing else.
+    /// <para>
+    /// It was a hardcoded 48 hours until 2026-09-02, on a job that was already injecting
+    /// <c>IOptions&lt;AuthOptions&gt;</c> for <c>AppUrl</c>. That option is validated, pinned by a
+    /// test, and is what <c>/auth/password</c>, <c>invite-admin</c> and
+    /// <c>PlatformDirectory.InviteAsync</c> all measure a token against — so a host that shortened
+    /// it got links that lived longer than the setting said, and the email's own "valid for 48
+    /// hours" sentence was printed from the literal rather than from the truth. One answer to "how
+    /// long is a link good for".
+    /// </para>
+    /// </summary>
+    private TimeSpan Lifetime => authOptions.Value.PasswordTokenLifetime;
 
     public async Task RunAsync(Guid userId, Guid actorUserId, CancellationToken ct)
     {

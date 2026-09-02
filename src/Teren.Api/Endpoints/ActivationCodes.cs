@@ -38,6 +38,7 @@ internal static class ActivationCodes
         Guid actorUserId,
         string auditAction,
         TimeSpan lifetime,
+        bool relayConfigured,
         CancellationToken ct)
     {
         // The supersede and the insert are two statements with nothing ordering them against a
@@ -64,7 +65,8 @@ internal static class ActivationCodes
         {
             try
             {
-                return await IssueOnceAsync(db, worker, actorUserId, auditAction, lifetime, ct);
+                return await IssueOnceAsync(
+                    db, worker, actorUserId, auditAction, lifetime, relayConfigured, ct);
             }
             catch (DbUpdateException ex)
                 when (attempt == 0 && IsUniqueViolation(ex, "ux_activation_code_live"))
@@ -94,6 +96,7 @@ internal static class ActivationCodes
         Guid actorUserId,
         string auditAction,
         TimeSpan lifetime,
+        bool relayConfigured,
         CancellationToken ct)
     {
         var now = DateTime.UtcNow;
@@ -138,90 +141,8 @@ internal static class ActivationCodes
 
         await db.SaveChangesAsync(ct);
 
-        return Describe(row, worker.Email);
+        return Describe(row, worker.Email, relayConfigured);
     }
-
-    /// <summary>
-    /// Spends the database round trips <see cref="IssueAsync"/> spends, and writes nothing.
-    /// <para>
-    /// <b>Why a deliberate waste of statements exists in this file.</b>
-    /// <c>POST /auth/activation-code</c> answers 202 whether or not the username exists and
-    /// whether or not that worker has an address on file — §10.3 requires both distinctions to
-    /// stay invisible <em>at runtime</em>. A body that is byte-identical is only half of that: the
-    /// eligible branch supersedes a row, opens a transaction and inserts the code and its audit
-    /// row, and a stopwatch on an unauthenticated route reads that difference straight off. This
-    /// is the same trade <see cref="PasswordHash.DummyVerify"/> makes on the login route — burn
-    /// the same wall clock rather than return early and leak by how fast.
-    /// </para>
-    /// <para>
-    /// It matches <b>round trips</b>, not rows, and that is the honest granularity: a statement
-    /// against a database on the same host costs its round trip and its parse far more than it
-    /// costs two small inserts. Matching row for row is impossible anyway — an
-    /// <c>activation_code</c> row needs a real <c>user_id</c>, and the branch this covers is
-    /// precisely the one with no user.
-    /// </para>
-    /// </summary>
-    public static async Task BurnIssueCostAsync(TerenIdentityDbContext db, CancellationToken ct)
-    {
-        for (var i = 0; i < IssueStatementCost; i++)
-        {
-            await NoOpAsync(db, ct);
-        }
-
-        // And the transaction SaveChangesAsync opens around the insert, which is two more round
-        // trips on its own.
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
-        await NoOpAsync(db, ct);
-        await transaction.CommitAsync(ct);
-    }
-
-    /// <summary>
-    /// How many statements <see cref="IssueOnceAsync"/> costs beyond the transaction below —
-    /// the supersede, and what EF spends turning two tracked inserts into durable rows.
-    /// <para>
-    /// <b>Calibrated, not derived, and that is a real weakness of this mechanism</b>: EF decides
-    /// how many commands a <c>SaveChangesAsync</c> becomes, and a change to the entities or to
-    /// batching moves the number. It is safe to be a little wrong in either direction — the
-    /// property is that neither branch stands out — and it does not go unnoticed if it drifts:
-    /// <c>ActivationTimingTests.Asking_for_a_code_costs_the_same_whether_or_not_it_issues_one</c>
-    /// prints both medians on every run and fails when they separate.
-    /// </para>
-    /// </summary>
-    private const int IssueStatementCost = 3;
-
-    // Recalibrated 2026-08-31, from 6. At 6 the compensation *overshot*: medians were
-    // 21.6 ms for the branch that writes nothing against 13.5 ms for the branch that supersedes,
-    // inserts and audits — a ratio of 1.60 against a tolerance of 1.35. The oracle was still
-    // there, with its sign inverted: the fastest answer meant "this username exists AND has an
-    // address on file", which is the one fact §10.3 exists to hide. Left as a warning that this
-    // number is empirical: it is right when the test says the medians have not separated, and at
-    // no other time.
-
-    /// <summary>
-    /// One statement that matches nothing and costs what the real supersede costs.
-    /// <para>
-    /// <b>The two null predicates are not decoration — they are what makes this cost the same
-    /// thing as the branch it is imitating.</b> <c>ux_activation_code_live</c> is a PARTIAL index
-    /// (<c>WHERE consumed_at IS NULL AND superseded_at IS NULL</c>), and Postgres will only use a
-    /// partial index for a query whose own predicate implies the index predicate. Filtering on
-    /// <c>user_id</c> alone does not imply it, so this planned as a <b>sequential scan</b> while
-    /// <see cref="IssueOnceAsync"/>'s supersede index-scanned. <c>activation_code</c> rows are
-    /// never deleted, so that seq scan grows linearly with the table while the real branch stays
-    /// O(1) — and after a few months of operation the <em>rejection</em> path of
-    /// <c>POST /auth/activation-code</c> would be measurably slower than the issuing path, which
-    /// is the §10.3 oracle again with its sign inverted. With them, both statements take the same
-    /// plan. The rows matched are the same either way: none.
-    /// </para>
-    /// <para>
-    /// <c>Guid.Empty</c> is not a user id anybody has — every one in the product is generated.
-    /// </para>
-    /// </summary>
-    private static Task NoOpAsync(TerenIdentityDbContext db, CancellationToken ct) =>
-        db.ActivationCodes
-            .Where(c => c.UserId == Guid.Empty
-                && c.ConsumedAt == null
-                && c.SupersededAt == null)
-            .ExecuteUpdateAsync(u => u.SetProperty(c => c.SupersededAt, c => c.SupersededAt), ct);
 
     private static bool IsUniqueViolation(DbUpdateException ex, string constraintName) =>
         ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } pg
@@ -230,7 +151,7 @@ internal static class ActivationCodes
     /// <summary>The worker's live, unexpired code, or null. Read-only: looking at a code must
     /// never be what kills the code the man is about to type.</summary>
     public static async Task<ActivationCodeResponse?> LiveAsync(
-        TerenIdentityDbContext db, AppUser worker, CancellationToken ct)
+        TerenIdentityDbContext db, AppUser worker, bool relayConfigured, CancellationToken ct)
     {
         var now = DateTime.UtcNow;
 
@@ -242,7 +163,7 @@ internal static class ActivationCodes
                 && c.ExpiresAt > now)
             .FirstOrDefaultAsync(ct);
 
-        return row is null ? null : Describe(row, worker.Email);
+        return row is null ? null : Describe(row, worker.Email, relayConfigured);
     }
 
     /// <summary>
@@ -250,13 +171,34 @@ internal static class ActivationCodes
     /// <em>the</em> channel — a worker without an address and a host without a relay must both
     /// still be able to onboard, so the admin can read the code off his screen either way (§9).
     /// </summary>
-    private static ActivationCodeResponse Describe(ActivationCode row, string? workerEmail) =>
+    private static ActivationCodeResponse Describe(
+        ActivationCode row, string? workerEmail, bool relayConfigured) =>
         new(
             row.CodeDisplay ?? string.Empty,
             new DateTimeOffset(DateTime.SpecifyKind(row.CreatedAt, DateTimeKind.Utc)),
             new DateTimeOffset(DateTime.SpecifyKind(row.ExpiresAt, DateTimeKind.Utc)),
-            // D6 wires IMailSender and this becomes "queued" for a worker who has an address.
-            // Until then no host in existence has a relay configured, and saying so plainly is
-            // the standing policy: visible failure, never a silent one.
-            workerEmail is null ? EmailDelivery.NoAddress : EmailDelivery.NotConfigured);
+            DeliveryOf(workerEmail, relayConfigured));
+
+    /// <summary>
+    /// What actually became of this code as far as email is concerned.
+    /// <para>
+    /// <b>It answered <c>not_configured</c> unconditionally until 2026-09-02, which became a lie
+    /// the moment D6 shipped a relay</b> — the screen said "no mail is configured" on a host that
+    /// had one. The truth on these two admin routes is narrower and more useful:
+    /// <c>not_sent</c>. Nothing here mails a code even when it can, and that is the design rather
+    /// than an omission — an admin reads the code to one man, in one message, on one screen
+    /// (§2 decision 13), because a code plus a username is a working identity and a group chat
+    /// full of both is how a foreman's evidence ends up signed with somebody else's name.
+    /// </para>
+    /// <para>
+    /// <c>queued</c> belongs to the one path that does send: the worker's own
+    /// <c>POST /auth/activation-code</c>, whose job mints and mails in one act — and which returns
+    /// no body at all, because saying anything about the outcome would say whether that username
+    /// exists.
+    /// </para>
+    /// </summary>
+    private static string DeliveryOf(string? workerEmail, bool relayConfigured) =>
+        workerEmail is null
+            ? EmailDelivery.NoAddress
+            : relayConfigured ? EmailDelivery.NotSent : EmailDelivery.NotConfigured;
 }

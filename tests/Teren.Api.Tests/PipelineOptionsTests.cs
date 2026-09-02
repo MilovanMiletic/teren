@@ -103,4 +103,41 @@ public sealed class PipelineOptionsTests
             $"a healthy pass can take up to {worstCase}, and the sweeper must not park one that "
             + "is still running");
     }
+
+    /// <summary>
+    /// There is <b>one</b> retry loop in the pipeline, and the arithmetic above depends on it.
+    ///
+    /// <para>
+    /// <c>BoundedRetry</c>'s own comment has said "the one retry loop in the background pipeline"
+    /// since B4 — and it was false: <c>EntryProcessor.WithRetriesAsync</c> was a second,
+    /// line-for-line copy of the same loop, found by a code review on 2026-09-02 rather than by
+    /// any test. Two loops is exactly how the worst-case wall clock recomputed above drifts away
+    /// from the shipped code: the test would keep passing while the pass it describes got slower,
+    /// which is precisely the state that lets the sweeper park a live entry.
+    /// </para>
+    /// <para>
+    /// The scan is for a <em>backoff</em> — a delay inside a retry — because that is the hazard.
+    /// <c>ActivationCodes.IssueAsync</c> retries a unique violation once with no delay at all and
+    /// is none of this file's business.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void Only_one_place_in_the_product_sleeps_between_attempts()
+    {
+        var sleepers = Infrastructure.SourceTree.Files()
+            .Where(path =>
+            {
+                var code = Infrastructure.SourceTree.CodeOf(path);
+                return code.Contains("Task.Delay", StringComparison.Ordinal)
+                    && code.Contains("attempt", StringComparison.OrdinalIgnoreCase);
+            })
+            .Select(Path.GetFileName)
+            .ToList();
+
+        sleepers.ShouldBe(
+            ["BoundedRetry.cs"],
+            "a second backoff loop multiplies the worst-case pass invisibly, and the "
+            + "StaleProcessingAfter budget above is computed from one loop's numbers. Call "
+            + "BoundedRetry.RunAsync instead.");
+    }
 }

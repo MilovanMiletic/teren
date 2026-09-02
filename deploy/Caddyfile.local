@@ -30,7 +30,7 @@ https://localhost:8443 {
 		-Server
 	}
 
-	@backend path /api/* /health /hangfire /hangfire/*
+	@backend path /api/* /health /health/* /hangfire /hangfire/*
 	handle @backend {
 		request_body {
 			max_size 8MB

@@ -79,6 +79,19 @@ public sealed class TerenTestApp : IAsyncLifetime
 
     public FakeReportDelivery Delivery { get; } = new();
 
+    /// <summary>
+    /// The transactional mail relay — invites, worker activation codes — stopped at the
+    /// <c>IMailSender</c> seam.
+    /// <para>
+    /// The container held the real <c>SmtpMailSender</c> until 2026-09-02, which meant
+    /// <c>IsConfigured</c> was whatever <c>Reporting__Smtp__Host</c> happened to be (true), and the
+    /// no-relay branch of every route that asks was untestable. Nothing in this suite ever sent
+    /// through it — every mailing job is driven directly — so replacing it costs no coverage and
+    /// buys the other half of that question.
+    /// </para>
+    /// </summary>
+    public CapturingMailSender Mail { get; } = new();
+
     /// <summary>The real QuestPDF renderer with the model it was given recorded. Real on purpose:
     /// the PDF is the product's face, and a stub would leave the licence declaration, the Serbian
     /// glyph check and the whole layout untested behind a green suite.</summary>
@@ -335,9 +348,59 @@ public sealed class TerenTestApp : IAsyncLifetime
     /// job refuses to post a bare token nobody can use.
     /// </para>
     /// </summary>
+    /// <param name="passwordTokenLifetime">
+    /// <c>Auth:PasswordTokenLifetime</c>. Overridable because the job hardcoded 48 hours until
+    /// 2026-09-02 while already injecting the options object that carries it — so a host that
+    /// shortened the setting got links that outlived it, and the mail printed the literal.
+    /// </param>
     public async Task<Core.Mail.MailMessage?> RunInviteJobAsync(
         Guid userId,
         Guid actorUserId,
+        CancellationToken ct,
+        IMailSender? sender = null,
+        string appUrl = "https://app.teren.test",
+        TimeSpan? passwordTokenLifetime = null)
+    {
+        var mail = sender ?? new CapturingMailSender();
+
+        await using var identity = CreateIdentityDbContext();
+
+        var options = new AuthOptions { AppUrl = appUrl };
+        if (passwordTokenLifetime is { } lifetime)
+        {
+            options.PasswordTokenLifetime = lifetime;
+        }
+
+        var job = new AdminInviteJob(
+            identity,
+            mail,
+            Options.Create(options),
+            NullLogger<AdminInviteJob>.Instance);
+
+        await job.RunAsync(userId, actorUserId, ct);
+
+        return (mail as CapturingMailSender)?.Last;
+    }
+
+    /// <summary>
+    /// Run the worker's activation-code mail job by hand and hand back the message it produced, or
+    /// null if it sent none.
+    ///
+    /// <para>
+    /// <b>The job is where the code is minted</b>, which is the whole point of the increment:
+    /// <c>POST /auth/activation-code</c> used to supersede a foreman's live code inside the
+    /// request and then send nothing, so anybody who could guess a username could invalidate it.
+    /// Every reason not to send is checked here before a row is written — which is why the
+    /// interesting assertions are about what did <em>not</em> change.
+    /// </para>
+    /// <para>
+    /// Driven directly for the same reason <see cref="RunInviteJobAsync"/> is: the test host runs
+    /// with <c>Hangfire__Enabled=false</c>, so the route reaches <c>DisabledInviteQueue</c> and
+    /// nothing runs — which is itself asserted.
+    /// </para>
+    /// </summary>
+    public async Task<Core.Mail.MailMessage?> RunWorkerCodeJobAsync(
+        Guid userId,
         CancellationToken ct,
         IMailSender? sender = null,
         string appUrl = "https://app.teren.test")
@@ -346,13 +409,13 @@ public sealed class TerenTestApp : IAsyncLifetime
 
         await using var identity = CreateIdentityDbContext();
 
-        var job = new AdminInviteJob(
+        var job = new WorkerCodeMailJob(
             identity,
             mail,
             Options.Create(new AuthOptions { AppUrl = appUrl }),
-            NullLogger<AdminInviteJob>.Instance);
+            NullLogger<WorkerCodeMailJob>.Instance);
 
-        await job.RunAsync(userId, actorUserId, ct);
+        await job.RunAsync(userId, ct);
 
         return (mail as CapturingMailSender)?.Last;
     }
@@ -382,6 +445,24 @@ public sealed class TerenTestApp : IAsyncLifetime
     public const string LastPreIdentityMigration = "20260829201636_ProjectTimeZoneAndReportChecksum";
 
     /// <summary>
+    /// A database with the evidence schema fully applied and <b>no identity history at all</b> —
+    /// the exact half-migrated host the D1 review found <c>reset-demo</c> dying on, and the state a
+    /// readiness check that looked at one context would call ready.
+    /// </summary>
+    public async Task<string> CreateEvidenceOnlyDatabaseAsync()
+    {
+        var name = "teren_evidence_only_" + Interlocked.Increment(ref _scratchDatabaseCounter);
+        await ExecuteOnMaintenanceDatabaseAsync("CREATE DATABASE " + name);
+
+        var connectionString = ConnectionStringFor(name);
+
+        await using var db = CreateDbContext(connectionString);
+        await db.Database.MigrateAsync();
+
+        return connectionString;
+    }
+
+    /// <summary>
     /// A brand-new database with the schema and nothing in it, cloned from the migrated template.
     /// The seeder tests need a database no other test has touched — that is the only way "a
     /// database at an older seed state gains exactly the missing rows" means anything.
@@ -408,6 +489,7 @@ public sealed class TerenTestApp : IAsyncLifetime
         Extractor.Reset();
         Pipeline.Reset();
         Delivery.Reset();
+        Mail.Reset();
         Renderer.Reset();
         RaceInterceptor.Disarm();
         CommandTap.Reset();
@@ -569,6 +651,12 @@ public sealed class TerenTestApp : IAsyncLifetime
 
                 services.RemoveAll<IReportRenderer>();
                 services.AddSingleton<IReportRenderer>(app.Renderer);
+
+                // Transactional mail. Every job that sends one is driven directly by this
+                // fixture, so what the container copy is for is the ROUTES that branch on
+                // IsConfigured — see the Mail property.
+                services.RemoveAll<IMailSender>();
+                services.AddSingleton<IMailSender>(app.Mail);
 
                 // A second AddDbContext contributes another options configuration, applied after
                 // the one in Program.cs; the connection string is identical (both come from the

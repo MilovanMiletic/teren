@@ -35,7 +35,7 @@
 
 	# --------------------------------------------------------------- API and operations
 	# `handle` blocks are mutually exclusive, so the static file server below never sees these.
-	@backend path /api/* /health /hangfire /hangfire/*
+	@backend path /api/* /health /health/* /hangfire /hangfire/*
 	handle @backend {
 		# Bounds one request body. Media never passes through the API (ARCHITECTURE §2) — the
 		# phone PUTs directly to object storage — so every payload here is small JSON. The

@@ -56,6 +56,10 @@ public static partial class ClientEventEndpoints
             // Kestrel enforces this one while reading, chunked or not, and answers 413 through
             // MalformedRequestExceptionHandler.
             .WithMetadata(new BodySizeLimit(maxBodyBytes))
+            // Per caller, 60 batches a minute (Logging:ClientEvents:RateLimitPerMinute). The cap
+            // above bounds one request; this bounds a client, which the drop-oldest queue behind
+            // the route makes necessary rather than tidy — see ClientEventRateLimitPolicy.
+            .RequireRateLimiting(ClientEventRateLimitPolicy.Name)
             .AddEndpointFilter<ValidationFilter<ClientEventBatchRequest>>()
             .WithTags("Logs")
             .WithName("IngestClientEvents")

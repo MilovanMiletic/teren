@@ -15,6 +15,14 @@ namespace Teren.Infrastructure.Processing;
 /// extra steps.
 /// </para>
 /// <para>
+/// <b>"One implementation" was a claim rather than a fact until 2026-09-02:</b>
+/// <c>EntryProcessor.WithRetriesAsync</c> was a second, line-for-line copy of the loop below,
+/// sitting under this very comment. It now delegates here, which is what makes
+/// <c>PipelineOptionsTests</c>' recomputation of the worst-case pass — the arithmetic
+/// <c>Pipeline:StaleProcessingAfter</c> is set against — a check on the shipped code rather than
+/// on one of two copies of it.
+/// </para>
+/// <para>
 /// Only failures that could plausibly succeed on a second attempt are retried; the caller
 /// decides which those are, because "retryable" means different things to a model API and to a
 /// mail relay. Everything else is raised at once — repeating a rejected credential or a

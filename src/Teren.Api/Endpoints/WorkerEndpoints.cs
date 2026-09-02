@@ -127,6 +127,7 @@ public static class WorkerEndpoints
         HttpContext http,
         TerenIdentityDbContext db,
         IOptions<AuthOptions> options,
+        Core.Mail.IMailSender mail,
         ILogger<AppUser> logger,
         CancellationToken ct)
     {
@@ -220,6 +221,7 @@ public static class WorkerEndpoints
                     principal.UserId,
                     AdminAuditActions.ActivationCodeIssued,
                     options.Value.ActivationCodeLifetime,
+                    mail.IsConfigured,
                     ct);
 
                 await transaction.CommitAsync(ct);
@@ -367,7 +369,11 @@ public static class WorkerEndpoints
     // -------------------------------------------- GET|POST /api/workers/{id}/activation-code
 
     private static async Task<IResult> GetActivationCodeAsync(
-        string id, HttpContext http, TerenIdentityDbContext db, CancellationToken ct)
+        string id,
+        HttpContext http,
+        TerenIdentityDbContext db,
+        Core.Mail.IMailSender mail,
+        CancellationToken ct)
     {
         var (worker, failure) = await ResolveWorkerAsync(id, http, db, ct);
         if (worker is null)
@@ -375,7 +381,7 @@ public static class WorkerEndpoints
             return failure!;
         }
 
-        var code = await ActivationCodes.LiveAsync(db, worker, ct);
+        var code = await ActivationCodes.LiveAsync(db, worker, mail.IsConfigured, ct);
 
         return code is null ? NoLiveCode(worker.Id) : TypedResults.Ok(code);
     }
@@ -385,6 +391,7 @@ public static class WorkerEndpoints
         HttpContext http,
         TerenIdentityDbContext db,
         IOptions<AuthOptions> options,
+        Core.Mail.IMailSender mail,
         CancellationToken ct)
     {
         var (worker, failure) = await ResolveWorkerAsync(id, http, db, ct);
@@ -405,6 +412,7 @@ public static class WorkerEndpoints
             http.GetPrincipal().UserId,
             AdminAuditActions.ActivationCodeIssued,
             options.Value.ActivationCodeLifetime,
+            mail.IsConfigured,
             ct);
 
         return TypedResults.Ok(code);
@@ -417,6 +425,7 @@ public static class WorkerEndpoints
         HttpContext http,
         TerenIdentityDbContext db,
         IOptions<AuthOptions> options,
+        Core.Mail.IMailSender mail,
         CancellationToken ct)
     {
         var (worker, failure) = await ResolveWorkerAsync(id, http, db, ct);
@@ -425,7 +434,7 @@ public static class WorkerEndpoints
             return failure!;
         }
 
-        var code = await ActivationCodes.LiveAsync(db, worker, ct);
+        var code = await ActivationCodes.LiveAsync(db, worker, mail.IsConfigured, ct);
         if (code is null)
         {
             // Deliberately does NOT issue one. A GET that quietly supersedes the code the worker

@@ -405,6 +405,24 @@ before being presented as done; gating fixes go back to the implementer and are 
   substitution fails on both targets), the seal/confirm race in `EntryReporter.SealAsync`, a real
   `/health`, the unauthenticated `/auth/activation-code` that destroys a code and mails nothing, a
   partial index on `report(status='sending')`, and a 401 that never clears the admin session.
+- **The founder's disk is at 98 % and it took Docker down once (2026-09-02).** A full backend run
+  makes ~a thousand scratch databases inside Docker's VHDX, which grows and gives space back only when
+  the distro stops; C: hit 31 MB free mid-review, the engine died, and the founder's Postgres, MinIO
+  and Mailpit went with it. Recovery: `docker desktop restart` (engine up in ~10 s), then
+  `docker compose up -d`. **Before running `dotnet test`, check `df -h /c`**; `docker builder prune -f`
+  and deleting scratch build outputs are the safe reclaims, `src/Teren.Api/bin` + `tests/.../bin`
+  hold Debug and Release side by side (~600 MB). Build and test with `-c Release` while the founder's
+  Debug API is running — it never locks that output.
+- **The review-fix round (2026-09-02, backend accept-with-fixes → proven, frontend accept) closed
+  the two must-do lists.** Deploy chain fixed and rehearsed locally to `Deployed`; `/health/ready`
+  exists and is what compose and `deploy.sh` probe; the seal is conditional on `corrected` with a new
+  terminal reason `superseded_after_send`; `/auth/activation-code` writes nothing and a job mints;
+  `report(status='sending')` has its partial index; `/api/client-events` is rate-limited; the
+  recorder is exempt from rescue and keeps its tail. **Open from it:** `superseded_after_send` is a
+  dead end on the phone (the PWA reads `failure_reason` nowhere and the confirm gate loops) — needs a
+  frontend gesture for `supersedes_entry_id`; no tappable route to `/login` after a 401 sign-out on a
+  browser that also holds a device session (veto-queue item, now the ordinary case); Otkaži during
+  `saving()` discards a kept take (design call).
 - **The PWA suite was red on Windows before 2026-09-02 and every "1575 green" was measured from a
   Linux shell.** `action-wiring.spec.ts` built its file map with `relative()`, which answers with
   backslashes here, so both hand-written checks failed at their first entry. `shortPath` normalises

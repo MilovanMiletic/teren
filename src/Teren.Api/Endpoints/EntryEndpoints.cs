@@ -854,11 +854,12 @@ public static class EntryEndpoints
     /// artefact the server produces rather than receives, the same exception §8 already records
     /// for the write side.</para>
     ///
-    /// <para><b>This is the system's first read path for object storage</b>, and the groundwork
-    /// for closing the photo gap that keeps C3 at ◐ (ARCHITECTURE §8). The photo endpoint is a
-    /// separate increment and is deliberately not built here; what is built here is the shape it
-    /// will reuse — <c>IObjectStorage.OpenReadAsync</c> returning metadata with the bytes, and
-    /// <c>VerifiedObjectReader</c> proving them before anybody is handed them.</para>
+    /// <para><b>This was the system's first read path for object storage</b>, and the shape it
+    /// established is the one the photo endpoint reuses — <c>IObjectStorage.OpenReadAsync</c>
+    /// returning metadata with the bytes, and <c>VerifiedObjectReader</c> proving them before
+    /// anybody is handed them. That endpoint exists now:
+    /// <see cref="GetEntryMediaAsync"/> (<c>GET /api/entries/{id}/media/{mediaId}</c>), which
+    /// closed C3 on 2026-08-31.</para>
     ///
     /// <para>Three answers, and the distinction between them is the contract:
     /// <list type="bullet">

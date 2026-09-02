@@ -199,4 +199,104 @@ public sealed class ActivationStatementShapeTests(TerenTestApp app) : ApiTestBas
 
         return username;
     }
+
+    [Fact]
+    public async Task Asking_for_a_code_issues_the_identical_statement_sequence_either_way()
+    {
+        // §10.3's other route, and it used to keep its promise by SPENDING statements on purpose:
+        // the eligible branch superseded a code, inserted one and audited it, and the other
+        // branch called BurnIssueCostAsync to pay a matching number of round trips. The number
+        // was calibrated by hand, EF decides how many commands a SaveChanges becomes, and the
+        // review of 2026-08-31 found the compensation had already overshot once — with the sign
+        // inverted, so the FASTEST answer meant "this username exists and has an address".
+        //
+        // There is nothing to compensate now. The request writes nothing at all: two reads and an
+        // enqueue, whoever asked, and the whole decision happens inside WorkerCodeMailJob where a
+        // stopwatch cannot reach it. This test is what says so about the work itself, rather than
+        // about how long it took on a busy machine.
+        await GivenEmailAsync(TestIds.WorkerA, "zoran@vodoinstal-petrovic.test");
+        var withoutEmail = await GivenWorkerWithoutEmailAsync();
+
+        (string Name, Func<HttpClient, Task<HttpResponseMessage>> Call)[] branches =
+        [
+            ("unknown username", client => RequestCode(client, "no.such.person")),
+            ("known, no address", client => RequestCode(client, withoutEmail)),
+
+            // The branch that used to write three rows.
+            ("known, address on file",
+                client => RequestCode(client, DemoSeeder.WorkerUsername)),
+        ];
+
+        var recorded = new List<(string Name, IReadOnlyList<string> Statements)>();
+
+        foreach (var (name, call) in branches)
+        {
+            using var client = App.CreateAnonymousClient();
+
+            // Discarded: the first request through a route compiles its EF queries.
+            (await call(client)).Dispose();
+
+            recorded.Add((name, await App.CommandTap.RecordAsync(async () =>
+            {
+                using var response = await call(client);
+                response.StatusCode.ShouldBe(
+                    HttpStatusCode.Accepted, $"{name}: {await response.TextAsync()}");
+            })));
+        }
+
+        var reference = recorded[0];
+        reference.Statements.ShouldNotBeEmpty(
+            "no branch reached the database at all, so this test is proving nothing");
+
+        foreach (var branch in recorded.Skip(1))
+        {
+            branch.Statements.ShouldBe(
+                reference.Statements,
+                $"'{branch.Name}' and '{reference.Name}' do not do the same database work, so "
+                + $"they can be told apart by how long they take.{Report(recorded)}");
+        }
+
+        // And what they all do is READ. A write on this route is the defect that was fixed: it is
+        // unauthenticated, and minting supersedes the code a foreman is holding.
+        reference.Statements.ShouldNotContain(
+            sql => sql.Contains("UPDATE activation_code", StringComparison.Ordinal)
+                || sql.Contains("INSERT INTO activation_code", StringComparison.Ordinal)
+                || sql.Contains("INSERT INTO admin_audit", StringComparison.Ordinal),
+            $"POST /auth/activation-code writes again. Anyone who can guess a username can then "
+            + $"destroy a live code from a browser.{Report(recorded)}");
+    }
+
+    private static Task<HttpResponseMessage> RequestCode(HttpClient client, string username) =>
+        client.PostJson("/auth/activation-code", new JsonObject { ["username"] = username });
+
+    private async Task GivenEmailAsync(Guid userId, string email)
+    {
+        await using var identity = App.CreateIdentityDbContext();
+        await identity.Users
+            .Where(u => u.Id == userId)
+            .ExecuteUpdateAsync(u => u.SetProperty(x => x.Email, email), Ct);
+    }
+
+    /// <summary>A second worker in the same company, with no address on file.</summary>
+    private async Task<string> GivenWorkerWithoutEmailAsync()
+    {
+        const string username = "nenad.ilic";
+
+        await using var identity = App.CreateIdentityDbContext();
+
+        identity.Users.Add(new AppUser
+        {
+            Id = Guid.NewGuid(),
+            CompanyId = TestIds.CompanyA,
+            Role = AppUserRole.Worker,
+            Username = username,
+            DisplayName = "Nenad Ilić",
+            Language = "sr",
+            CreatedAt = DateTime.UtcNow,
+        });
+
+        await identity.SaveChangesAsync(Ct);
+
+        return username;
+    }
 }

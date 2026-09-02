@@ -36,9 +36,11 @@ x-api-environment: &api-environment
   Storage__Region: ${TEREN_STORAGE_REGION:-us-east-1}
   Storage__ForcePathStyle: ${TEREN_STORAGE_FORCE_PATH_STYLE:-true}
 
-  # M0 static device token (ARCHITECTURE §12). It must match the token compiled into the PWA
-  # bundle — see TEREN_DEVICE_TOKEN in .env.example and the build arg in deploy/web.Dockerfile.
-  Auth__DeviceToken: ${TEREN_DEVICE_TOKEN}
+  # The demo device's token, and optional (ARCHITECTURE §12). Nothing is compiled into the PWA
+  # bundle any more — D7/F9 removed it — so this matches no client by construction; it is the
+  # credential `seed` hashes into one device row for the demo worker. Empty is a working host
+  # with no demo phone, announced once at start-up.
+  Auth__DeviceToken: ${TEREN_DEVICE_TOKEN:-}
 
   # Missing AI keys deliberately do not stop the host: entries park in needs_review with an
   # honest failure_reason instead (ARCHITECTURE §4).
@@ -128,7 +130,10 @@ services:
     expose:
       - "8080"
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      # /health/ready, not /health. The liveness route is a constant and cannot see the failure
+      # this project keeps having — a host that boots, answers `ok`, and dies per request on an
+      # un-migrated schema (see src/Teren.Api/Health/ReadinessChecks.cs).
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health/ready"]
       interval: 15s
       timeout: 5s
       retries: 5

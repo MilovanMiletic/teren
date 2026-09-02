@@ -37,6 +37,13 @@ public sealed record InviteStrings
 
     public required string Language { get; init; }
 
+    /// <summary>
+    /// The subject line when this message is emailed rather than pasted into a chat (D6's worker
+    /// half). It says what the mail contains and names no code — a subject line is the one part of
+    /// an email that shows on a locked screen and gets quoted in a reply.
+    /// </summary>
+    public required string MailSubject { get; init; }
+
     /// <summary>"Zdravo {0}," — the worker's display name, with his diacritics intact.</summary>
     public required string Greeting { get; init; }
 
@@ -106,6 +113,7 @@ public sealed record InviteStrings
     public static InviteStrings Serbian { get; } = new()
     {
         Language = "sr",
+        MailSubject = "Kod za aktivaciju Teren aplikacije",
         Greeting = "Zdravo {0},",
         Instructions =
             "otvori Teren aplikaciju na telefonu i unesi ova dva podatka da aktiviraš telefon:",
@@ -118,6 +126,7 @@ public sealed record InviteStrings
     public static InviteStrings English { get; } = new()
     {
         Language = "en",
+        MailSubject = "Your Teren activation code",
         Greeting = "Hello {0},",
         Instructions =
             "open the Teren app on your phone and enter these two details to activate it:",

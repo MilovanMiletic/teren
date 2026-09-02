@@ -56,6 +56,16 @@ internal static class SourceTree
             + $"'{AppContext.BaseDirectory}'; this test reads the source tree off disk and cannot "
             + "run without it.");
 
+    /// <summary>
+    /// The repository root — <c>src/</c>'s parent. <c>deploy/</c> is read from here, because the
+    /// deployment is as much a shipped artefact as the code is and one of its seams broke both
+    /// targets for two days without a single test noticing.
+    /// </summary>
+    public static string RepoRoot() =>
+        Directory.GetParent(Root())?.FullName
+        ?? throw new InvalidOperationException(
+            "Could not find the repository root above the source tree.");
+
     private static string? SearchUpwards(string? start)
     {
         if (string.IsNullOrEmpty(start) || !Directory.Exists(start))
