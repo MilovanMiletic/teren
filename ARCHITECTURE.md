@@ -629,6 +629,56 @@ With **no credentials configured the dashboard serves loopback requests only** �
 the laptop case, and means a staging box that forgets to set them gets an unreachable dashboard
 rather than an open one. Set both in staging (B3a).
 
+### 7.1 Identity surface (D2–D6, F5–F7, F10)
+
+**The public routes live under `/auth/*`, deliberately not under `/api`**, so that
+`TenancyTests.Every_api_route_sits_behind_the_token` stays *literally* true rather than "true with
+exceptions" — an exception list on that test is how it stops being worth running. They carry a fixed
+window rate limit by client IP.
+
+| Method | Route | Purpose |
+|---|---|---|
+| `POST` | `/auth/activate` | `{username, activation_code, device_name}` → a device token. Single use |
+| `POST` | `/auth/activation-code` | `{username}` → **always 202**, whether or not the username exists |
+| `POST` | `/auth/login` | `{email, password}` → session token, role, company. Dummy-verifies an unknown email so the two answers cost the same wall-clock |
+| `POST` | `/auth/password` | `{token, password}` — serves invite *and* reset, consumes the token, revokes existing sessions |
+
+Everything below is behind the bearer. **Filter order is established once, in `Program.cs`:**
+`BearerAuthFilter` (group) → `RoleFilter` (sub-group) → `ValidationFilter<T>` (route), which is what
+makes **401 beat 403 beat 400** — an anonymous caller learns nothing about which roles a route
+admits, and a caller of the wrong role learns nothing about its payload shape. Asserted by a test.
+
+| Method | Route | Gate | Purpose |
+|---|---|---|---|
+| `GET` | `/api/me` | any role | who is holding this credential |
+| `POST` | `/api/auth/logout` | admins | revokes **this** session and no other |
+| `GET/POST/PATCH` | `/api/workers`, `/api/workers/{id}` | company_admin | his foremen |
+| `GET|POST` | `/api/workers/{id}/activation-code` | company_admin | **read** the live code, or issue a fresh one. The GET must stay a GET |
+| `GET` | `/api/workers/{id}/share-text` | company_admin | the ready-made message for one man, code included |
+| `GET|DELETE` | `/api/devices`, `/api/devices/{id}` | company_admin | the company's phones; DELETE is a soft revoke |
+| `GET|POST` | `/api/platform/companies` (+ `/{id}/suspend`, `/{id}/resume`) | super_admin | the customers |
+| `GET|POST` | `/api/platform/users` (+ `/{id}/invite`, `/{id}/disable`, `/{id}/enable`) | super_admin | every account, keyset-paged |
+| `GET` | `/api/platform/audit` | super_admin | the admin audit trail |
+
+**`GET /api/me` answers for all three roles, and it is the only description of himself a company
+admin can obtain** (F10, 2026-09-02). He is in no list he may read: `/api/workers` returns
+`WorkersOf(companyId)` — the men who record — and `/api/platform/users` is 403 to every role but
+staff. So the route carries `role`, `user_id`, `display_name`, `username`, `email`, `language`,
+`company`, `device`, `created_at` and `last_login_at`; fields that do not apply to a role are null
+by constraint rather than by omission. It is not a disclosure — the route answers only for the
+credential presented.
+
+*Which bearer is sent decides who the answer is about.* `ProfileService` calls this route with the
+**device** token and `CompanyGateway.me()` calls it with the **admin** token. On a browser holding
+both — the founder's, which is the demo phone and the office console at once — sending the wrong one
+succeeds and describes the wrong person. Two clients, two tokens, and no code path from one to the
+other.
+
+**No bulk activation-code export exists, and must not.** A code plus a *username* activates a phone,
+so a message carrying several names and codes pasted into a site group chat lets any man in that
+chat record evidence signed with another man's name. Attribution is what the whole identity model
+exists to establish. One man, one message, one screen.
+
 ---
 
 ## 8. Media pipeline

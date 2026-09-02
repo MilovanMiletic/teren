@@ -121,16 +121,26 @@ before being presented as done; gating fixes go back to the implementer and are 
 
 ## Current state (update as it changes)
 
-- **Phase:** ROADMAP **B0–B7 ☑, C3 ☑, identity work in progress** (2026-08-31). The current subject
-  is **profiles and identity** — `plans/profile-and-identity.md` is the approved specification and
-  ROADMAP's *Identity and profiles* table is the live increment tracker. **Start there.** Done and
-  reviewed: F1, D1, F2, **D2 (accept)**, **D3 (accept-with-fixes, fixes in)**. **F3 was REJECTED**
-  on 2026-08-31; its two gating defects were route bugs fixed by **F4b** (built, awaiting review),
-  and its third is a founder action. **F4 and F4b are reviewed (accept-with-fixes, code fixes in);
-  F5, F6, D7/F9 and the F7 layout pass are built and green but have never been reviewed at all.**
-  **D4 is done (2026-09-01):** `/api/platform/*` — companies, users, filters, keyset paging, the
-  §9 invite and the audit trail, all behind `PlatformDirectory` so the privacy guard has one type
-  to inspect. **D5 (`app_log` + the health page) and F7 (`/platform` screens) are next.**
+- **Phase:** ROADMAP **M0 fully built, not done — and the gap is not code** (2026-09-02). B0–B7 are
+  ☑ and the money path is proven end to end against real Postgres, storage and SMTP, **on the
+  founder's laptop only**. B3a's deployment machinery is built, reviewed and locally proven, and
+  **nothing is deployed because there is no VPS and no domain.** That single purchase gates the two
+  unmet clauses of M0's own definition — *on a real phone*, *without touching a terminal* — and with
+  them the whole real-device debt, which needs **https** and not merely a hostname.
+- **The identity work is nearly finished.** `plans/profile-and-identity.md` is the specification;
+  ROADMAP's *Identity and profiles* table is the live tracker. **Start there.** Done and reviewed:
+  F1, D1, F2, **D2 (accept)**, **D3 (accept-with-fixes)**, **F4 / F4b (accept-with-fixes, both
+  gating items closed)**, **F5, F6, F8, D7/F9 (all accept-with-fixes, 2026-09-01)**, **D8**,
+  **D4** (`/api/platform/*`, **REJECT** — see below), **D6** (invite email, 2026-09-01) and
+  **F10** (`/company/profile`, 2026-09-02, unreviewed). **F3's rejection is discharged.**
+  **What is left: D5** (`app_log` + sink + retention + the redaction test), then the **health page
+  and log viewer**, which are the two of F7's five screens that wait on it.
+- **D4's rejection is open and it is a founder decision, not a code fix.** The authenticated
+  invite/reset hatch lets Teren staff mint a working set-password link for a company admin, take his
+  account, and read his diaries — exactly what plan decision 2 says is impossible. It predates D4
+  (`invite-admin` since D2); D4 put a button on it. Plan §13.6. **Until it is settled, do not repeat
+  the privacy claim to a customer unqualified**: it is true of every typed route and false of one
+  deliberate door.
 - **The privacy guard has two halves, and the second is the one plan §12 actually asked for.** A
   reflection walk over `PlatformDirectory` catches a signature that *reaches* `Entry`/`Media`/
   `Report`; it cannot catch `entry_count`, which is an `int`. So platform DTO **property names** are
@@ -263,8 +273,10 @@ before being presented as done; gating fixes go back to the implementer and are 
   the record**, sending `described_verbatim: true` with the transcript in `notes`; the report then
   renders the day as prose, marked as his words rather than extracted data. `extracted` stays null
   and `corrected` records approval-as-is, so the eval triple can still tell approval from typing.
-- **Next: B3a staging** — stable **https** origin, one-command deploy; still unblocks the whole
-  real-device debt. Then the founder's **welcome + login gate** (see below).
+- **Next, in order: D5** (`app_log` + the sink, allow-list, exception scrubbing, retention, the
+  source-scanning redaction test), then **F7's remaining two screens** — the health page and the log
+  viewer — which wait on it. **Then B3a for real**: a VPS, a domain, a stable **https** origin. That
+  purchase is what unblocks the whole real-device debt and both unmet clauses of M0's definition.
 - **Demo seed is now three sites** (`d3a0c1f0-5b8e-4f1a-9c62-` + `000000000002/3/4`), and those ids
   are a **contract** with `web/.../core/projects/project-source.ts`: if they drift, every
   `POST /api/entries` 404s and captured entries can never leave the phone. See ARCHITECTURE §6.
@@ -339,11 +351,15 @@ before being presented as done; gating fixes go back to the implementer and are 
   500s; `systemctl --user start docker-desktop` then `docker compose up -d` restores it.*
   *If `dotnet build` reports `MSB3027 ... file is locked by Microsoft Visual Studio`, that is the
   founder's IDE or a running API holding the output, not a code error — **never kill `dotnet.exe`**;
-  build to a scratch path with `-p:BaseOutputPath=` instead.* **Gates as of 2026-08-31:** the verbatim pair, the
-  report-polish/download pair, B3a, D1, F1+F2, and now **D2 (accept)** and **D3 (accept-with-fixes)**
-  have cleared. **F3 was rejected** and has never been re-reviewed; **F4b and F4 are both reviewed accept-with-fixes** with their code fixes in. F4's two remaining gating items are founder-decided but unbuilt: the seeded demo code and the plan §8 contract amendment. **D1, F1+F2 and D3 had no delta review
+  build to a scratch path with `-p:BaseOutputPath=` instead.* **Gates as of 2026-09-02:** cleared — the verbatim pair, the
+  report-polish/download pair, B3a, D1, F1+F2, D2, D3, F4, F4b, and F5/F6/F8/D7-F9 (all
+  accept-with-fixes, 2026-09-01). **F3's rejection is discharged**: its two gating defects were the
+  route bugs F4b fixed, its third is a founder action, and the screens themselves were re-read in the
+  2026-09-01 pass and found sound. **D4 was REJECTED and its finding is now an open founder decision**
+  (§13.6), not a code fix. **Never reviewed at all: D6, D8 and F10** — built, green, and unseen by a
+  reviewer. **D1, F1+F2 and D3 had no delta review
   after their gating fixes** — and D3's implementer was *stopped before reporting its mutation
-  proofs*, so that increment's fixes are verified only by a clean build and 788 green tests plus a
+  proofs*, so that increment's fixes are verified only by a clean build and green tests plus a
   reading of the diff. Treat "mutation-proven" as unproven for D3.
   The adaptive-rework *delta review* verdict is **permanently lost** (its session closed mid-run),
   so that increment never passed its gate; the salvage bug found afterwards was traced to async

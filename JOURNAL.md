@@ -72,11 +72,37 @@ nothing else. So the screen was not buildable without widening that answer first
 - [ ] Restart both processes before testing — the API on 5080 predates D6 and yesterday's frontend
       was stopped at the founder's request.
 
+**Also built, same day: the walkthrough, and a documentation pass**
+
+The founder asked for a document that runs through the whole codebase along the end-to-end flow,
+written for somebody who has never read a line of it — to study before the dev server goes up.
+Published as an artifact: seven acts following one day of work from a foreman's thumb to the
+client's inbox, then the five product rules and where each shows up in code, how to read a file in
+this repo, what is not built, and how to run it. Every path named in it is real.
+
+Then *"what is left before we start milestone 1?"* — and the file that exists to answer that was
+wrong. **`ROADMAP.md` had drifted in four places**: B7 read ☐ though it shipped on 2026-08-30, D6
+read "blocked on an SMTP relay" though it was never blocked on one and shipped yesterday, F7 read ☐
+though three of its five screens are built and reviewed, and the *"next session, in order"* note
+listed four things all of which are done. `ARCHITECTURE.md` §7 still described only the M0 routes
+and carried **none** of the identity surface — every `/auth/*` route, the whole company-admin
+surface and the whole platform surface were undocumented.
+
+Both are now current, plus `CLAUDE.md`'s phase block. Three things were promoted out of prose into
+the **open decisions** table, where they can be seen: **a VPS and a domain** (the one purchase M0
+waits on), **which SMTP relay**, and **the invite/reset impersonation path** — D4's rejection, which
+is a founder decision rather than a code fix, and which means the privacy claim is true of every
+typed route and false of one deliberate door.
+
+**The answer to the question, in one line:** M0 is fully built and not done. The gap is a server,
+not code.
+
 **Next**
 
-- The walkthrough document: the whole codebase and the end-to-end flow, written to be read by
-  somebody who has not seen the code.
-- Then D5 (`app_log` + the health page) and the super admin's log screen, and the dev server.
+- **D5** — `app_log`, the Serilog sink with its property allow-list, exception scrubbing, the
+  retention job, and the test that reads every log call site off disk. Then the health page and the
+  log viewer, which are what F7 still owes.
+- Then B3a for real: a VPS, a domain, https.
 
 ---
 
