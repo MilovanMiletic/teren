@@ -88,10 +88,22 @@ public static class MeEndpoints
             user.Id,
             user.DisplayName,
             user.Username,
+            user.Email,
             user.Language,
             company,
-            device));
+            device,
+            Utc(user.CreatedAt),
+            UtcOrNull(user.LastLoginAt)));
     }
+
+    // Npgsql hands back an unspecified-kind DateTime for a timestamptz column, and serialising
+    // that produces a stamp with no offset that a browser then reads as local time. Same two
+    // helpers, for the same reason, as PlatformDirectory.
+    private static DateTimeOffset Utc(DateTime value) =>
+        new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
+
+    private static DateTimeOffset? UtcOrNull(DateTime? value) =>
+        value is null ? null : Utc(value.Value);
 
     /// <summary>
     /// Revokes <b>this</b> session and no other. A man signing out of a shared office machine must

@@ -187,13 +187,16 @@ function navigationTargets(): { targets: NavigationTarget[]; unresolvable: strin
  *
  * **40 → 41**: `platform-link.ts`, the chrome control that opens `/platform`.
  *
+ * **41 → 43 (2026-09-01)**: the people list opens the owner's own account, and that screen has the
+ * way back to the people. Counted off the tree.
+ *
  * Worth recording what this count could not catch, since it was green throughout. All forty
  * navigations resolved, `/platform` among them — but its *only* navigation was the one
  * `login-page.ts` performs on a successful sign-in, and on the founder's own browser `/login` was
  * itself unreachable (`requiresNoAdminSession`). A route table cannot see that: reachability is a
  * property of the guards, not of the paths. `device.guard.spec.ts` pins it where it lives.
  */
-const NAVIGATION_COUNT = 41;
+const NAVIGATION_COUNT = 43;
 
 /**
  * The query parameters a navigation may put on the URL, by the name of the constant that holds
@@ -357,6 +360,10 @@ describe('app routes', () => {
       // session — the only routes in the table that are, and the reason they are listed last among
       // the real routes rather than beside `profile`.
       'company',
+      // The owner's own account (2026-09-01) — the third of the plan's three profile surfaces,
+      // and the one that was missing. Not `/profile`: that screen is gated on this browser
+      // holding a *device* session, which an admin never has.
+      'company/profile',
       // One foreman: his code, his phones, the revoke. A route rather than a card that opens
       // inside the list, which is what makes "never two men's codes on one screen" structural.
       'company/worker/:workerId',

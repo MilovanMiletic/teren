@@ -243,6 +243,17 @@ export class CompanyPage {
    * without this call site fails a spec rather than silently dropping an admin on Home through the
    * wildcard — which is exactly how F4b's defect shipped.
    */
+  /**
+   * His own account.
+   *
+   * Deliberately not `/profile`: that screen is gated on this browser holding a *device* session
+   * and offers a foreman re-activation, and an admin has neither. Two screens, two credentials —
+   * see `account-page.ts`.
+   */
+  protected openAccount(): void {
+    void this.router.navigate(['/company/profile']);
+  }
+
   protected open(worker: Worker): void {
     void this.router.navigate(['/company/worker', worker.id]);
   }

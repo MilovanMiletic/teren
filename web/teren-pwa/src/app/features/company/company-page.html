@@ -198,21 +198,36 @@
                       One row, and it is the session in this browser. There is no endpoint that
                       lists a company's admins, so the screen shows the man reading it and invents
                       nobody — see `CompanyPage.director`.
+
+                      **It opens, exactly as a foreman's row does** (2026-09-01). Until it did, the
+                      owner was the only person in the product with no page of his own: his address,
+                      the date his account was opened and the last time it was signed into were
+                      readable by Teren staff on the platform directory and by nobody else, himself
+                      included.
                     -->
-                  <tr class="person">
+                  <tr class="person person--open person--you" (click)="openAccount()">
                     <th scope="row" class="cell cell--person">
-                      <span class="person__who">
-                        <span class="person__name">{{ boss.displayName }}</span>
-                        <span class="t-meta person__second">
-                          {{ t('company.people.passwordAccount') }}
+                      <button
+                        type="button"
+                        class="person__link"
+                        (click)="$event.stopPropagation(); openAccount()"
+                      >
+                        <span class="person__who">
+                          <span class="person__name">{{ boss.displayName }}</span>
+                          <span class="t-meta person__second">
+                            {{ t('company.people.passwordAccount') }}
+                          </span>
                         </span>
-                      </span>
+                        <span class="visually-hidden">{{ t('company.account.open') }}</span>
+                      </button>
                     </th>
                     <td class="cell">
                       <span class="chip chip--neutral">{{ t('company.people.you') }}</span>
                     </td>
                     <td class="cell t-num cell--contact">{{ t('company.people.none') }}</td>
-                    <td class="cell cell--go"></td>
+                    <td class="cell cell--go">
+                      <app-icon name="chevron-right" [size]="18" class="person__chevron" />
+                    </td>
                   </tr>
                 }
               </tbody>
@@ -288,15 +303,20 @@
           <div class="list">
             <h2 class="t-label list__group">{{ t('profile.role.company_admin') }}</h2>
             @if (director(); as boss) {
-              <div class="row row--static">
-                <span class="person__who">
-                  <span class="person__name">{{ boss.displayName }}</span>
-                  <span class="t-meta person__second">
-                    {{ t('company.people.passwordAccount') }}
+              <button type="button" class="row-button row row--you" (click)="openAccount()">
+                <span class="row__text">
+                  <span class="row__top">
+                    <span class="person__name">{{ boss.displayName }}</span>
+                    <span class="t-meta person__second">
+                      {{ t('company.people.passwordAccount') }}
+                    </span>
+                  </span>
+                  <span class="chips">
+                    <span class="chip chip--neutral">{{ t('company.people.you') }}</span>
                   </span>
                 </span>
-                <span class="chip chip--neutral">{{ t('company.people.you') }}</span>
-              </div>
+                <app-icon name="chevron-right" [size]="18" class="person__chevron" />
+              </button>
             }
 
             <h2 class="t-label list__group">

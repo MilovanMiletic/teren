@@ -278,13 +278,26 @@ before being presented as done; gating fixes go back to the implementer and are 
   **It is a real credential to the demo company published in the repo**, and redeeming it revokes the
   demo phone until the next `seed`. Harmless on a laptop; **needs a decision at B3a**, when that
   company goes behind a public URL.
-- **Suites: 1288 PWA specs** (67 files) and **901 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
+- **Each role now has its own profile surface, and the third one was the missing one (2026-09-02).**
+  `/company/profile` — the owner's own account, reached by tapping his row at the top of `/company`
+  exactly as a super admin taps his own row in the platform directory. It could not be built without
+  widening `GET /api/me` (`email`, `created_at`, `last_login_at`), because **a company admin appears
+  in no list he is allowed to read**: `/api/workers` is `WorkersOf(companyId)` and excludes him by
+  construction, and `/api/platform/users` is Teren staff only.
+  *The trap on that screen is the bearer.* `ProfileService` already calls `/api/me` through
+  `TerenApiClient`, which sends the **device** token — on the founder's browser, which is the demo
+  phone and the office console at once, that call succeeds and describes **Zoran**. The account
+  screen goes through `CompanyGateway.me()` so it carries the admin bearer, and a spec pins it.
+  No sign-out on the screen (`session-link.ts` is already in its chrome and argues for one place)
+  and **no change-password control — there is no authenticated route for it**, which is a real gap
+  for a locked-out owner and the honest thing the screen says instead.
+- **Suites: 1311 PWA specs** (71 files) and **910 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
   + Testcontainers over real Postgres, ~66 s; PdfPig in tests only, so report assertions read text
   back out of the rendered PDF). `dotnet test` needs Docker running.
   *The figures here were stale before 2026-08-30 (403/447 recorded against an actual 436/476) —
   both were re-measured off the tree, not carried forward.*
-- **Check at session start:** the tree is green — **901 backend tests and 1288 PWA specs, both
-  re-verified by execution 2026-09-01**, `dotnet build` clean with 0 warnings, `ng build` clean with
+- **Check at session start:** the tree is green — **910 backend tests and 1311 PWA specs, both
+  re-verified by execution 2026-09-02**, `dotnet build` clean with 0 warnings, `ng build` clean with
   no budget warning.
 - **"It doesn't work" has meant "it isn't running" twice in a row (2026-09-01).** First "frontend was
   destroyed, build again" — a stopped `ng serve`. Then "backend also doesn't work" — no `Teren.Api`

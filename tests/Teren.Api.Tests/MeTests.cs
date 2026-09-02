@@ -45,6 +45,45 @@ public sealed class MeTests(TerenTestApp app) : ApiTestBase(app)
         body.GetProperty("company").GetGuid("id").ShouldBe(TestIds.CompanyA);
     }
 
+    /// <summary>
+    /// **This route is the company admin's only view of his own account**, which is why it carries
+    /// his address and his dates at all.
+    /// <para>
+    /// He is in no list he can read: <c>/api/workers</c> is the men who record and excludes him by
+    /// construction, and <c>/api/platform/users</c> — the directory a super admin opens his own row
+    /// from — answers 403 to every role but Teren staff. Drop a field here and <c>/company/profile</c>
+    /// has nothing to show but a name.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task An_admin_reads_his_own_address_and_dates()
+    {
+        using var owner = await GivenCompanyAdminClientAsync();
+
+        var body = await (await owner.Get("/api/me")).JsonAsync();
+
+        body.GetText("email").ShouldBe(TestIds.CompanyAdminAEmail);
+        body.GetProperty("company").GetText("name").ShouldBe(TestIds.CompanyAName);
+        body.IsNull("created_at").ShouldBeFalse();
+
+        // Stamped by /auth/login while it minted the session this call is being made with, so it
+        // is non-null for anyone who is holding an admin session at all.
+        body.IsNull("last_login_at").ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// A foreman never signs in (decision 5), so the field that says when he last did stays null
+    /// rather than being filled with something plausible.
+    /// </summary>
+    [Fact]
+    public async Task A_worker_has_never_signed_in()
+    {
+        var body = await (await Client.Get("/api/me")).JsonAsync();
+
+        body.IsNull("last_login_at").ShouldBeTrue();
+        body.IsNull("created_at").ShouldBeFalse();
+    }
+
     [Fact]
     public async Task It_is_401_without_a_credential_and_401_after_revocation()
     {

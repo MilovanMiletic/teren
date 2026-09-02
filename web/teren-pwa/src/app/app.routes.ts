@@ -162,6 +162,31 @@ export const routes: Routes = [
   },
   {
     /*
+     * His own account (2026-09-01).
+     *
+     * **The third of decision 10's three profile surfaces, and the one that was missing.** A
+     * foreman has `/profile`; a super admin opens his own row in the platform directory exactly
+     * as he opens anybody else's. The owner of a customer company had one static line at the top
+     * of his own people list and no way to see the address he signs in with, when the account was
+     * opened, or when it was last used.
+     *
+     * **`company/profile`, not `profile`.** The two are different screens for different
+     * credentials — `/profile` is gated on this phone's *device* session and offers re-activation
+     * — and a route that tried to serve both would have to decide which credential it was reading
+     * on every field. Gated on the admin credential and registered before the wildcard, for the
+     * reason `/company` is: he holds no device session, so `'**' -> redirectTo: ''` would send him
+     * to Home, whose guard would send him to Welcome, and the app would answer a valid sign-in
+     * with a screen asking for a code he cannot have.
+     *
+     * Above `company/worker/:workerId` only for reading order — Angular matches a leaf route only
+     * when it consumes the whole URL, so `profile` could never be taken for a worker id.
+     */
+    path: 'company/profile',
+    canMatch: [requiresCompanyAdmin],
+    loadComponent: () => import('./features/company/account-page').then((m) => m.AccountPage),
+  },
+  {
+    /*
      * One foreman: his activation code, the message that carries it, his phones and the revoke
      * (2026-09-01). A route of its own rather than a card that opens inside the list, and the
      * reason is not only that a phone could not read the opened card — **it makes decision 13

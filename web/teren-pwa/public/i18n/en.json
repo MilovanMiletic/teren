@@ -803,6 +803,44 @@
     "aside": {
       "title": "How codes work",
       "body": "A code works once and lasts seven days. It is his name plus the code that joins a phone, so send both to that one man — never into a group chat."
+    },
+    "account": {
+      "title": "My account",
+      "loading": "Loading your account…",
+      "back": "Back to the people",
+      "open": "Open my account",
+      "name": "NAME",
+      "username": "USERNAME",
+      "noEmail": "No email address on file",
+      "details": "ACCOUNT",
+      "company": "Company",
+      "created": "Account opened",
+      "lastLogin": "Previous sign-in",
+      "signIn": {
+        "label": "YOU SIGN IN WITH",
+        "hint": "This address, and your password. A new password link is sent here too."
+      },
+      "session": {
+        "label": "THIS BROWSER",
+        "signedIn": "Signed in",
+        "expires": "Stays signed in until",
+        "hint": "Sign out at the top of the screen. Nothing recorded is kept here — your foremen’s entries live on their phones."
+      },
+      "language": {
+        "label": "LANGUAGE",
+        "hint": "The language of the app in this browser. The client’s report goes out in the language of the site."
+      },
+      "password": {
+        "label": "PASSWORD",
+        "body": "To change it, ask Teren for a new link. The link sets a new password and works once."
+      },
+      "stale": {
+        "body": "What is shown is what this browser has remembered since you signed in."
+      },
+      "unavailable": {
+        "title": "The account could not be read",
+        "body": "Nothing about your account could be read, and nothing has been changed. Refresh, or sign in again."
+      }
     }
   },
   "platform": {

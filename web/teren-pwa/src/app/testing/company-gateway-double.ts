@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 
+import { MeResponse } from '../core/api/api-types';
 import { CompanyGateway } from '../core/company/company-gateway';
 import {
   ActivationCodeResponse,
@@ -52,6 +53,7 @@ export function httpError(status: number, body: unknown = { detail: 'no' }): Htt
 export class KnobbedGateway implements CompanyGateway {
   readonly real = new MockCompanyGateway();
 
+  meError: unknown = null;
   workersError: unknown = null;
   devicesError: unknown = null;
   readError: unknown = null;
@@ -82,6 +84,8 @@ export class KnobbedGateway implements CompanyGateway {
   revokeGate: Deferred | null = null;
   issueGate: Deferred | null = null;
 
+  meGate: Deferred | null = null;
+
   /** How many times each list was actually asked for, so a reload can be told from a repaint. */
   workerListings = 0;
   deviceListings = 0;
@@ -97,6 +101,12 @@ export class KnobbedGateway implements CompanyGateway {
   }
   get added(): CreateWorkerRequest[] {
     return this.real.added;
+  }
+
+  async me(): Promise<MeResponse> {
+    await this.meGate?.promise;
+    this.refuse(this.meError);
+    return this.real.me();
   }
 
   async listWorkers(): Promise<WorkerListResponse> {

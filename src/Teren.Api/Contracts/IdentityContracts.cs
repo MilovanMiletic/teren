@@ -104,9 +104,21 @@ public sealed record MeResponse(
     Guid UserId,
     string DisplayName,
     string? Username,
+    // His own address. Not a disclosure: this route answers only for the credential presented, so
+    // the caller is reading back a value he typed into a login form himself. It is here because a
+    // company admin has no directory to look himself up in — /api/workers lists the men who
+    // record, and /api/platform/users is Teren staff only — so without it the office surface could
+    // show him a name and nothing else.
+    string? Email,
     string Language,
     CompanyRefResponse? Company,
-    MeDeviceResponse? Device);
+    MeDeviceResponse? Device,
+    DateTimeOffset CreatedAt,
+    // The **previous** sign-in, not this one: /auth/login stamps it while minting the session, so
+    // by the time an admin reads his own account it says "a moment ago". The account screen shows
+    // it beside the sign-in time the browser itself stored, never instead of it. Null for a worker,
+    // who never signs in at all (decision 5).
+    DateTimeOffset? LastLoginAt);
 
 /// <summary>The phone this credential is bound to. Null for an admin, who has no device.</summary>
 public sealed record MeDeviceResponse(Guid Id, string Name);

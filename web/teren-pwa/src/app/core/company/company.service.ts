@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 
 import { classifyApiError } from '../api/api-failure';
+import { MeResponse } from '../api/api-types';
 import { AdminSessionService } from '../session/admin-session.service';
 import { COMPANY_GATEWAY } from './company-gateway';
 import {
@@ -137,6 +138,35 @@ export interface DevicesResult {
 }
 
 /**
+ * The signed-in admin, as the server describes him.
+ *
+ * Every field is nullable and **none of them is inferred**, the rule `Profile` already follows: a
+ * response that carried a name but no address should put the name on screen and say nothing about
+ * the address, rather than filling it in from the stored session. The screen has that session as a
+ * second source and uses it *knowingly* — see `account-page.ts` — which only works if this shape
+ * never quietly does the same thing behind its back.
+ */
+export interface Account {
+  role: string | null;
+  userId: string | null;
+  displayName: string | null;
+  /** Null for an admin by constraint (`ck_app_user_worker_has_username`), and that is correct. */
+  username: string | null;
+  email: string | null;
+  companyName: string | null;
+  language: string | null;
+  createdAt: string | null;
+  /** The **previous** sign-in. See `MeResponse.last_login_at` for why that matters on screen. */
+  lastLoginAt: string | null;
+}
+
+export interface AccountResult {
+  status: CompanyStatus;
+  /** What the server said. Null on every failure — never a half-read person. */
+  account: Account | null;
+}
+
+/**
  * One worker's code and the message that carries it.
  *
  * `noLiveCode` is information rather than failure — the server answered plainly that there is
@@ -182,6 +212,26 @@ export interface AddWorkerResult {
 export class CompanyService {
   private readonly gateway = inject(COMPANY_GATEWAY);
   private readonly admins = inject(AdminSessionService);
+
+  /**
+   * The admin himself, off `GET /api/me` with **his** bearer.
+   *
+   * The one thing worth writing down: he is in no list this surface can read. `/api/workers`
+   * returns `WorkersOf(companyId)`, which is the men who record and excludes him by construction,
+   * and the platform directory a super admin opens his own row from answers 403 to every role but
+   * Teren staff. So this route is not a convenience — it is the only description of himself a
+   * company admin can obtain.
+   */
+  async loadAccount(): Promise<AccountResult> {
+    if (!this.admins.token()) {
+      return { status: 'notSignedIn', account: null };
+    }
+    try {
+      return { status: 'ok', account: toAccount(await this.gateway.me()) };
+    } catch (error) {
+      return { status: classify(error), account: null };
+    }
+  }
 
   /** The company's foremen. */
   async listWorkers(): Promise<WorkersResult> {
@@ -429,6 +479,29 @@ function problemCode(error: unknown): string | null {
  * with no email is the ordinary case, and a missing `last_seen_at` means "never called home" — a
  * screen that dropped him for it would hide the very man who most needs a code.
  */
+/**
+ * `GET /api/me`, field by field, with nothing invented.
+ *
+ * Deliberately **not** all-or-nothing, exactly as `ProfileService.narrow` is and for the same
+ * reason: a session is a credential and half of one is worse than none, but an account is a
+ * description, and a body missing `last_login_at` should still name the man. What must never
+ * happen is a field being *filled in* from elsewhere, so every absent value stays null and the
+ * screen leaves the row out rather than guessing.
+ */
+function toAccount(response: MeResponse): Account {
+  return {
+    role: text(response.role),
+    userId: text(response.user_id),
+    displayName: text(response.display_name),
+    username: text(response.username),
+    email: text(response.email),
+    companyName: text(response.company?.name),
+    language: text(response.language),
+    createdAt: text(response.created_at),
+    lastLoginAt: text(response.last_login_at),
+  };
+}
+
 function toWorker(response: WorkerResponse): Worker[] {
   const id = text(response.id);
   const displayName = text(response.display_name);

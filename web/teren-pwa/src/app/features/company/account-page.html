@@ -1,0 +1,214 @@
+<div class="screen" *transloco="let t">
+  <!--
+    Medium and up: the application header, with the company standing where a project stands on the
+    foreman's screens. No profile control — that one leads to the *worker's* screen, behind a gate
+    an admin has no device session for — and no office control, because the way back to the people
+    is the button in the head row below, at every width. One door, not two.
+  -->
+  <app-header [project]="companyName()" [showProfile]="false" [showCompany]="false" />
+
+  <!--
+    Compact only: the wordmark, the language switcher and the way out. The header is
+    `display: none` below 768 and an owner reaches his own account on a phone, so without this row
+    he would have no way to end a password-backed session on the device most likely to be lost.
+    This screen carries no sign-out of its own — this is it.
+  -->
+  <div class="column bar bar--compact">
+    <span class="bar__brand">{{ t('app.name') }}</span>
+    <div class="bar__controls">
+      <app-language-switcher />
+      <app-session-link />
+    </div>
+  </div>
+
+  <header class="column head band-top">
+    <button
+      type="button"
+      class="btn-icon head__back"
+      [attr.aria-label]="t('company.account.back')"
+      (click)="back()"
+    >
+      <app-icon name="chevron-left" [size]="20" />
+    </button>
+
+    <h1 class="t-h1 head__title">{{ t('company.account.title') }}</h1>
+
+    <div class="head__actions">
+      <button
+        type="button"
+        class="btn-icon head__reload"
+        [attr.aria-label]="t('company.reload')"
+        (click)="load()"
+      >
+        <app-icon name="refresh" [size]="20" />
+      </button>
+    </div>
+  </header>
+
+  <div class="column content">
+    @if (loading()) {
+      <p class="card state t-meta wide" role="status">{{ t('company.account.loading') }}</p>
+    } @else {
+      @if (unconfirmed() && known() && reasonKey(); as reason) {
+        <!--
+          The server was not reached, and the screen says so before it says anything else. What is
+          below is then this browser's memory of a sign-in, which could be three weeks old — and a
+          company name from three weeks ago reads exactly like a current one unless this row is
+          here.
+        -->
+        <div class="card notice notice--warn wide" role="status">
+          <app-icon name="wifi-off" [size]="20" class="notice__icon" />
+          <div class="notice__text">
+            <span class="notice__title">{{ t('company.stale.title') }}</span>
+            <span class="t-meta">{{ t(reason) }}</span>
+            <span class="t-meta">{{ t('company.account.stale.body') }}</span>
+          </div>
+        </div>
+      }
+
+      @if (!known()) {
+        <!--
+          Nothing was confirmed and nothing is remembered. An empty account and an account that
+          failed to load look identical unless one of them says which it is.
+        -->
+        <div class="card state state--empty wide" role="status">
+          <span class="state__mark" aria-hidden="true">
+            <app-icon name="user" [size]="32" />
+          </span>
+          <h2 class="t-h2">{{ t('company.account.unavailable.title') }}</h2>
+          <p class="t-body state__body">{{ t(reasonKey() ?? 'company.reason.unavailable') }}</p>
+          <p class="t-meta state__body">{{ t('company.account.unavailable.body') }}</p>
+        </div>
+      } @else {
+        <!-- Left at expanded: who he is. The substance of the screen. -->
+        <div class="pane pane--primary">
+          <section class="card card--hero identity" [attr.aria-label]="t('company.account.title')">
+            <div class="identity__head">
+              <span class="identity__avatar" aria-hidden="true">
+                <app-icon name="user" [size]="26" />
+              </span>
+              <div class="identity__who">
+                <span class="t-label">{{ t('company.account.name') }}</span>
+                <span class="identity__name">{{ displayName() ?? t('profile.name.unknown') }}</span>
+                @if (role(); as current) {
+                  <!--
+                    Under the name rather than beside it: a chip in the same row competes with a
+                    Serbian surname for a phone's width, and the name is what loses. The role
+                    appears only when the server said it — never inferred from the session.
+                  -->
+                  <span class="chip chip--neutral identity__role">
+                    {{ t('profile.role.' + current) }}
+                  </span>
+                }
+              </div>
+            </div>
+
+            <!--
+              His address, given the weight the worker's screen gives a username: this is what he
+              types to sign in, and it is the thing he has to know the day a password stops working.
+            -->
+            <div class="identity__signin">
+              <span class="t-label">{{ t('company.account.signIn.label') }}</span>
+              <span class="identity__value">{{ email() ?? t('company.account.noEmail') }}</span>
+              <p class="t-meta identity__hint">{{ t('company.account.signIn.hint') }}</p>
+            </div>
+
+            @if (username(); as name) {
+              <!--
+                An admin has none by constraint — usernames belong to the men who record. Rendered
+                anyway, and only if a server ever sends one, because the alternative is a screen
+                that silently drops a fact it was told.
+              -->
+              <div class="identity__signin">
+                <span class="t-label">{{ t('company.account.username') }}</span>
+                <span class="identity__value">{{ name }}</span>
+              </div>
+            }
+          </section>
+
+          <section class="details-section">
+            <h2 class="t-label section__label">{{ t('company.account.details') }}</h2>
+            <dl class="card details">
+              <div class="details__row">
+                <dt class="t-meta details__key">{{ t('company.account.company') }}</dt>
+                <dd class="details__value">{{ companyName() ?? t('company.people.none') }}</dd>
+              </div>
+              <div class="details__row">
+                <dt class="t-meta details__key">{{ t('company.account.created') }}</dt>
+                <dd class="details__value t-num">
+                  {{ createdAt() ? (createdAt() | date: 'd. M. y.') : t('company.people.none') }}
+                </dd>
+              </div>
+              <div class="details__row">
+                <!--
+                  The previous sign-in: the server stamps it while minting the very session this
+                  page is being read with, so for him it always says a moment ago. It is here for
+                  the question it does answer — was anybody else in this account — which is why it
+                  sits beside this browser's own sign-in time rather than instead of it.
+                -->
+                <dt class="t-meta details__key">{{ t('company.account.lastLogin') }}</dt>
+                <dd class="details__value t-num">
+                  {{
+                    lastLoginAt()
+                      ? (lastLoginAt() | date: 'd. M. y. HH:mm')
+                      : t('company.people.none')
+                  }}
+                </dd>
+              </div>
+            </dl>
+          </section>
+        </div>
+
+        <!-- Right at expanded: this browser's own credential, and the one thing he can change. -->
+        <div class="pane pane--secondary">
+          <section class="details-section">
+            <h2 class="t-label section__label">{{ t('company.account.session.label') }}</h2>
+            <dl class="card details">
+              <div class="details__row">
+                <dt class="t-meta details__key">{{ t('company.account.session.signedIn') }}</dt>
+                <dd class="details__value t-num">
+                  {{
+                    signedInAt()
+                      ? (signedInAt() | date: 'd. M. y. HH:mm')
+                      : t('company.people.none')
+                  }}
+                </dd>
+              </div>
+              <div class="details__row">
+                <dt class="t-meta details__key">{{ t('company.account.session.expires') }}</dt>
+                <dd class="details__value t-num">
+                  {{
+                    expiresAt() ? (expiresAt() | date: 'd. M. y. HH:mm') : t('company.people.none')
+                  }}
+                </dd>
+              </div>
+            </dl>
+            <p class="t-meta section__hint">{{ t('company.account.session.hint') }}</p>
+          </section>
+
+          <!--
+            The switcher itself, not a copy of it: language is a setting of this browser, and the
+            one control that changes it lives here as it does in the header and the compact bar. No
+            card around it — it is a white pill already, and a white pill on a white card is two
+            surfaces saying the same thing.
+          -->
+          <section class="language">
+            <h2 class="t-label section__label">{{ t('company.account.language.label') }}</h2>
+            <app-language-switcher />
+            <p class="t-meta language__hint">{{ t('company.account.language.hint') }}</p>
+          </section>
+
+          <section class="details-section">
+            <h2 class="t-label section__label">{{ t('company.account.password.label') }}</h2>
+            <!--
+              Not a button. There is no authenticated route that changes a password — the one that
+              sets it validates a mailed link and nothing else — so a control here would have to
+              invent one, and a control that cannot work is worse than a sentence saying who to ask.
+            -->
+            <p class="t-meta section__hint">{{ t('company.account.password.body') }}</p>
+          </section>
+        </div>
+      }
+    }
+  </div>
+</div>

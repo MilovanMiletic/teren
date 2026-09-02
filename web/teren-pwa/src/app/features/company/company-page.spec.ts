@@ -9,10 +9,11 @@ import { COMPANY_GATEWAY } from '../../core/company/company-gateway';
 import { MockCompanyGateway } from '../../core/company/mock-company-gateway';
 import { ADMIN_SESSION_STORAGE_KEY, AdminSession } from '../../core/session/admin-session';
 import { KnobbedGateway, httpError } from '../../testing/company-gateway-double';
-import { routePathFor } from '../../testing/route-table';
+import { routePathFor, routeUrlFor } from '../../testing/route-table';
 import { ViewportService } from '../../ui/viewport.service';
 import en from '../../../../public/i18n/en.json';
 import sr from '../../../../public/i18n/sr.json';
+import { AccountPage } from './account-page';
 import { CompanyPage } from './company-page';
 import { WorkerPage } from './worker-page';
 
@@ -46,7 +47,11 @@ describe('CompanyPage', () => {
    */
   let workerBase: string;
 
+  /** The owner's own account, resolved the same way and for the same reason. */
+  let accountUrl: string;
+
   beforeAll(async () => {
+    accountUrl = await routeUrlFor(AccountPage);
     const path = await routePathFor(WorkerPage);
     workerBase = `/${path.replace(/\/:[A-Za-z0-9_]+$/, '')}`;
   });
@@ -151,10 +156,18 @@ describe('CompanyPage', () => {
   }
 
   /** The people in the order the screen lists them, whichever rendering is on. */
+  /**
+   * The **foremen**, in the order the list is drawing them.
+   *
+   * `:not(.person--you)` is not tidying. The owner's own row became openable on 2026-09-01 and so
+   * gained the same classes a foreman's row wears; without the exclusion every sorting assertion
+   * here would be asserting on a list with the reader wedged at the top of it, and the sort under
+   * test would look broken while working perfectly.
+   */
   function listedNames(): string[] {
     const rows = viewport.atLeastMedium()
-      ? element.querySelectorAll('tbody tr.person--open .person__name')
-      : element.querySelectorAll('.row-button .person__name');
+      ? element.querySelectorAll('tbody tr.person--open:not(.person--you) .person__name')
+      : element.querySelectorAll('.row-button:not(.row--you) .person__name');
     return [...rows].map((node) => node.textContent?.trim() ?? '');
   }
 
@@ -410,15 +423,45 @@ describe('CompanyPage', () => {
       expect(router.navigate).toHaveBeenCalledWith([workerBase, MockCompanyGateway.ZORAN_ID]);
     });
 
-    it('offers no page for the director, because there is no endpoint behind one', async () => {
+    /**
+     * **The director's row opens too, since 2026-09-01.** It used to be inert, and the sentence
+     * here used to say there was no endpoint behind one — which was true of `/api/workers` and
+     * false of `/api/me`. The consequence of believing it was that the owner of a paying company
+     * was the only person in the product who could not see his own account: his address, the date
+     * it was opened and the last sign-in were readable by Teren staff and by nobody else.
+     */
+    it('opens the director on his own account', async () => {
       await render();
 
       const rows = [...element.querySelectorAll('tr.person')].filter((row) =>
         row.textContent?.includes('Milan Gradnja'),
       );
       expect(rows).toHaveLength(1);
-      expect(rows[0].classList.contains('person--open')).toBe(false);
-      expect(rows[0].querySelector('button')).toBeNull();
+      expect(rows[0].classList.contains('person--open')).toBe(true);
+
+      rows[0].querySelector('button')?.click();
+      await settle();
+
+      // Resolved from the shipped table by the component class, never spelled out.
+      expect(router.navigate).toHaveBeenCalledWith([accountUrl]);
+    });
+
+    /**
+     * **Not `/profile`**, which is the worker's screen and is gated on this browser holding a
+     * *device* session. An admin has none, so a navigation there would be answered by the gate
+     * with a redirect to Welcome — a join-by-code screen — and the office would appear to have
+     * bounced him out of the product.
+     */
+    it('does not send him to the foreman profile route', async () => {
+      await render();
+
+      const rows = [...element.querySelectorAll('tr.person')].filter((row) =>
+        row.textContent?.includes('Milan Gradnja'),
+      );
+      rows[0].querySelector('button')?.click();
+      await settle();
+
+      expect(router.navigate).not.toHaveBeenCalledWith(['/profile']);
     });
   });
 
@@ -844,9 +887,13 @@ describe('CompanyPage', () => {
 
       expect(element.querySelector('table')).toBeNull();
       expect(listedNames()).toEqual(['Marko Marković', 'Zoran Jovanović']);
-      // One row is one control, not a card that expands.
-      const rows = [...element.querySelectorAll<HTMLButtonElement>('.row-button.row')];
+      // One row is one control, not a card that expands. Three of them: the owner's own row is a
+      // control here too since 2026-09-01, which is why the foremen are counted apart from it.
+      const rows = [
+        ...element.querySelectorAll<HTMLButtonElement>('.row-button.row:not(.row--you)'),
+      ];
       expect(rows.length).toBe(2);
+      expect(element.querySelectorAll('.row-button.row').length).toBe(3);
 
       rows[1].click();
       await settle();

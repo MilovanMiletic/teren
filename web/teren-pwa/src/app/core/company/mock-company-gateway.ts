@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 
+import { MeResponse } from '../api/api-types';
 import { CompanyGateway } from './company-gateway';
 import {
   ActivationCodeResponse,
@@ -44,6 +45,8 @@ export class MockCompanyGateway implements CompanyGateway {
   static readonly ZORAN_OLD_PHONE_ID = 'd3a0c1f0-5b8e-4f1a-9c62-0000000000de';
   static readonly MARKO_PHONE_ID = 'd3a0c1f0-5b8e-4f1a-9c62-0000000000df';
   static readonly LIVE_CODE = 'XKD4-7HMP';
+  static readonly ADMIN_ID = 'd3a0c1f0-5b8e-4f1a-9c62-0000000000a1';
+  static readonly ADMIN_EMAIL = 'petar.petrovic@vodoinstal-petrovic.example.com';
 
   /** Every call that reached the wire, so a spec can assert on what was actually asked for. */
   readonly reads: string[] = [];
@@ -55,6 +58,23 @@ export class MockCompanyGateway implements CompanyGateway {
   private codes = new Map<string, string>([[MockCompanyGateway.ZORAN_ID, MockCompanyGateway.LIVE_CODE]]);
 
   private issuedCount = 0;
+
+  /** How many times the account screen asked who it is showing. */
+  meCalls = 0;
+
+  /** Swap this to model an older server, a foreman's answer, or a missing address. */
+  account: MeResponse = {
+    role: 'company_admin',
+    user_id: MockCompanyGateway.ADMIN_ID,
+    display_name: 'Petar Petrović',
+    username: null,
+    email: MockCompanyGateway.ADMIN_EMAIL,
+    language: 'sr',
+    company: { id: 'd3a0c1f0-5b8e-4f1a-9c62-000000000001', name: 'Vodoinstal Petrović d.o.o.' },
+    device: null,
+    created_at: '2026-07-15T09:00:00.000Z',
+    last_login_at: '2026-08-31T06:40:00.000Z',
+  };
 
   private workers: WorkerResponse[] = [
     {
@@ -115,6 +135,18 @@ export class MockCompanyGateway implements CompanyGateway {
       revoked_at: null,
     },
   ];
+
+  /**
+   * The admin himself — **a company_admin, not a worker**, and the distinction is the point.
+   *
+   * He has no username and no device by constraint (§4), so a mock that handed back a foreman
+   * here would let the account screen pass its specs while rendering rows that cannot exist for
+   * the man it is built for.
+   */
+  async me(): Promise<MeResponse> {
+    this.meCalls += 1;
+    return { ...this.account };
+  }
 
   async listWorkers(): Promise<WorkerListResponse> {
     const workers = this.workers.map((worker) => ({

@@ -12,6 +12,74 @@ Entry format:
 
 ---
 
+## 2026-09-02 — the owner gets a page of his own
+
+**Talked about**
+
+The founder: *"What we still need is for the company admin to get into his profile details the same
+way the super admin does."* Then the sequencing for tomorrow: the log screen for the super admin, a
+dev server, and — first — a written walkthrough of the whole codebase and its end-to-end flow,
+because he has not read a line of the code that has been written for him.
+
+**What was actually missing**
+
+Decision 10 gives each role its own profile surface. Two of the three shipped: a foreman has
+`/profile`, and a super admin opens his own row in the platform directory exactly as he opens
+anybody else's. **The owner of a paying company had neither.** His row at the top of his own people
+list was inert — his name and the words "signs in with a password" — and there was no screen in the
+product that would tell him the address he signs in with, when his account was opened, or when it
+was last signed into. Those facts were readable by Teren staff on `/api/platform/users` and by
+nobody else, himself included.
+
+And the reason was not an oversight in the UI. **He appears in no list he is allowed to read.**
+`/api/workers` is `WorkersOf(companyId)` — the men who record — and excludes him by construction;
+the platform directory answers 403 to every role but Teren staff. The route that could describe him
+is `/api/me`, which until today carried a name, a role, a language, a company and a device, and
+nothing else. So the screen was not buildable without widening that answer first.
+
+**Built**
+
+- `GET /api/me` gains `email`, `created_at` and `last_login_at`. Additive, and not a disclosure:
+  the route answers only for the credential presented, so the caller is reading back a value he
+  typed into a login form himself. `MeTests` pins the three, and pins `last_login_at` **null for a
+  worker** — a foreman never signs in (decision 5), so the honest answer is nothing rather than
+  something plausible.
+- `CompanyGateway.me()` — the same route, through the office seam, so it carries the **admin**
+  bearer. This is the one thing on the screen worth a second look: `ProfileService` already asks
+  `/api/me` through `TerenApiClient`, which sends the *device* token. On the founder's own browser —
+  a demo phone and the office console at once — that call succeeds and describes **Zoran**. A spec
+  asserts the call went through the office gateway for exactly that reason.
+- `/company/profile` (`features/company/account-page.*`): who he is, the address he signs in with
+  given the weight the foreman's screen gives a username, his company, when the account was opened,
+  the previous sign-in, this browser's own session and when it expires, and the language switcher.
+  Three deliberate layouts; the two-pane grid at ≥1024.
+- The director's row on `/company` opens it, at both widths, exactly as a foreman's row opens his.
+- `company.account.*` in both dictionaries.
+
+**Decided**
+
+- **`/company/profile`, not `/profile`.** Two screens for two credentials. `/profile` is gated on
+  this browser holding a *device* session and offers re-activation; an admin has neither, and a
+  route trying to serve both would have to decide which credential it was reading on every field.
+- **No sign-out on the screen.** `session-link.ts` is already in its chrome at every width, and its
+  whole argument is that sign-in and sign-out are one affordance with one place.
+- **No "change password" control.** There is no authenticated route for it — `POST /auth/password`
+  validates a mailed `trn_p_` token and nothing else — so the screen says who to ask instead of
+  offering a button that cannot work. Worth building later; it is a real gap for a locked-out owner.
+
+**Founder actions**
+
+- [ ] Restart both processes before testing — the API on 5080 predates D6 and yesterday's frontend
+      was stopped at the founder's request.
+
+**Next**
+
+- The walkthrough document: the whole codebase and the end-to-end flow, written to be read by
+  somebody who has not seen the code.
+- Then D5 (`app_log` + the health page) and the super admin's log screen, and the dev server.
+
+---
+
 ## 2026-09-01 — the platform surface was unreachable, and every guard was correct
 
 **Talked about**

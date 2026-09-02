@@ -13,6 +13,7 @@ import { PendingPage } from '../../features/pending/pending-page';
 import { ProfilePage } from '../../features/profile/profile-page';
 import { guardedRoutes } from '../../testing/route-harness';
 import { routeUrlFor } from '../../testing/route-table';
+import { AccountPage } from '../../features/company/account-page';
 import { CompanyPage } from '../../features/company/company-page';
 import { WorkerPage } from '../../features/company/worker-page';
 import { PlatformPage } from '../../features/platform/platform-page';
@@ -96,6 +97,7 @@ describe('the device gate', () => {
   let pending: string;
   let profile: string;
   let company: string;
+  let account: string;
   let worker: string;
   let platform: string;
   let setPassword: string;
@@ -112,6 +114,7 @@ describe('the device gate', () => {
     pending = await routeUrlFor(PendingPage);
     profile = await routeUrlFor(ProfilePage);
     company = await routeUrlFor(CompanyPage);
+    account = await routeUrlFor(AccountPage);
     worker = await routeUrlFor(WorkerPage);
     platform = await routeUrlFor(PlatformPage);
     setPassword = await routeUrlFor(SetPasswordPage);
@@ -474,14 +477,15 @@ describe('the device gate', () => {
         // once. With `/welcome` bouncing for the same reason, that closed every route into the
         // admin and platform surfaces while leaving the whole suite green.
         expect(route.canMatch, url).toEqual([requiresNoAdminSession]);
-      } else if (url === company || url === worker) {
+      } else if (url === company || url === account || url === worker) {
         // The two screens gated on an *admin* credential rather than on this phone's device
         // session. A company admin signs in with a password and never holds a device token, so
         // `requiresDevice` here would answer a valid sign-in by demanding an activation code he
         // cannot have. Named explicitly rather than folded into the branch below, so that adding
         // an admin screen is a decision someone has to write down here — which is exactly what
         // happened when one man's page (`/company/worker/:workerId`) joined the table on
-        // 2026-09-01 and this spec went red until it was said out loud.
+        // 2026-09-01 and this spec went red until it was said out loud, and again the same day
+        // when the owner's own account (`/company/profile`) did.
         expect(route.canMatch, url).toEqual([requiresCompanyAdmin]);
       } else if (url === platform || url === platformCompanies || url === platformPerson) {
         // Teren's own surface, on a *third* credential. Named separately from the office branch

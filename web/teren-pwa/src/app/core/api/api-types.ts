@@ -272,10 +272,29 @@ export interface MeResponse {
    * credential merely proves it. Null for the two admin roles, who sign in by email.
    */
   username?: string | null;
+  /**
+   * His own address.
+   *
+   * Null for a foreman who has none on file (optional by decision 6), and never null for an admin,
+   * whom `ck_app_user_admin_has_email` refuses to store without one. It is here because a company
+   * admin appears in no list he is allowed to read — `/api/workers` is the men who record and
+   * excludes him by construction, and the platform directory is Teren staff only — so this route is
+   * the only place `/company/profile` can learn anything about him beyond his name.
+   */
+  email?: string | null;
   /** The UI language the server holds for this person. Not this phone's setting. */
   language?: string | null;
   company?: CompanyRefResponse | null;
   device?: DeviceRefResponse | null;
+  /** ISO-8601. When the account was made — not when this browser signed into it. */
+  created_at?: string | null;
+  /**
+   * ISO-8601, and the **previous** sign-in rather than this one: `/auth/login` stamps it as it
+   * mints the session. An admin reading his own account therefore always sees "a moment ago", which
+   * is why the screen puts it beside the sign-in time the browser itself stored rather than instead
+   * of it. Null for a foreman, who never signs in at all.
+   */
+  last_login_at?: string | null;
 }
 
 /** The company a person belongs to, by id and name. Null for a super admin. */

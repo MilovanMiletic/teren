@@ -803,6 +803,44 @@
     "aside": {
       "title": "Kako kodovi rade",
       "body": "Kod važi jednom i traje sedam dana. Telefon se pridružuje njegovim korisničkim imenom i kodom, pa oboje šaljite baš tom čoveku — nikada u grupu."
+    },
+    "account": {
+      "title": "Moj nalog",
+      "loading": "Učitavanje naloga…",
+      "back": "Vrati se na ljude",
+      "open": "Otvori moj nalog",
+      "name": "IME",
+      "username": "KORISNIČKO IME",
+      "noEmail": "Nema sačuvane imejl adrese",
+      "details": "NALOG",
+      "company": "Firma",
+      "created": "Nalog otvoren",
+      "lastLogin": "Prethodna prijava",
+      "signIn": {
+        "label": "PRIJAVLJUJETE SE SA",
+        "hint": "Ova adresa i vaša lozinka. Na nju stiže i link za novu lozinku."
+      },
+      "session": {
+        "label": "OVAJ PRETRAŽIVAČ",
+        "signedIn": "Prijavljeni ste",
+        "expires": "Prijava važi do",
+        "hint": "Odjava je na vrhu ekrana. Ovde se ništa snimljeno ne čuva — unosi vaših poslovođa stoje na njihovim telefonima."
+      },
+      "language": {
+        "label": "JEZIK",
+        "hint": "Jezik aplikacije u ovom pretraživaču. Izveštaj klijentu ide na jeziku gradilišta."
+      },
+      "password": {
+        "label": "LOZINKA",
+        "body": "Za promenu tražite od Terena novi link. Link postavlja novu lozinku i važi jednom."
+      },
+      "stale": {
+        "body": "Prikazano je ono što ovaj pretraživač pamti od vaše prijave."
+      },
+      "unavailable": {
+        "title": "Nalog nije mogao da se pročita",
+        "body": "Ništa o vašem nalogu nije pročitano i ništa nije promenjeno. Osvežite ili se prijavite ponovo."
+      }
     }
   },
   "platform": {

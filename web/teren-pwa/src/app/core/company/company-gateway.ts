@@ -3,6 +3,7 @@ import { Injectable, InjectionToken, inject } from '@angular/core';
 import { firstValueFrom, timeout } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
+import { MeResponse } from '../api/api-types';
 import { AdminSessionService } from '../session/admin-session.service';
 import {
   ActivationCodeResponse,
@@ -48,6 +49,16 @@ const COMPANY_TIMEOUT_MS = 30_000;
  * state it has to produce. This file speaks HTTP and decides nothing.
  */
 export interface CompanyGateway {
+  /**
+   * The signed-in admin himself.
+   *
+   * `GET /api/me` is not a company route and it is deliberately here anyway, because **the bearer
+   * is what the answer depends on**. Called through `TerenApiClient` it describes the phone; called
+   * with the admin token it describes the man in the office. Those are two different people, and
+   * putting the second call anywhere other than behind this seam would mean a screen for one of
+   * them could reach the other's answer.
+   */
+  me(): Promise<MeResponse>;
   listWorkers(): Promise<WorkerListResponse>;
   addWorker(request: CreateWorkerRequest): Promise<CreateWorkerResponse>;
   /** Read the live code. **A GET, and it must stay one**: reading never kills a code. */
@@ -66,6 +77,10 @@ export class HttpCompanyGateway implements CompanyGateway {
 
   /** Never ends in a slash: the paths below start with one, and a double slash is another route. */
   private readonly baseUrl = environment.apiBaseUrl.replace(/\/+$/, '');
+
+  async me(): Promise<MeResponse> {
+    return this.get<MeResponse>('/api/me');
+  }
 
   async listWorkers(): Promise<WorkerListResponse> {
     return this.get<WorkerListResponse>('/api/workers');

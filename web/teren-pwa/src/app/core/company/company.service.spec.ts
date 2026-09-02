@@ -31,6 +31,7 @@ function httpError(status: number, body: unknown = { detail: 'no' }): HttpErrorR
 /** A gateway whose every route rejects the same way, for the classification table. */
 function failingWith(error: unknown): CompanyGateway {
   return {
+    me: () => Promise.reject(error),
     listWorkers: () => Promise.reject(error),
     addWorker: () => Promise.reject(error),
     shareText: () => Promise.reject(error),
@@ -54,6 +55,7 @@ function throwingSynchronouslyWith(error: unknown): CompanyGateway {
     throw error;
   };
   return {
+    me: bang,
     listWorkers: bang,
     addWorker: bang,
     shareText: bang,
