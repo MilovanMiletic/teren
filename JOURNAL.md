@@ -100,8 +100,88 @@ commits himself is set aside for this one commit, not changed.
 - Founder, in the same message: *"run the full code review in parallel for the frontend and the
   backend with our senior subagents to check the state of the code and to know how good it is."*
   Two whole-codebase state reviews launched against `c97c0e1`, read-only, graded A–F with a top-ten
-  and a "before the dev server / before a real phone" must-do list each. Their reports go in the next
-  entry, verbatim in substance.
+  and a "before the dev server / before a real phone" must-do list each.
+
+**Backend state review — grade B+** (`c97c0e1`, read-only, ~50 tool uses)
+
+*Why not an A:* the code is sound — conditional terminal writes everywhere, the report claim as a
+unique index, immutability as a trigger plus an EF guard, deny-by-default tenancy, hashed tokens with
+no cache, timing-levelled auth, the allow-listed log sink — but its **surroundings** are not. Ranked:
+
+1. **HIGH — `deploy.sh` cannot complete on either target.** It requires `TEREN_DEVICE_TOKEN`, passes
+   it to `web.Dockerfile`, which greps for a placeholder `environment.ts` has not held since
+   2026-08-31 and exits 1. The local rehearsal fails the same way. Fix: delete the substitution, make
+   the token optional server-side, rewrite README §4/§8.
+2. **MEDIUM — confirm/seal race.** `EntryEndpoints.cs:700-731` checks *sending* then writes
+   `Corrected`; `EntryReporter.cs:417-422` re-reads `Corrected` after the claim. In the gap,
+   `SealAsync` can stamp `reported_at` on content that never went out. Fix: seal only where
+   `Corrected` equals the rendered snapshot; 0 rows → report `failed`/`superseded`.
+3. **MEDIUM — `POST /auth/activation-code` destroys a credential and mails nothing** (`TODO(D6)` at
+   `AuthEndpoints.cs:283`, though D6 shipped). Unauthenticated, by username. Fix: wire a mail job or
+   stop superseding until one exists.
+4. **MEDIUM — `/health` is a constant** (`Program.cs:432`); compose, `deploy.sh` and the README all
+   rest on it. Fix: real checks on both contexts and both migration histories, `/health/ready`.
+5. **MEDIUM — no index on `report.status`**; the minutely sweeper will seq-scan a million rows within
+   a year. Fix: partial index `WHERE status = 'sending'`.
+6. LOW-MED — `POST /api/client-events` is unlimited and shares the drop-oldest log queue, so one
+   looping phone can evict the server's own error lines.
+7. LOW — `AdminInviteJob.cs:50` hardcodes 48 h and ignores `Auth:PasswordTokenLifetime`.
+8. LOW — comment rot on operator-facing files (`AdminInviteJob`, `IObjectStorage`, `BoundedRetry`,
+   `environment.ts` still narrates the baked token).
+9. LOW — `IsUniqueViolation` ×4, `Utc` ×4, audit-row builders ×3, two `InviteStrings` with different
+   matching rules.
+10. LOW — test blind spots: Hangfire disabled in the test host, `BehindProxy=false` never exercised,
+    the confirm-while-sending 409 untested, S3/SMTP faked at the seam.
+
+*Before the dev server:* fix the deploy chain and re-run `deploy.sh --target local`; the partial
+index; the seal/confirm race with an interleaving test; a real `/health`; neutralise
+`/auth/activation-code`.
+
+**Frontend state review — grade B-** (`c97c0e1`, read-only, ~60 tool uses, 16 routes × 5 widths
+driven in a browser, plus a live proof against the production build)
+
+*Why not an A:* the architecture is disciplined — evidence on disk before any network attempt, an
+idempotent outbox, compiler-checked failure classification, two bearers structurally separated,
+721/721 translation keys, a clean 450.7 kB build, no overflow or missing header at any width — but
+**one proven, silent evidence-loss defect sits on the primary screen**, the exact class PROJECT §5.3
+forbids. Ranked:
+
+1. **CRITICAL — a live recording is truncated the moment the tab returns to the front.**
+   `rescue.service.ts:34` runs `rescue()` on every `visibilitychange→visible`; only `/entry/:id` is
+   exempt, and `rescue.service.spec.ts:45` **pins that `/record` is not**. `finishCapture` assembles
+   the chunks so far and deletes the session; every later chunk hits `appendChunk`'s
+   `if (!session) return` and is discarded while the timer keeps climbing. **Proven with a fake mic
+   against the production build:** a 6 s take saved 23,502 B / 6474 ms; the same take with one
+   `visibilitychange` at 2.5 s saved **4,655 B / 2197 ms**, and nothing on screen said anything. A
+   screen lock or an app switch mid-sentence does this on a phone. Fix: the rescue run exempts the
+   recorder's live entry (`AudioRecorderService.entryId` exists) and skips a capture whose
+   `lastChunkAt` is under ~5 s old; add the spec that is missing.
+2. **HIGH — no spec exists for the recorder** (`audio-recorder.service.ts`, 397 lines) — nor for 36
+   other files. Finding 1 survived 1575 green specs because the only relevant spec asserted the defect.
+3. **MEDIUM — `interrupt()` drops the recorder's final flush**: `recorder.stop()` then a synchronous
+   teardown nulls `ondataavailable` before the stop-time `dataavailable` fires. Every call or OS
+   interruption loses up to the last timeslice avoidably.
+4. **MEDIUM — a server 401 never clears the admin session**; the guard then bounces the still
+   "signed-in" admin *away from* `/login`, and the only exit is the header's sign-out control.
+5. **MEDIUM — `capturedAt` is stamped before the microphone is granted**; a 20 s permission prompt
+   becomes 20 s of phantom recording in `created_at`, the report and the rescue duration.
+6. MEDIUM — the report download does not run inside the tap (fetch first, then `save()`); iOS Safari
+   may no-op it. Unverified on iPhone; first thing to test.
+7. MEDIUM — design-record comments that are now false (`session.service.ts`, `entry-store.ts`,
+   `environment.ts`, `capture-saved-page.ts`, four auth files).
+8. MEDIUM — admin chrome CSS copied **seven** times and already drifting; 155 kB of component CSS.
+   Fix: `.screen-head` / `.stat-strip` in `styles.css` beside `.data-table`.
+9. LOW — tap targets under 44 px in the pager (36), log filters (36), header and switcher (40).
+10. LOW — no `SwUpdate` handling (an installed app runs the old bundle until its second launch after
+    a deploy); no CSP while two bearers live in `localStorage`; bundle at 90 % of the warning budget.
+
+*Before a real phone:* fix 1 and re-run the live proof (`scratchpad/review-frontend/
+rescue-truncation2.mjs`); serve a **production** build over **https** (the service worker is off in
+dev); start → lock → unlock → speak → stop on Android, and an incoming call mid-take; PDF download
+and photo open in iOS standalone; fix 4 before an admin's first password reset from a phone.
+
+**Both reviews' verdict in one line:** the code the tests can see is good; what will fail first is
+the deploy chain, a rescue that eats a live recording, and a health check that cannot say no.
 
 **Next**
 

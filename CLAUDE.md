@@ -394,6 +394,17 @@ before being presented as done; gating fixes go back to the implementer and are 
   (`space-2`/`space-1`) and the pill label at `text-label`, never in the 44 px hit areas. Ten px to
   spare at 360; `flex-wrap: wrap` remains as the fallback below that. Any new column word longer than
   `Aktivnost` re-opens this.
+- **Two whole-codebase state reviews ran on 2026-09-02 (backend B+, frontend B-; JOURNAL has both in
+  full) and they set the order of work before the dev server.** The finding that outranks everything:
+  **`RescueService` truncates a LIVE recording** — it runs on every `visibilitychange→visible`,
+  exempts only `/entry/:id`, and `rescue.service.spec.ts:45` *pins* that `/record` is not exempt;
+  `finishCapture` deletes the session and every later chunk is silently dropped while the timer keeps
+  climbing. **Proven against the production build: a 6 s take with one tab switch saved 2.2 s.** A
+  screen lock mid-sentence does this on a phone, and 1575 green specs could not see it because the
+  only relevant spec asserted the defect. Then, in order: the deploy chain (`web.Dockerfile`'s token
+  substitution fails on both targets), the seal/confirm race in `EntryReporter.SealAsync`, a real
+  `/health`, the unauthenticated `/auth/activation-code` that destroys a code and mails nothing, a
+  partial index on `report(status='sending')`, and a 401 that never clears the admin session.
 - **The PWA suite was red on Windows before 2026-09-02 and every "1575 green" was measured from a
   Linux shell.** `action-wiring.spec.ts` built its file map with `relative()`, which answers with
   backslashes here, so both hand-written checks failed at their first entry. `shortPath` normalises
