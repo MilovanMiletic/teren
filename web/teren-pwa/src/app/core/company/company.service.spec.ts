@@ -1,7 +1,13 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
+import { Router, provideRouter } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
 
+import { LoginPage } from '../../features/auth/login-page';
+import { guardedRoutes } from '../../testing/route-harness';
+import { routeUrlFor } from '../../testing/route-table';
 import { ADMIN_SESSION_STORAGE_KEY, AdminSession } from '../session/admin-session';
+import { AdminSessionService } from '../session/admin-session.service';
 import { COMPANY_GATEWAY, CompanyGateway } from './company-gateway';
 import {
   COMPANY_STATUSES,
@@ -650,6 +656,104 @@ describe('CompanyService', () => {
         });
       }
     }
+  });
+
+  /**
+   * ## A 401 has to *end* the session, not merely describe it
+   *
+   * Until 2026-09-02 nothing cleared the credential. The server refused it — expired, or withdrawn
+   * by a super admin between two clicks — the screen said "your session has ended, sign in again",
+   * and `localStorage` still held the dead row. `requiresNoAdminSession` then read a signed-in
+   * admin and bounced him off `/login` and back to the screen full of 401s: **the remedy the copy
+   * names was the one door the app kept shut.**
+   *
+   * Asserted per route, because the surface has seven and a screen loads several at once. And
+   * asserted on the *stored* row rather than on a spy, so it also pins that what goes is one
+   * `localStorage` entry and not, ever, anything in Dexie: this browser may be a foreman's phone
+   * as well as an office tablet, and a dead office credential must never cost a day of unsent
+   * evidence (PROJECT.md principle 3).
+   */
+  describe('a 401', () => {
+    for (const [name, call] of CALLS) {
+      it(`signs the admin out of this browser when ${name} is refused`, async () => {
+        const service = configure(failingWith(httpError(401)));
+        const admins = TestBed.inject(AdminSessionService);
+        expect(admins.signedIn()).toBe(true);
+
+        await expect(call(service)).resolves.toMatchObject({ status: 'signedOut' });
+
+        expect(admins.signedIn()).toBe(false);
+        expect(localStorage.getItem(ADMIN_SESSION_STORAGE_KEY)).toBeNull();
+      });
+    }
+
+    it('is idempotent, so a screen loading several routes at once costs nothing extra', async () => {
+      const service = configure(failingWith(httpError(401)));
+
+      await Promise.all([service.listWorkers(), service.listDevices(), service.loadAccount()]);
+
+      expect(TestBed.inject(AdminSessionService).signedIn()).toBe(false);
+    });
+
+    /**
+     * **A 403 signs nobody out**, and that is the whole reason the two are kept apart. It says the
+     * role may not do this; signing in again changes nothing, and throwing the credential away
+     * would turn a wrong screen into a lost session.
+     */
+    it('is the only status that does — a 403 keeps the credential', async () => {
+      const service = configure(failingWith(httpError(403)));
+
+      await expect(service.listWorkers()).resolves.toMatchObject({ status: 'forbidden' });
+
+      expect(TestBed.inject(AdminSessionService).signedIn()).toBe(true);
+      expect(localStorage.getItem(ADMIN_SESSION_STORAGE_KEY)).not.toBeNull();
+    });
+
+    it.each([
+      ['a 500', httpError(500)],
+      ['a network failure', httpError(0)],
+      ['a 409', httpError(409)],
+    ])('keeps the credential through %s', async (_label, error) => {
+      const service = configure(failingWith(error));
+
+      await service.listWorkers();
+
+      expect(TestBed.inject(AdminSessionService).signedIn()).toBe(true);
+    });
+
+    /**
+     * The journey, end to end: refused mid-session, and the sign-in screen actually opens.
+     *
+     * This is the assertion the unit ones above cannot make. Each guard in this app is
+     * individually correct and the reachability defect lived in their *combination* — which is
+     * why "the super admin pages aren't wired in" was true with every spec green. Driven through
+     * the real route table, so a guard that starts answering differently shows up here.
+     */
+    it('lets him reach the sign-in screen the copy sends him to', async () => {
+      // Resolved before anything is configured: `routeUrlFor` runs the lazy imports.
+      const login = await routeUrlFor(LoginPage);
+      localStorage.clear();
+      localStorage.setItem(ADMIN_SESSION_STORAGE_KEY, JSON.stringify(ADMIN));
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: COMPANY_GATEWAY, useValue: failingWith(httpError(401)) },
+          provideRouter(guardedRoutes()),
+        ],
+      });
+      const service = TestBed.inject(CompanyService);
+      const router = TestBed.inject(Router);
+      const harness = await RouterTestingHarness.create();
+
+      // Before: a browser that believes it is signed in is sent to its own surface instead.
+      await harness.navigateByUrl(login);
+      expect(router.url).not.toBe(login);
+
+      await service.listWorkers();
+
+      await harness.navigateByUrl(login);
+      expect(router.url).toBe(login);
+    });
   });
 
   /**

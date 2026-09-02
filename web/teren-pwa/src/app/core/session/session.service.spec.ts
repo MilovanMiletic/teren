@@ -57,6 +57,11 @@ describe('SessionService', () => {
       // demo out of the box" would silently reopen the door this increment closed, and every other
       // spec in this file would still pass. Activate the box instead — `DemoSeeder` provisions the
       // demo device and prints its username and code.
+      //
+      // **Still worth asserting now that `token()` no longer reads it (2026-09-02).** This is the
+      // only remaining reason the property exists: a credential compiled into the bundle is
+      // readable from devtools by anyone who opens them, whether or not this build sends it, and
+      // the next thing an edit that restored a value here would do is wire it back up.
       expect(environment.deviceToken).toBe('');
     });
   });
@@ -88,7 +93,7 @@ describe('SessionService', () => {
       expect(sessions.activated()).toBe(false);
     });
 
-    it('prefers the stored token over the build-time one', () => {
+    it('sends the token the server issued, and nothing else', () => {
       store(session({ token: 'trn_d_issued-by-the-server' }));
 
       expect(TestBed.inject(SessionService).token()).toBe('trn_d_issued-by-the-server');
@@ -119,8 +124,12 @@ describe('SessionService', () => {
       const sessions = TestBed.inject(SessionService);
 
       expect(sessions.session()).toBeNull();
-      // …and it falls back rather than sending an empty bearer.
-      expect(sessions.token()).toBe(environment.deviceToken);
+      // …and it sends nothing at all, rather than a bearer it cannot describe. Asserted against
+      // the literal, not against `environment.deviceToken`: since the fallback was deleted the
+      // constant is unrelated to this answer, and comparing to it would make the spec pass for
+      // the wrong reason on the day somebody put a value back in the build.
+      expect(sessions.token()).toBe('');
+      expect(sessions.usable()).toBe(false);
     });
   });
 
@@ -135,7 +144,7 @@ describe('SessionService', () => {
 
     try {
       expect(() => TestBed.inject(SessionService)).not.toThrow();
-      expect(TestBed.inject(SessionService).token()).toBe(environment.deviceToken);
+      expect(TestBed.inject(SessionService).token()).toBe('');
     } finally {
       getItem.mockRestore();
     }

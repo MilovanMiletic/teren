@@ -6,10 +6,11 @@
  * `/api`: keeping them in a separate file is what keeps `TerenApiClient` — which attaches a
  * bearer to everything it sends — from ever growing a method that must not have one.
  *
- * Every response field is optional on the way in and narrowed before it becomes a `Session`. The
- * server half (D2/D3) is being built in parallel and is not merged; a client that assumed a field
- * it never received would store half a credential, which `core/session/session.ts` exists to make
- * impossible.
+ * Every response field is optional on the way in and narrowed before it becomes a `Session`. That
+ * was written when the server half (D2/D3) was unmerged, and it is not relaxed now that it has
+ * shipped: a phone outlives a deploy, so this build will meet a response an older or newer server
+ * shaped differently, and a client that assumed a field it never received would store half a
+ * credential — which `core/session/session.ts` exists to make impossible.
  */
 
 /** `POST /auth/activate` — a worker binds this phone to his identity, once. */

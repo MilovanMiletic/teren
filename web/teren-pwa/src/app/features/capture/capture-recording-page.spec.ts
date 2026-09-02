@@ -38,19 +38,30 @@ class FakeRecorder {
 
   startCalls = 0;
   cancelled = false;
+  /**
+   * When `getUserMedia` actually resolved — the moment audio began, as opposed to the moment it
+   * was asked for. Null until a take starts.
+   */
+  grantedAt: number | null = null;
   private duration = 41_000;
 
   constructor(
     private readonly entries: EntryStore,
     private readonly outcome: 'ok' | 'denied' = 'ok',
+    /** How long the permission sheet sits in front of the foreman before he taps "Allow". */
+    private readonly permissionDelayMs = 0,
   ) {}
 
   async start(entryId: string): Promise<boolean> {
     this.startCalls += 1;
+    if (this.permissionDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.permissionDelayMs));
+    }
     if (this.outcome === 'denied') {
       this.stateSignal.set('denied');
       return false;
     }
+    this.grantedAt = Date.now();
     this.stateSignal.set('recording');
     // Two seconds of audio land on disk while recording, exactly as the real recorder does.
     await this.entries.appendChunk(entryId, new Blob([new Uint8Array([1, 1])]));
@@ -101,7 +112,14 @@ describe('CaptureRecordingPage', () => {
   let router: Router;
   let fixture: ComponentFixture<CaptureRecordingPage>;
 
-  async function configure(options: { outcome?: 'ok' | 'denied'; projects?: boolean } = {}) {
+  async function configure(
+    options: {
+      outcome?: 'ok' | 'denied';
+      projects?: boolean;
+      /** How long the microphone permission sheet stays up before the take begins. */
+      permissionDelayMs?: number;
+    } = {},
+  ) {
     /*
      * An activated phone, because that is the only kind that can be on this screen.
      *
@@ -155,7 +173,12 @@ describe('CaptureRecordingPage', () => {
         { provide: GeolocationService, useValue: { currentFix: async () => null } },
         {
           provide: AudioRecorderService,
-          useFactory: () => new FakeRecorder(inject(EntryStore), options.outcome ?? 'ok'),
+          useFactory: () =>
+            new FakeRecorder(
+              inject(EntryStore),
+              options.outcome ?? 'ok',
+              options.permissionDelayMs ?? 0,
+            ),
         },
       ],
     });
@@ -201,6 +224,40 @@ describe('CaptureRecordingPage', () => {
     const sessions = await db.captures.toArray();
     expect(sessions).toHaveLength(1);
     expect(sessions[0].projectId).toBe(DEMO_PROJECTS[0].id);
+    expect(await db.chunks.count()).toBe(2);
+  });
+
+  /**
+   * ## A permission prompt is not recording
+   *
+   * The session has to be opened before `getUserMedia` is called — a chunk needs somewhere to land
+   * before the first one arrives — so `beginCapture` stamps the moment the microphone was *asked
+   * for*. On a first-ever recording that is a sheet a man with muddy hands has to find the "Allow"
+   * button on, and until 2026-09-02 every second of it became a second of phantom recording: in
+   * the entry's `capturedAt`, therefore in `created_at`, therefore in the timestamp printed on the
+   * client's report, and at one end of the duration `finishCapture` derives when nobody presses
+   * stop.
+   *
+   * Asserted against the moment the fake recorder *granted* the microphone rather than against a
+   * fixed number of milliseconds: the claim is "the stamp is not older than the audio", which is
+   * true of a fast grant and a slow one alike.
+   */
+  it('stamps the capture when audio began, not when the microphone was asked for', async () => {
+    const asked = Date.now();
+    await configure({ permissionDelayMs: 60 });
+    const [session] = await db.captures.toArray();
+
+    const stampOf = async () =>
+      Date.parse((await db.captures.get(session.entryId))?.capturedAt ?? '');
+    await waitUntil(async () => (await stampOf()) >= (recorder.grantedAt ?? Infinity), {
+      onTick: () => fixture.detectChanges(),
+      describe: 'the capture to be stamped no earlier than the audio',
+    });
+
+    // The sheet really was up for a measurable time, so a stamp taken before `start()` would have
+    // been demonstrably older than the audio rather than merely a millisecond out.
+    expect((recorder.grantedAt ?? 0) - asked).toBeGreaterThanOrEqual(60);
+    // Nothing else moved: the chunks recorded on the way are still there.
     expect(await db.chunks.count()).toBe(2);
   });
 

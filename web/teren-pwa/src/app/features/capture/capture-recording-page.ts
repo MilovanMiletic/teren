@@ -203,6 +203,9 @@ export class CaptureRecordingPage implements OnDestroy {
     }
 
     const entryId = crypto.randomUUID();
+    // Provisional, and corrected below the moment audio actually starts. The session cannot be
+    // opened without *a* timestamp — a chunk needs somewhere to land before the first one
+    // arrives — but this one is taken before `getUserMedia` has even shown the permission sheet.
     const capturedAt = new Date().toISOString();
     const mimeType = negotiateAudioMimeType();
 
@@ -238,6 +241,23 @@ export class CaptureRecordingPage implements OnDestroy {
       });
       return;
     }
+
+    /*
+     * Now that audio is really being captured, say so — because the stamp above is not when this
+     * recording began, it is when the microphone was *asked for*.
+     *
+     * `recorder.start()` awaits `getUserMedia`, and on a first-ever recording that is a permission
+     * sheet a man with muddy hands has to find the "Allow" button on. Twenty seconds of it used to
+     * become twenty seconds of phantom recording, and not only on this screen: `capturedAt` becomes
+     * the entry's own, so it reaches the server as `created_at`, is printed on the client's report
+     * as the time the day's work was recorded, and is one end of the duration `finishCapture`
+     * derives when nobody presses stop.
+     *
+     * Awaited rather than fired and forgotten, because a rescue sweep may assemble this capture at
+     * any moment and should see the corrected time; and swallowed, because the recording is already
+     * running and a wrong-but-early timestamp is worth immeasurably more than a lost take.
+     */
+    await this.entries.markCaptureStarted(entryId, new Date().toISOString()).catch(() => undefined);
 
     this.actions.record(ACTIONS.captureRecordStart, { outcome: 'ok', entryId });
 

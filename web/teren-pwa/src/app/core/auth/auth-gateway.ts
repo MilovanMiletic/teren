@@ -29,10 +29,11 @@ const AUTH_TIMEOUT_MS = 30_000;
  * ## Why a token and not a service
  *
  * The same reason `PROJECT_SOURCE`, `INSTALL_PROMPT_SOURCE` and `TEREN_DB` are tokens: the screens
- * ship before the endpoints do. D2 and D3 are being built in parallel and are not merged, so
- * without a seam this increment could not be written, let alone reviewed, without a server that
- * answers `/auth/activate`. With one, {@link MockAuthGateway} stands in for the whole backend in
- * every spec, and the day the routes land nothing above this line changes.
+ * shipped before the endpoints did. D2 and D3 were being built in parallel and unmerged when F3
+ * was written, so without a seam this increment could not have been written, let alone reviewed,
+ * without a server that answers `/auth/activate`. The routes landed on 2026-08-31 and nothing
+ * above this line changed — which is what the seam was for, and it keeps earning its place:
+ * {@link MockAuthGateway} still stands in for the whole backend in every spec.
  *
  * ## Why these calls do not go through `TerenApiClient`
  *

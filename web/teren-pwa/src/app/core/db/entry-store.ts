@@ -5,6 +5,7 @@ import Dexie, { liveQuery } from 'dexie';
 import { FailureKind, STALLED_AFTER_ATTEMPTS } from '../api/api-failure';
 import { localDay } from './local-day';
 import {
+  CaptureSession,
   ConfirmDraft,
   GeoFix,
   LocalEntry,
@@ -15,6 +16,15 @@ import {
   needsConfirmation,
 } from './models';
 import { TEREN_DB } from './teren-db';
+
+/**
+ * How recently a chunk must have arrived for a capture to count as **live** rather than orphaned.
+ *
+ * Five seconds against a one-second chunk interval, so a recording that is running has always
+ * written something inside the window and a capture the tab died in the middle of has not. See
+ * `EntryStore.rescue`, which is the only reader and the only place this matters.
+ */
+export const LIVE_CAPTURE_WINDOW_MS = 5_000;
 
 /** A photo that has already been compressed, with the metadata read before compression. */
 export interface CapturedPhoto {
@@ -243,8 +253,31 @@ export class EntryStore {
 
   /** Sessions currently on disk, newest first. */
   async listCaptures(): Promise<string[]> {
+    return (await this.captureSessions()).map((session) => session.entryId);
+  }
+
+  /**
+   * Correct a capture's start time to the moment audio actually began.
+   *
+   * `beginCapture` has to stamp *something* before `getUserMedia` is called — a chunk cannot be
+   * homeless — but the moment it stamps is the moment the microphone was *asked for*, and on a
+   * first-ever recording the permission sheet sits there until a man with muddy hands finds the
+   * "Allow" button. Twenty seconds of that used to become twenty seconds of phantom recording: in
+   * the entry's `capturedAt` and therefore in `created_at`, in the timestamp printed on the client's
+   * report, and in the duration `finishCapture` derives from `lastChunkAt - capturedAt` when
+   * nobody pressed stop.
+   *
+   * Only the timestamp moves. The chunks, the id and the session are untouched, so this is safe to
+   * lose: a call that never lands leaves the honest-but-early stamp behind rather than nothing.
+   */
+  async markCaptureStarted(entryId: string, capturedAt: string): Promise<void> {
+    await this.db.captures.update(entryId, { capturedAt, updatedAt: new Date().toISOString() });
+  }
+
+  /** The capture rows themselves, newest first. */
+  private async captureSessions(): Promise<CaptureSession[]> {
     const sessions = await this.db.captures.toArray();
-    return sessions.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map((s) => s.entryId);
+    return sessions.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
   private async clearCaptureLeftovers(entryId: string): Promise<void> {
@@ -386,17 +419,42 @@ export class EntryStore {
    * Ordering matters — a rescued capture becomes a draft with a fresh `updatedAt`, so it is
    * inside the grace period and will not be queued in the same pass. That is deliberate: the user
    * may well be coming back to it.
+   *
+   * ## A capture that is still producing audio is not an orphan
+   *
+   * `finishCapture` assembles what is on disk and **deletes the session**, and every chunk that
+   * arrives afterwards is dropped by `appendChunk`'s missing-session branch while the screen's
+   * timer keeps climbing. Called against a live recording, this method is therefore not a rescue
+   * at all: it is a silent truncation, which is what it did on every return to the foreground
+   * until 2026-09-02 (see `rescue.service.ts`).
+   *
+   * So {@link LIVE_CAPTURE_WINDOW_MS} is checked here, in the store, in addition to the caller's
+   * `except` list. **Deliberately not instead of it**: the caller knows which take is live from
+   * the recorder and can say so with certainty, and this only knows that bytes arrived a moment
+   * ago. Either alone closes the defect; both together mean the next caller of `rescue()` — a
+   * future "clean up" button, a spec, a background task — cannot reopen it by forgetting the
+   * exemption.
+   *
+   * The window is generous relative to the one-second chunk interval and *tiny* relative to the
+   * thing it protects. Being wrong the other way — declining to assemble a genuinely dead capture
+   * for five seconds — costs nothing at all: the next sweep, or the next app start, takes it.
    */
   async rescue(
     options: { graceMs?: number; except?: readonly string[] } = {},
   ): Promise<{ assembled: number; queued: number }> {
     const except = new Set(options.except ?? []);
+    const liveSince = Date.now() - LIVE_CAPTURE_WINDOW_MS;
     let assembled = 0;
-    for (const entryId of await this.listCaptures()) {
-      if (except.has(entryId)) {
+    for (const session of await this.captureSessions()) {
+      if (except.has(session.entryId)) {
         continue;
       }
-      if (await this.finishCapture(entryId)) {
+      // An unparseable or absent stamp reads as NaN and falls through to be assembled, which is
+      // the safe direction: a capture nothing can date is exactly the orphan this sweep is for.
+      if (Date.parse(session.lastChunkAt ?? '') > liveSince) {
+        continue;
+      }
+      if (await this.finishCapture(session.entryId)) {
         assembled += 1;
       }
     }
@@ -754,19 +812,17 @@ export class EntryStore {
    * https origin, and releasing those rows would put them back in the queue to fail identically —
    * the queue claiming to have learned something it did not.
    *
-   * **What actually calls this today, stated plainly because the obvious reading is wrong.** The
-   * only caller is the credential-change effect in `UploadService.start()`, and in the *shipped*
-   * app that effect never fires: `SessionService.token()` falls back to `environment.deviceToken`,
-   * which is non-empty, and nothing calls `adopt()` until F3 lands the activation screen. So a
-   * phone upgrading from a pre-F1 build does **not** heal on its own — its blocked rows are
-   * released by one press of "Pokušaj sve ponovo", not automatically. This method's automatic path
-   * begins working when activation does.
+   * **Two callers, and only one of them is reliable.** `ActivationService` calls this explicitly
+   * on every successful activation, and the credential-change effect in `UploadService.start()`
+   * calls it when the token changes by any other route. The explicit call is the one that
+   * matters: the effect is keyed on the token's string identity, so an idempotent re-activation
+   * returning the *same* token moves nothing — and that is precisely the case where a foreman has
+   * most reason to expect his morning to start moving. Treat the effect as belt-and-braces, never
+   * as the mechanism.
    *
-   * **And when it does, do not rely on the effect alone.** The heal is keyed on the token's string
-   * identity, so an idempotent re-activation that returns the *same* token would leave the queue
-   * exactly where it was — the one case where a foreman has most reason to expect it to move.
-   * `ActivationService` should call this explicitly on every successful activation and treat the
-   * effect as belt-and-braces for the case where a credential changes by some other route.
+   * (This paragraph said the opposite until 2026-09-02: that the effect "never fires in the
+   * shipped app" because `SessionService.token()` fell back to a compiled-in credential and
+   * nothing ever called `adopt()`. Both halves stopped being true at F3 and D7/F9 respectively.)
    *
    * Reuses {@link retryNow} per row rather than writing state itself, so there is exactly one path
    * that clears a failure, and rows released here are indistinguishable from rows a foreman

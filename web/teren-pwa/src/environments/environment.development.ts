@@ -12,11 +12,12 @@ export const environment = {
   apiBaseUrl: 'http://localhost:5080',
 
   /**
-   * **Empty since the token flip (2026-08-31).** Until then this carried the throwaway from
-   * `appsettings.Development.json`, and `SessionService.token` fell back to it — which meant
-   * `usable()` was always true, the `canMatch` gate never redirected anyone, and the app opened on
-   * Home no matter what. Emptying it is the change that turns the login screens from something you
-   * can navigate to into something you have to pass.
+   * **Empty since the token flip (2026-08-31), and read by nothing since 2026-09-02.** Until then
+   * this carried the throwaway from `appsettings.Development.json`, and `SessionService.token` fell
+   * back to it — which meant `usable()` was always true, the `canMatch` gate never redirected
+   * anyone, and the app opened on Home no matter what. Emptying it is the change that turned the
+   * login screens from something you can navigate to into something you have to pass; deleting the
+   * fallback is what makes putting a value back here inert as well as red.
    *
    * A laptop now activates the same way a phone does: `zoran.jovanovic` / `DEM0-TEST` against a
    * seeded database. The API still accepts `Auth:DeviceToken`, but only because `DemoSeeder`

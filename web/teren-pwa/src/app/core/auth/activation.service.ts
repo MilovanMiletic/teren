@@ -44,10 +44,10 @@ export type AuthFailure =
   /**
    * **404** — this server has no such route.
    *
-   * Today that is the normal answer, because D2/D3 are not merged. It stays useful afterwards: a
-   * phone pointed at an older server (a stale staging box, a cached origin) meets exactly this,
-   * and telling a foreman "wrong code" when the server never looked at his code would send him
-   * to his boss for a replacement he does not need.
+   * The routes exist now (D2/D3 shipped 2026-08-31), so this is no longer the normal answer — it
+   * is the answer from a phone pointed at an older server: a stale staging box, a cached origin,
+   * an install that has not seen a new deploy. Telling a foreman "wrong code" when the server
+   * never looked at his code would send him to his boss for a replacement he does not need.
    *
    * It follows that the server must never answer 404 to a bad username or a bad code. §7 says it
    * answers 401; this classification is the client half of that contract.

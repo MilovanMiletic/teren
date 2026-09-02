@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 
 import { UploadFailure } from '../api/api-failure';
 import { ADMIN_SESSION_STORAGE_KEY, AdminSession } from '../session/admin-session';
+import { AdminSessionService } from '../session/admin-session.service';
 import { MockPlatformGateway } from './mock-platform-gateway';
 import { PLATFORM_GATEWAY, PlatformGateway } from './platform-gateway';
 import {
@@ -811,6 +812,45 @@ describe('PlatformService', () => {
         });
       }
     }
+
+    /**
+     * ## A 401 has to *end* the session, not merely describe it
+     *
+     * The twin of the company surface's rule, and the same defect until 2026-09-02: the server
+     * refused the credential, the screen said "sign in again", and `localStorage` still held the
+     * dead row — so `requiresNoAdminSession` read a signed-in super admin and bounced him off
+     * `/login` back to the screen full of 401s. **The remedy the copy names was the one door the
+     * app kept shut.**
+     *
+     * Every route, because the platform screens load several at once — and asserted on the stored
+     * row, which is also what pins that exactly one `localStorage` entry goes and nothing else.
+     */
+    for (const [name, call] of CALLS) {
+      it(`signs the founder out of this browser when ${name} is refused`, async () => {
+        const service = configure(failingWith(httpError(401)));
+        const admins = TestBed.inject(AdminSessionService);
+        expect(admins.signedIn()).toBe(true);
+
+        await expect(call(service)).resolves.toMatchObject({ status: 'signedOut' });
+
+        expect(admins.signedIn()).toBe(false);
+        expect(localStorage.getItem(ADMIN_SESSION_STORAGE_KEY)).toBeNull();
+      });
+    }
+
+    /**
+     * A 403 signs nobody out. It says the role may not do this; signing in again changes nothing,
+     * and throwing the credential away would turn a wrong screen into a lost session.
+     */
+    it('keeps the credential through a 403, a 500 and a network failure', async () => {
+      for (const error of [httpError(403), httpError(500), httpError(0)]) {
+        const service = configure(failingWith(error));
+
+        await service.listPeople();
+
+        expect(TestBed.inject(AdminSessionService).signedIn(), describeError(error)).toBe(true);
+      }
+    });
 
     /** A 409 is `refused` everywhere except create, where it has a remedy attached. */
     it('reads a 409 as refused everywhere but create', async () => {

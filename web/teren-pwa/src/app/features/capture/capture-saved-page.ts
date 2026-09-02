@@ -29,12 +29,14 @@ import { PluralService } from '../../ui/plural.service';
  *
  * By the time this screen renders, the recording is already on disk — that is the whole point of
  * the copy on it. Photos are added here, one at a time, each compressed and stored before the
- * thumbnail appears. "Gotovo" is the explicit hand-over to the sync queue (`draft → queued`);
- * B3 adds the loop that empties it, and needs no change here.
+ * thumbnail appears. "Gotovo" is the explicit hand-over to the sync queue (`draft → queued`); B3's
+ * loop empties it from there, and needed no change here — which was the point of drawing the line
+ * at the queue rather than at the network.
  *
- * The upload-progress card from the artboard belongs to B3 and is deliberately absent: showing a
- * progress bar for an upload that cannot happen yet would be the one thing this product must
- * never do about sync state — lie.
+ * The upload-progress card from the artboard is still deliberately absent. Progress belongs to
+ * the pending screen, which watches the outbox and can say something true about it; a bar on this
+ * screen would have to guess, and guessing about sync state is the one thing this product must
+ * never do.
  */
 @Component({
   selector: 'app-capture-saved-page',

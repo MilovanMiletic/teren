@@ -16,11 +16,16 @@ import {
  *
  * ## Why it exists
  *
- * D2 and D3 — the increments that build `/auth/activate` and `/auth/login` — are being written in
- * parallel and are not merged. Without this, none of F3 could be exercised: not the specs, not a
- * founder clicking through the screens, not a reviewer checking that a rejected code leaves the
- * field alone. With it, every path through the screens is reachable today, and the day the routes
- * land the only change is which implementation `AUTH_GATEWAY` resolves to.
+ * D2 and D3 — the increments that build `/auth/activate` and `/auth/login` — were written in
+ * parallel with F3 and unmerged. Without this, none of F3 could have been exercised: not the
+ * specs, not a founder clicking through the screens, not a reviewer checking that a rejected code
+ * leaves the field alone. The routes landed on 2026-08-31 and the only change was which
+ * implementation `AUTH_GATEWAY` resolves to.
+ *
+ * It stays because the specs need it. Every path through the auth screens — a refused code, a
+ * 429, a server that answers something this build cannot read — is reachable here without a
+ * database, which is the difference between a suite that runs in five seconds and one that needs
+ * Docker.
  *
  * ## It is not wired into the app
  *

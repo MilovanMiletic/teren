@@ -183,6 +183,79 @@ and photo open in iOS standalone; fix 4 before an admin's first password reset f
 **Both reviews' verdict in one line:** the code the tests can see is good; what will fail first is
 the deploy chain, a rescue that eats a live recording, and a health check that cannot say no.
 
+**Founder: "Fix."** Both must-do lists taken as one increment, backend and frontend implementers in
+parallel on disjoint trees, each followed by its reviewer. Left out on purpose: the seven-copy admin
+CSS, the 36/40 px tap targets, `SwUpdate`, CSP, iOS download behaviour (needs an iPhone in hand),
+the `IsUniqueViolation`/`Utc` de-duplication, the D4 hatch. *And a second ask arrived mid-run:
+"take a look at the overall flow … have some animations when you click, when the page is reloading,
+when a new entry was added." Queued as its own increment after the fixes — there are no motion tokens
+in `design/tokens.md` yet, so it starts there.*
+
+**Frontend fix increment — implementer's report (verified by its reviewer below)**
+
+- **1 (CRITICAL) fixed with two independent defences**: `RescueService.exempt()` adds the recorder's
+  live `entryId`, and `EntryStore.rescue()` refuses any capture whose `lastChunkAt` is inside a 5 s
+  `LIVE_CAPTURE_WINDOW_MS`, whatever it was told to exempt. The recorder now clears its `entryId`
+  on teardown and on failed starts — without that the exemption goes stale and a finished draft would
+  never be queued by `queueAbandonedDrafts`. The spec that pinned the defect was split and the real
+  exemption spec'd. **Live proof re-run:** control 22,938 B / 6465 ms, disturbed (tab switch at
+  2.5 s) **23,430 B / 6590 ms** — one timeslice apart, where the review had measured 4,655 B.
+- **2 (HIGH)**: `audio-recorder.service.spec.ts`, 25 specs over a stubbed `MediaRecorder` that fires
+  its stop-time `dataavailable` on a later task — which is what lets it see finding 3 at all.
+- **3**: `interrupt()` claims `stopping` synchronously (the re-entrancy guard, since `onerror` and
+  `track.onended` fire together), freezes the timer, awaits a bounded `onstop` and the pending
+  writes, then tears down. `STOP_TIMEOUT_MS` shared with `stop()`.
+- **4**: a 401 from either admin gateway calls `admins.signOut()` (one `localStorage` row); 403, 500,
+  0 and 409 keep the credential; journey spec drives `/login` through the real route table.
+- **5**: `EntryStore.markCaptureStarted` restamps `capturedAt` when `recorder.start()` resolves true.
+- **6**: nine comments rewritten; the `environment.deviceToken` **fallback is gone** from
+  `session.service.ts`, the constant stays as the tripwire. `TerenApiClient.configured` kept — it is
+  the same predicate as `session.usable()` in a second layer, not a duplicate check.
+- Suite **1632/1632** (82 files, +57), build clean at 456 kB. Four mutation proofs with sha256
+  restores. *Residual, named:* on a browser that also holds a device session, the post-401 chrome
+  says "Prijavite se ponovo" with no tappable way to `/login` — `session-link` renders nothing for a
+  device session by design. That is the "Prijavi se visibility" item in the veto queue.
+
+**Frontend fix increment — reviewer: accept-with-fixes.** Re-ran the build, the full suite
+(1632/1632, one run, no flake), the live truncation proof (control 22,938 B / 6449 ms, disturbed
+23,430 B / 6586 ms — the capture row went `chunkCount 2 → 3` across the tab switch with the session
+intact) and **six mutations in an isolated copy**: five red as claimed, **one survived** — the
+`interrupt()` re-entrancy guard. *The "mutation-proven" claim was false for exactly the guard the
+docstring calls load-bearing*, same shape as the `/company` scar of 2026-09-01. The path it protects is
+real: `onerror` during a user `stop()` that is already awaiting `onstop` — without the guard the tail
+timeslice is dropped, which is the byte-loss class this increment exists to close. Gating: adopt the
+reviewer's 12-line spec. Also found, red on the shipped code: a **stale `finishInterruption`
+continuation tears down the next take** (interruption → cancel → new take → old `onstop` fires →
+`teardown()` stops the *new* stream and paints "interrupted" over a healthy microphone); `stop()` has
+had the same shape since B2. Fix: a take-generation counter checked after every `await`. And the
+comment-rot pass introduced one false claim of its own (`auth-gateway.spec.ts:9-18`). Sent back.
+*On the residual: the reviewer agrees it is the veto-queue item, not gating — but says it plainly:
+the device-and-admin browser is the owner-foreman's own phone, the ordinary case, and after a reload
+he lands on Home with nothing on screen to sign in from. Two candidate mechanisms, both chrome, both
+his call.*
+
+**Frontend fix increment — round two (implementer):** the guard is pinned by the reviewer's spec
+(guard removed → exactly 1 red); a **take-generation counter** (`private take`, bumped on adopt and on
+release) is checked after every `await` in `stop()` and `finishInterruption()`, three staleness specs,
+both checks removed → exactly 3 red; the auth-gateway spec now *seeds* the device session it claimed
+and asserts the premise (seed removed → 3 red). The reviewer's fake-timer drafts hung at 5 s because
+`openSession()` is a Dexie write that needs real timers — the session is opened before
+`vi.useFakeTimers()`, with the reason written down. **The cancel button is deliberately not disabled
+during `stopping`**: it is the only way out of a recorder that has stopped answering, and the counter
+makes the race harmless. Suite **1636/1636**; build clean; live proof re-run on this build, 22,938 B /
+6437 ms against 23,430 B / 6573 ms.
+
+**Frontend fix increment — delta review: ACCEPT, whole increment now accept.** All three mutations
+re-run in the reviewer's isolated copy: exactly 1, 3 and 3 red as claimed; 1636/1636 and a clean build
+reproduced. On not disabling *Otkaži* during `stopping`: *"accept the outcome, not the stated reason"*
+— both waits are bounded at 2 s so nobody was ever trapped; the reason that holds is the page's own
+design rule that only an explicit tap throws a take away, and the counter makes that tap harmless.
+Two items for the **founder's queue**, both pre-existing since B2, neither made worse: (a) tapping
+*Otkaži* by reflex 1–2 s after *Stop*, while `saving()` is true, discards a take the foreman decided to
+keep — confirm-to-discard, or disable cancel while saving; (b) a stale `stop()` continuation on a
+cancelled take logs `captureRecordStop {outcome: 'cancel', empty: true}` — "empty" for a take that was
+cancelled, cosmetic.
+
 **Next**
 
 **The dev server (B3a for real).** `deploy/README.md` §2 is the shopping list and it still holds:

@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
 
 import { TEST_PROJECT, captureEntry } from '../../testing/capture-fixture';
-import { EntryNotOpenError, EntryStore } from './entry-store';
+import { EntryNotOpenError, EntryStore, LIVE_CAPTURE_WINDOW_MS } from './entry-store';
 import { LocalEntry, OUTBOX_STATES } from './models';
 import { TEREN_DB, TerenDb } from './teren-db';
 
@@ -28,6 +28,20 @@ describe('EntryStore', () => {
 
   function chunk(byte: number): Blob {
     return new Blob([new Uint8Array([byte, byte])], { type: 'audio/ogg;codecs=opus' });
+  }
+
+  /**
+   * Back-date a capture's last chunk, so the sweep reads it as an orphan rather than a live take.
+   *
+   * Every spec that expects `rescue()` to *assemble* something has to do this, and that is the
+   * point: a capture whose last chunk arrived a moment ago is a recording in progress, and
+   * assembling one deletes the session out from under the microphone. A spec that skipped this
+   * would be asserting the truncation.
+   */
+  async function abandon(entryId: string, agoMs = 60_000): Promise<void> {
+    await db.captures.update(entryId, {
+      lastChunkAt: new Date(Date.now() - agoMs).toISOString(),
+    });
   }
 
   // ---- Recording straight to disk -------------------------------------------------------------
@@ -177,6 +191,8 @@ describe('EntryStore', () => {
       for (let index = 0; index < 180; index += 1) {
         await store.appendChunk(entryId, chunk(index % 251));
       }
+      // Just outside the live window, so the derived duration is still the three minutes recorded.
+      await abandon(entryId, LIVE_CAPTURE_WINDOW_MS + 1_000);
 
       const result = await store.rescue();
 
@@ -235,6 +251,7 @@ describe('EntryStore', () => {
         mimeType: 'audio/ogg',
       });
       await store.appendChunk(entryId, chunk(1));
+      await abandon(entryId);
 
       const result = await store.rescue();
 
@@ -251,6 +268,131 @@ describe('EntryStore', () => {
       await store.rescue();
 
       expect((await db.entries.get(entry.id))?.status).toBe('draft');
+    });
+
+    /**
+     * ## A capture that is still producing audio is not an orphan
+     *
+     * `finishCapture` assembles what is on disk and **deletes the session**, so every chunk that
+     * arrives afterwards is dropped by `appendChunk`'s missing-session branch while the screen's
+     * timer keeps climbing. Run against a live recording, `rescue()` is therefore not a rescue at
+     * all — it is a silent truncation, which is what happened on every return to the foreground
+     * until 2026-09-02.
+     *
+     * The guard is here as well as in the caller on purpose. `RescueService` names the live take
+     * from the recorder and is the precise defence; this one holds for **whoever** calls `rescue()`
+     * next, including a caller who has never heard of the exemption.
+     */
+    it('refuses to assemble a capture whose last chunk just arrived', async () => {
+      const entryId = crypto.randomUUID();
+      await store.beginCapture({
+        entryId,
+        project: TEST_PROJECT,
+        capturedAt: new Date(Date.now() - 6_000).toISOString(),
+        mimeType: 'audio/ogg',
+      });
+      await store.appendChunk(entryId, chunk(1));
+
+      // No `except` at all: the caller has forgotten, or does not know, that a take is running.
+      const result = await store.rescue();
+
+      expect(result.assembled).toBe(0);
+      // The session survives, so the next chunk still has somewhere to land.
+      expect(await db.captures.get(entryId)).toBeDefined();
+      expect(await db.entries.get(entryId)).toBeUndefined();
+
+      // …and a chunk that arrives after the sweep is still kept, which is the thing the truncation
+      // destroyed: with the session gone this write is a no-op and the audio is lost.
+      await store.appendChunk(entryId, chunk(2));
+      expect((await db.captures.get(entryId))?.chunkCount).toBe(2);
+    });
+
+    it('assembles it as soon as it really has gone quiet', async () => {
+      const entryId = crypto.randomUUID();
+      await store.beginCapture({
+        entryId,
+        project: TEST_PROJECT,
+        capturedAt: new Date(Date.now() - 60_000).toISOString(),
+        mimeType: 'audio/ogg',
+      });
+      await store.appendChunk(entryId, chunk(1));
+      // Just outside the window: declining for a few seconds costs nothing, declining for ever
+      // would strand the take.
+      await abandon(entryId, LIVE_CAPTURE_WINDOW_MS + 1_000);
+
+      expect((await store.rescue()).assembled).toBe(1);
+    });
+
+    /**
+     * A capture with no `lastChunkAt` at all — the tab died between opening the session and the
+     * first timeslice — must still be swept. `Date.parse` answers NaN, every comparison against it
+     * is false, and the row falls through to be assembled (and then discarded, having no audio).
+     * The safe direction: a capture nothing can date is exactly the orphan this sweep is for.
+     */
+    it('sweeps a capture it cannot date at all', async () => {
+      const entryId = crypto.randomUUID();
+      await store.beginCapture({
+        entryId,
+        project: TEST_PROJECT,
+        capturedAt: new Date(Date.now() - 60_000).toISOString(),
+        mimeType: 'audio/ogg',
+      });
+
+      await store.rescue();
+
+      expect(await db.captures.get(entryId)).toBeUndefined();
+    });
+  });
+
+  // ---- When the recording really started -------------------------------------------------------
+
+  describe('markCaptureStarted', () => {
+    /**
+     * The stamp `beginCapture` takes is when the microphone was *asked for*, and on a first-ever
+     * recording that is a permission sheet a man with muddy hands has to find the "Allow" button
+     * on. Twenty seconds of that used to become twenty seconds of phantom recording — in the
+     * entry's `capturedAt`, therefore in `created_at`, therefore on the client's report, and at one
+     * end of the duration `finishCapture` derives when nobody presses stop.
+     */
+    it('moves the capture to when audio actually began, and the entry follows', async () => {
+      const entryId = crypto.randomUUID();
+      const asked = new Date(Date.now() - 20_000).toISOString();
+      const granted = new Date().toISOString();
+      await store.beginCapture({
+        entryId,
+        project: TEST_PROJECT,
+        capturedAt: asked,
+        mimeType: 'audio/ogg',
+      });
+
+      await store.markCaptureStarted(entryId, granted);
+      await store.appendChunk(entryId, chunk(1));
+      await abandon(entryId);
+      await store.rescue();
+
+      expect((await db.entries.get(entryId))?.capturedAt).toBe(granted);
+      // The derived duration is the one that would have been twenty seconds too long.
+      expect((await db.entries.get(entryId))?.audioDurationMs).toBeLessThan(20_000);
+    });
+
+    it('touches nothing but the timestamp', async () => {
+      const entryId = crypto.randomUUID();
+      await store.beginCapture({
+        entryId,
+        project: TEST_PROJECT,
+        capturedAt: new Date(Date.now() - 20_000).toISOString(),
+        mimeType: 'audio/ogg',
+      });
+      await store.appendChunk(entryId, chunk(1));
+      const before = await db.captures.get(entryId);
+
+      await store.markCaptureStarted(entryId, new Date().toISOString());
+
+      const after = await db.captures.get(entryId);
+      expect(after?.chunkCount).toBe(before?.chunkCount);
+      expect(after?.lastChunkAt).toBe(before?.lastChunkAt);
+      expect(after?.mimeType).toBe(before?.mimeType);
+      expect(await db.chunks.where('entryId').equals(entryId).count()).toBe(1);
     });
   });
 

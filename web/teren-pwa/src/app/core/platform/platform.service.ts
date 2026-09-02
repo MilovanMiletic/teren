@@ -213,7 +213,7 @@ export class PlatformService {
         nextCursor: text(response?.next_cursor),
       };
     } catch (error) {
-      return { status: classify(error), customers: [], nextCursor: null };
+      return { status: this.classify(error), customers: [], nextCursor: null };
     }
   }
 
@@ -229,7 +229,7 @@ export class PlatformService {
       // over a customer that may not be there. Same doctrine as `CompanyService.addWorker`.
       return customer ? { status: 'ok', customer } : { status: 'unavailable', customer: null };
     } catch (error) {
-      return { status: classify(error), customer: null };
+      return { status: this.classify(error), customer: null };
     }
   }
 
@@ -252,7 +252,7 @@ export class PlatformService {
         : await this.gateway.resumeCompany(companyId);
       return { status: 'ok', customer: toCustomer(response) };
     } catch (error) {
-      return { status: classify(error), customer: null };
+      return { status: this.classify(error), customer: null };
     }
   }
 
@@ -270,7 +270,7 @@ export class PlatformService {
         nextCursor: text(response?.next_cursor),
       };
     } catch (error) {
-      return { status: classify(error), people: [], nextCursor: null };
+      return { status: this.classify(error), people: [], nextCursor: null };
     }
   }
 
@@ -323,7 +323,7 @@ export class PlatformService {
       }
       return { status: 'ok', person, invite };
     } catch (error) {
-      return { status: classifyCreate(error), person: null, invite: null };
+      return { status: this.classifyCreate(error), person: null, invite: null };
     }
   }
 
@@ -346,7 +346,7 @@ export class PlatformService {
       // the founder press again and retire a second link, while the one already sent is dead.
       return invite ? { status: 'ok', invite } : { status: 'unavailable', invite: null };
     } catch (error) {
-      return { status: classify(error), invite: null };
+      return { status: this.classify(error), invite: null };
     }
   }
 
@@ -369,7 +369,7 @@ export class PlatformService {
         nextCursor: text(response?.next_cursor),
       };
     } catch (error) {
-      return { status: classify(error), logs: [], nextCursor: null };
+      return { status: this.classify(error), logs: [], nextCursor: null };
     }
   }
 
@@ -405,7 +405,7 @@ export class PlatformService {
       this.saver.save(download.body, filename);
       return { status: 'ok', filename };
     } catch (error) {
-      return { status: classify(error), filename: null };
+      return { status: this.classify(error), filename: null };
     }
   }
 
@@ -419,8 +419,39 @@ export class PlatformService {
         : await this.gateway.enableUser(userId);
       return { status: 'ok', person: toPerson(response) };
     } catch (error) {
-      return { status: classify(error), person: null };
+      return { status: this.classify(error), person: null };
     }
+  }
+
+  /**
+   * {@link classifyStatus}, plus the consequence: **a 401 ends the session in this browser.**
+   *
+   * The twin of `CompanyService.classify`, which carries the full reasoning. The short version is
+   * that a screen saying "sign in again" over a `localStorage` row the server has already refused
+   * makes `requiresNoAdminSession` bounce the reader off `/login` and back to the 401s. One
+   * `localStorage` row goes; nothing else is touched, and a 403 signs nobody out.
+   */
+  private classify(error: unknown): PlatformStatus {
+    const status = classifyStatus(error);
+    if (status === 'signedOut') {
+      this.admins.signOut();
+    }
+    return status;
+  }
+
+  /**
+   * The same, plus the one refusal the founder can fix without leaving the form.
+   *
+   * A 409 on create means the address already has an account. Telling him "the server refused it"
+   * would be true and useless; telling him the address is taken is the same fact with the remedy
+   * attached. Every other 4xx stays `refused` — and a 401 still ends the session, because it is
+   * {@link classify} that decides the rest.
+   */
+  private classifyCreate(error: unknown): PlatformStatus {
+    const failure = classifyApiError(error);
+    return failure.kind === 'rejected' && failure.status === 409
+      ? 'emailTaken'
+      : this.classify(error);
   }
 }
 
@@ -430,8 +461,11 @@ export class PlatformService {
  * **401 and 403 are kept apart**, as on the company surface and for the same reason: a 401 is
  * fixed by signing in again and a 403 is not, and offering the wrong remedy is a screen lying
  * about what it knows.
+ *
+ * A pure function of the error. What a 401 *does* to the stored credential belongs to
+ * `PlatformService.classify`, which is the wrapper every caller here uses.
  */
-function classify(error: unknown): PlatformStatus {
+function classifyStatus(error: unknown): PlatformStatus {
   switch (classifyApiError(error).kind) {
     case 'offline':
       return 'offline';
@@ -446,18 +480,6 @@ function classify(error: unknown): PlatformStatus {
     default:
       return 'unavailable';
   }
-}
-
-/**
- * The same, plus the one refusal the founder can fix without leaving the form.
- *
- * A 409 on create means the address already has an account. Telling him "the server refused it"
- * would be true and useless; telling him the address is taken is the same fact with the remedy
- * attached. Every other 4xx stays `refused`.
- */
-function classifyCreate(error: unknown): PlatformStatus {
-  const failure = classifyApiError(error);
-  return failure.kind === 'rejected' && failure.status === 409 ? 'emailTaken' : classify(error);
 }
 
 function toCustomer(response: PlatformCompanyResponse | null): Customer | null {

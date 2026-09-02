@@ -229,7 +229,7 @@ export class CompanyService {
     try {
       return { status: 'ok', account: toAccount(await this.gateway.me()) };
     } catch (error) {
-      return { status: classify(error), account: null };
+      return { status: this.classify(error), account: null };
     }
   }
 
@@ -242,7 +242,7 @@ export class CompanyService {
       const response = await this.gateway.listWorkers();
       return { status: 'ok', workers: (response.workers ?? []).flatMap(toWorker) };
     } catch (error) {
-      return { status: classify(error), workers: [] };
+      return { status: this.classify(error), workers: [] };
     }
   }
 
@@ -285,7 +285,7 @@ export class CompanyService {
       const response = await this.gateway.listDevices();
       return { status: 'ok', devices: (response.devices ?? []).flatMap(toPhone) };
     } catch (error) {
-      return { status: classify(error), devices: [] };
+      return { status: this.classify(error), devices: [] };
     }
   }
 
@@ -316,7 +316,7 @@ export class CompanyService {
       if (problemCode(error) === 'no_live_activation_code') {
         return { status: 'ok', code: null, shareText: null, noLiveCode: true };
       }
-      return { status: classify(error), code: null, shareText: null, noLiveCode: false };
+      return { status: this.classify(error), code: null, shareText: null, noLiveCode: false };
     }
   }
 
@@ -336,7 +336,7 @@ export class CompanyService {
     try {
       issued = toCode(await this.gateway.issueCode(workerId));
     } catch (error) {
-      return { status: classify(error), code: null, shareText: null, noLiveCode: false };
+      return { status: this.classify(error), code: null, shareText: null, noLiveCode: false };
     }
 
     if (!issued) {
@@ -389,7 +389,7 @@ export class CompanyService {
     } catch (error) {
       const code = problemCode(error);
       return {
-        status: classify(error),
+        status: this.classify(error),
         worker: null,
         code: null,
         conflict:
@@ -413,8 +413,39 @@ export class CompanyService {
       const response = await this.gateway.revokeDevice(deviceId);
       return { status: 'ok', device: toPhone(response)[0] ?? null };
     } catch (error) {
-      return { status: classify(error), device: null };
+      return { status: this.classify(error), device: null };
     }
+  }
+
+  /**
+   * {@link classifyStatus}, plus the one consequence a status alone cannot have: **a 401 ends the
+   * session in this browser.**
+   *
+   * Until 2026-09-02 nothing did. The server would refuse the credential — expired, or withdrawn
+   * by a super admin between two clicks — the screen would say "your session has ended, sign in
+   * again", and `localStorage` would still hold the dead row. So `requiresNoAdminSession` read a
+   * signed-in admin, and the one link the screen offered him bounced him straight back to the
+   * screen full of 401s. **The remedy the copy names has to be reachable, or the copy is a
+   * decoration on a locked door.**
+   *
+   * Three properties of doing it here rather than in a component:
+   *
+   * - It is the one place that already knows a 401 happened, on every route of this surface.
+   * - It touches **one `localStorage` row** and nothing else. `AdminSessionService.signOut` cannot
+   *   reach Dexie, which is what makes this safe on a browser that is also a foreman's phone: a
+   *   dead office credential must never cost a day of unsent evidence (PROJECT.md principle 3).
+   * - It is idempotent, so the second failing call in a screen's parallel load costs nothing.
+   *
+   * `forbidden` deliberately does **not** sign out. A 403 says the role may not do this, signing
+   * in again changes nothing, and throwing the credential away would turn a wrong screen into a
+   * lost session.
+   */
+  private classify(error: unknown): CompanyStatus {
+    const status = classifyStatus(error);
+    if (status === 'signedOut') {
+      this.admins.signOut();
+    }
+    return status;
   }
 }
 
@@ -432,8 +463,12 @@ export class CompanyService {
  * phone" either way because there is nothing the reader can do about it. Here there is: a 401 is
  * fixed by signing in again and a 403 is not, and offering the wrong remedy is a screen lying
  * about what it knows.
+ *
+ * A pure function of the error, deliberately: it reads a status and nothing else. The *effect* a
+ * 401 has on the stored credential belongs to `CompanyService.classify`, which is the wrapper
+ * every caller here actually uses.
  */
-function classify(error: unknown): CompanyStatus {
+function classifyStatus(error: unknown): CompanyStatus {
   const failure = classifyApiError(error);
   switch (failure.kind) {
     case 'offline':

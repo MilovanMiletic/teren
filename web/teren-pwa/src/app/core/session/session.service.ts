@@ -1,6 +1,5 @@
 import { Injectable, computed, signal } from '@angular/core';
 
-import { environment } from '../../../environments/environment';
 import { Session, persistSession, readStoredSession } from './session';
 
 /**
@@ -38,14 +37,22 @@ export class SessionService {
   readonly session = this.state.asReadonly();
 
   /**
-   * The bearer to send, falling back to the build-time token.
+   * The bearer to send, or `''` when this phone holds no credential of its own.
    *
-   * The fallback is what keeps every existing install working and the distributor's demo
-   * byte-identical: a phone with no stored session behaves exactly as it did before F2, because
-   * `environment.deviceToken` is what it was already sending. It is removed at D7/F9, when the
-   * static token retires and an un-activated phone genuinely has no credential.
+   * **There is no build-time fallback, and its absence is the whole of D7/F9.** Through F2–F6 this
+   * fell back to `environment.deviceToken`, which kept every existing install and the
+   * distributor's demo working byte-identically while the identity model was built underneath
+   * them — and which also meant a working credential was compiled into the bundle, readable from
+   * devtools by anyone who opened them, `usable()` was true on every install, and the login
+   * screens were decoration over a door that was never shut. The fallback and the constant's value
+   * both went on 2026-08-31; the read went with them on 2026-09-02, so nothing here can be
+   * reopened by putting a string back in `environment.ts`.
+   *
+   * An empty string is the honest answer: `UploadService` treats "no credential" as structurally
+   * the same condition as "no signal" and attempts nothing, rather than sending a bearer the
+   * server will refuse.
    */
-  readonly token = computed(() => this.state()?.token ?? environment.deviceToken);
+  readonly token = computed(() => this.state()?.token ?? '');
 
   /**
    * Whether there is a credential worth making an attempt with.
@@ -60,16 +67,14 @@ export class SessionService {
   /**
    * Whether this phone holds a credential **of its own**. The route gate's single question.
    *
-   * Deliberately not {@link usable}, and the difference is the whole of F4. `usable()` asks "is
-   * there a bearer worth sending", and until D7/F9 it is true on every install because of the
-   * build-time fallback above — a gate written on it would be inert, and the welcome screen would
-   * be a page nobody could ever reach. This asks "has a man bound this phone to himself", which is
-   * the question the screens are about.
-   *
-   * The consequence, stated plainly because it is the increment's cost: **a phone that has never
-   * been activated now meets `/welcome` instead of Home**, even though the baked-in token would
-   * still authenticate it against the API. The API door stays open until D7/F9 empties that
-   * token; this is the UI door, and it closes first.
+   * Now that the build-time fallback is gone this answers the same as {@link usable} for every
+   * session the narrower will accept, and the two are still deliberately separate questions. This
+   * one is "has a man bound this phone to himself" — a property of the stored row — while
+   * `usable()` is "is there a bearer worth sending", a property of the string. F4 was written
+   * because those two came apart: the fallback made `usable()` true on every install, so a gate
+   * built on it was inert and `/welcome` was a page nobody could reach. Reuniting them by
+   * accident is not a reason to collapse them; the next credential that arrives from somewhere
+   * other than an activation would separate them again.
    *
    * Read synchronously, from a signal that was populated during construction. No promise, no
    * request, no frame in which the app does not know the answer.
