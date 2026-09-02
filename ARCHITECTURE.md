@@ -193,6 +193,33 @@ under the header — but that is a designed decision per screen, not a default. 
 is reachable from every screen via the header (compact places it unobtrusively off the capture
 path). Design artboards ship in pairs from M0 onward: 390 phone + 1280 desktop per screen.
 
+### Tables — one control at the head of every column (2026-09-02)
+
+Every list of rows in the product (`/company`, `/platform`, `/platform/companies`) is built from
+three shared pieces rather than a per-screen implementation. This is a founder rule in the same
+sense as the layout one: **a fourth table inherits the behaviour, it does not re-implement it.**
+
+| Piece | Where | What it owns |
+|---|---|---|
+| `ui/table-controls.ts` | a `TableControls<K>` per screen | the sort (column + direction, with a useful default direction per column) and the per-column filters, plus Serbian-aware folding for matching |
+| `ui/column-menu.ts` | inside every `<th>` from 768 up, and as a pill in the compact list's control bar | the label (one tap sorts), the funnel beside it, and the menu: both directions **named in words** per column kind (`text` / `date` / `state` / `number`) and that column's filter box |
+| `.data-table`, `.table-bar`, `.column-bar` in `styles.css` | the three screens | the furniture: the zero-padded header cell the control fills (`--col-pad` crosses the component boundary), the "showing 3 of 12 / show all" strip, the phone's control bar |
+
+Rules that are not negotiable per screen:
+
+- **A filter matches the text the cell shows**, not the field behind it — which is what lets one box
+  serve a name, a date and a row of status chips without any column declaring a type. Screens
+  translate their own chips to produce that text, and re-run it on a language change.
+- **A live filter is loud.** The funnel is tinted on the column, and the strip above the list says
+  how many of how many are drawn with one tap back to all of them. A table quietly showing one of
+  twelve rows is the state in which a screen can make an owner believe a foreman was removed from
+  his company.
+- **The sort and the filter never enter the URL.** They are ways of looking at a list, not places in
+  the app: a query parameter per keystroke would re-run the route guard and re-read the whole list.
+- Filtering happens on the client, over a list already fetched whole. It stops being right when the
+  server stops sending the whole list; the filter then moves into the query and `TableControls`
+  keeps its shape.
+
 ### Localisation
 
 Both languages ship in **one build**. English is the **source language** — translation keys and

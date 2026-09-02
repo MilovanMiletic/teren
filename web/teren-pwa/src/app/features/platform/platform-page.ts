@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { TranslocoDirective } from '@jsverse/transloco';
+import { TranslocoDirective, TranslocoService } from '@jsverse/transloco';
 
 import {
   Customer,
@@ -11,18 +12,19 @@ import {
   serverAnswered,
 } from '../../core/platform/platform.service';
 import { AppHeader } from '../../ui/app-header';
+import { ColumnMenu } from '../../ui/column-menu';
 import { Icon } from '../../ui/icon';
 import { InfoPopover } from '../../ui/info-popover';
 import { LanguageSwitcher } from '../../ui/language-switcher';
 import { ModalSheet } from '../../ui/modal-sheet';
 import { SelectField } from '../../ui/select-field';
 import { SessionLink } from '../../ui/session-link';
+import { SortDirection, TableControls } from '../../ui/table-controls';
 import { ViewportService } from '../../ui/viewport.service';
 import { platformReasonFor } from './platform-reason';
 import {
   DEFAULT_DIRECTION,
   PeopleGroupKey,
-  PeopleSort,
   PeopleSortKey,
   PersonChip,
   groupOf,
@@ -98,6 +100,7 @@ type AddTab = 'company_admin' | 'super_admin';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AppHeader,
+    ColumnMenu,
     Icon,
     InfoPopover,
     LanguageSwitcher,
@@ -125,9 +128,28 @@ export class PlatformPage {
 
   protected readonly reasonKey = computed(() => platformReasonFor(this.status()));
 
-  protected readonly sort = signal<PeopleSort>({ key: 'state', direction: 'asc' });
+  /**
+   * How the directory is ordered **and what is filtered out of it** — the same object every other
+   * table in the product uses (`ui/table-controls.ts`).
+   *
+   * It starts on the state, ascending, which puts the accounts that need the founder to do
+   * something at the top of the screen he opens to find them.
+   */
+  protected readonly controls = new TableControls<PeopleSortKey>(
+    { key: 'state', direction: 'asc' },
+    DEFAULT_DIRECTION,
+  );
 
-  protected readonly ascending = computed(() => this.sort().direction === 'asc');
+  private readonly transloco = inject(TranslocoService);
+
+  /**
+   * The active language, as a signal: a filter matches the words on the glass, and the state
+   * column's words are chips this component translates. Without it, switching language would leave
+   * a live filter matching rows that no longer say what was typed.
+   */
+  private readonly language = toSignal(this.transloco.langChanges$, {
+    initialValue: this.transloco.getActiveLang(),
+  });
 
   /**
    * The directory, grouped and sorted.
@@ -138,18 +160,30 @@ export class PlatformPage {
    * the page is reading outwards from himself.
    */
   protected readonly groups = computed<PeopleGroup[]>(() => {
-    const sorted = sortPeople(this.people(), this.sort());
+    const kept = this.people().filter((person) =>
+      this.controls.passes((key) => this.cellText(person, key)),
+    );
+    const sorted = sortPeople(kept, this.controls.sort());
     const order: PeopleGroupKey[] = ['staff', 'admins', 'workers'];
 
-    return order
-      .map((key) => ({
-        key,
-        rows: sorted
-          .filter((person) => groupOf(person) === key)
-          .map((person) => ({ person, chips: personChips(person) })),
-      }))
-      .filter((group) => group.rows.length > 0);
+    return (
+      order
+        .map((key) => ({
+          key,
+          rows: sorted
+            .filter((person) => groupOf(person) === key)
+            .map((person) => ({ person, chips: personChips(person) })),
+        }))
+        // A group with nothing in it prints a heading over air — which, with a filter live, reads as
+        // rows that failed to load rather than rows that were asked not to appear.
+        .filter((group) => group.rows.length > 0)
+    );
   });
+
+  /** How many accounts the directory is drawing, against how many there are. */
+  protected readonly shown = computed(() =>
+    this.groups().reduce((total, group) => total + group.rows.length, 0),
+  );
 
   protected readonly staffCount = computed(
     () => this.people().filter((person) => groupOf(person) === 'staff').length,
@@ -236,24 +270,44 @@ export class PlatformPage {
     this.loading.set(false);
   }
 
-  protected sortBy(key: PeopleSortKey): void {
-    const current = this.sort();
-    this.sort.set(
-      current.key === key
-        ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
-        : { key, direction: DEFAULT_DIRECTION[key] },
-    );
-  }
-
-  protected sortedBy(key: PeopleSortKey): boolean {
-    return this.sort().key === key;
-  }
-
-  protected ariaSort(key: PeopleSortKey): 'ascending' | 'descending' | 'none' {
-    if (!this.sortedBy(key)) {
-      return 'none';
+  /**
+   * The text a row shows in one column — **what a filter is matched against.**
+   *
+   * The rendered words rather than the underlying fields, so one filter box serves a name, an
+   * address, a customer and a row of status chips without any column declaring a type: what the
+   * founder types is what he is reading. The name column carries the handle under it, because that
+   * second line is the one he will have been sent in a support message.
+   */
+  private cellText(person: Person, key: PeopleSortKey): string {
+    switch (key) {
+      case 'name':
+        return `${person.displayName} ${person.email ?? person.username ?? ''}`;
+      case 'company':
+        return person.companyName ?? this.say('platform.none');
+      case 'state': {
+        const chips = personChips(person);
+        return chips.length === 0
+          ? this.say('platform.none')
+          : chips.map((chip) => this.say(chip.key)).join(' ');
+      }
     }
-    return this.ascending() ? 'ascending' : 'descending';
+  }
+
+  /** One translated word, re-read whenever the language changes — see {@link language}. */
+  private say(key: string): string {
+    return this.transloco.translate(key, {}, this.language());
+  }
+
+  protected sortBy(key: PeopleSortKey): void {
+    this.controls.sortBy(key);
+  }
+
+  protected setSort(key: PeopleSortKey, direction: SortDirection): void {
+    this.controls.setSort(key, direction);
+  }
+
+  protected setFilter(key: PeopleSortKey, value: string): void {
+    this.controls.setFilter(key, value);
   }
 
   /**

@@ -74,6 +74,15 @@ counter. Nothing user-facing below 12 px.
 
 - **Cards: 20 px** radius (24 px for hero cards). **Buttons: full pill** (`border-radius: 999px`).
   Icon chips and state icons: circles. Form fields: 16 px. Thumbnails: 16 px.
+- **`.t-label` has one rank, and that is a known limitation.** A section heading (`h2.t-label`) and
+  a term in a fact list (`dt.t-label`) are both 12 px/600 uppercase ink-2, so they read as the same
+  level — visible on `/company/profile` and `platform/user/:id`, which are the same layout. A
+  heading variant needs exactly one distinguishing property (weight 700, or ink rather than ink-2)
+  and must be applied to both screens in the same pass. Recorded 2026-09-02; not fixed on one
+  screen alone, because the two screens exist to look identical.
+- **Rows inside a floating list: 10 px** (`calc(var(--radius-field) - 6px)`) — a dropdown option, a
+  column menu's entry. Recorded 2026-09-02: `ui/select-field.ts` and `ui/column-menu.ts` had both
+  reached for the same expression because this line was missing, and a reviewer read it as drift.
 - **No hairline borders on cards or buttons.** Separation = white on warm canvas + `shadow-card`.
   The only strokes: `field-line` on inputs, `card-line` dividers inside cards, and a 1.5 px
   `err` edge on an invalid field.

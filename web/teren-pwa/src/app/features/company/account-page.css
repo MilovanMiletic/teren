@@ -1,16 +1,22 @@
 /*
  * The company admin's own account, in three deliberate layouts.
  *
- *   compact   <768      one column: who he is, then this browser's session and what he can change
- *   medium    768–1023  the same order on the 640 column, with the detail rows two-up — the screen
- *                       is short, so the tablet gains proportion rather than a second pane
- *   expanded  ≥1024     a 12-column application layout: identity and details on the left, the
- *                       session, the language switcher and the password sentence on the right
+ *   compact   <768      one column: who he is, then this browser's session and the password note
+ *   medium    768–1023  the same order on the 640 column, with label beside value in the fact
+ *                       lists — the screen is short, so the tablet gains proportion rather than a
+ *                       second pane
+ *   expanded  ≥1024     a 12-column application layout: the account on 7 columns, this browser's
+ *                       credential on 5
  *
- * **No artboard exists for this screen.** Every shape is borrowed from something the founder has
- * already approved: the head row and the compact bar from the office, the hero identity card and
- * the two-pane grid from the worker's profile, the detail rows from both. Every value comes from
- * `design/tokens.md`; there is no raw hex in this file.
+ * **It is the platform's account screen, for the other role** (founder, 2026-09-02: *"build this
+ * profile screen similar to the super admin"*). `platform/person-page.css` is where these shapes
+ * come from — the `detail` and `actions` cards, the `facts` list, the 7/5 split — and they are
+ * restated here rather than shared because a component stylesheet cannot import another screen's.
+ * What was here before was a hero card with an avatar, a boxed sign-in block and a two-up detail
+ * grid: one man's own account looked like a different product from the screen Teren staff read
+ * about the same man.
+ *
+ * Every value comes from `design/tokens.md`; there is no raw hex in this file.
  */
 
 /* Compact only: the header does not exist below 768, so the wordmark and the chrome do. */
@@ -34,9 +40,17 @@
   padding-bottom: var(--space-4);
 }
 
-.head__title {
+.head__text {
   flex-grow: 1;
   min-width: 0;
+}
+
+.head__title {
+  overflow-wrap: anywhere;
+}
+
+.head__sub {
+  margin: 2px 0 0;
   overflow-wrap: anywhere;
 }
 
@@ -57,6 +71,14 @@
   .head {
     padding-top: var(--space-6);
     padding-bottom: 0;
+  }
+
+  /*
+   * The address is a fact row from 768 up, so the line under the title would say it twice. It
+   * stays on the phone, where the fact list is below the fold of a first glance.
+   */
+  .head__sub {
+    display: none;
   }
 }
 
@@ -79,25 +101,19 @@
     padding-top: var(--space-5);
   }
 
-  /* Anything about the whole screen belongs across the whole screen. */
+  /* Anything about the whole screen — a failed read, an empty account — spans the whole screen. */
   .wide {
     grid-column: 1 / -1;
   }
 
-  .pane--primary {
+  /* Who he is on the left, what this browser holds on the right. The platform's own split. */
+  .detail {
     grid-column: span 7;
   }
 
-  .pane--secondary {
+  .actions {
     grid-column: span 5;
   }
-}
-
-/* The two panes stack their own sections at every width. */
-.pane {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
 }
 
 /* ---- Loading and the honest empty state ---------------------------------------------------- */
@@ -133,186 +149,77 @@
   color: var(--color-ink-2);
 }
 
-/* ---- Identity ------------------------------------------------------------------------------ */
+/* ---- The two cards ------------------------------------------------------------------------- */
 
-.identity {
+.detail,
+.actions {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-3);
   padding: var(--space-5);
 }
 
-.identity__head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-}
-
-.identity__avatar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  background: var(--color-accent-tint-1);
-  color: var(--color-accent-deep);
-}
-
-.identity__who {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.identity__name {
-  font-size: var(--text-h1);
-  font-weight: 700;
-  /* A long Serbian name must wrap, never push a chip off the card. */
-  overflow-wrap: anywhere;
-}
-
-.identity__role {
-  align-self: flex-start;
-  margin-top: var(--space-2);
-}
-
-/*
- * His address, given the weight the worker's screen gives a username — it is the same fact for
- * this role: the thing he types to get in. `overflow-wrap: anywhere` is load-bearing rather than
- * defensive, because a real company address (`petar.petrovic@vodoinstal-petrovic.rs`) is longer
- * than a 390 px card is wide and would otherwise push the card sideways.
- */
-.identity__signin {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-4) 18px;
-  border-radius: var(--radius-field);
-  background: var(--color-canvas);
-}
-
-.identity__value {
-  font-size: var(--text-h2);
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.identity__hint {
+.actions h2 {
   margin: 0;
 }
 
-@media (min-width: 768px) {
-  .identity {
-    padding: var(--space-6);
-  }
-
-  .identity__avatar {
-    width: 60px;
-    height: 60px;
-  }
+/* A second heading inside the same card needs the air a card's own top padding gives the first. */
+.actions__second {
+  margin-top: var(--space-3);
 }
 
-/* ---- Details, the session block, the language block ----------------------------------------- */
-
-.details-section,
-.language {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.section__label {
+.actions p {
   margin: 0;
-  padding-left: var(--space-1);
-}
-
-.section__hint {
-  margin: 0;
-  padding-left: var(--space-1);
   max-width: 52ch;
 }
 
-.details {
+/* The sentence that explains the address, under the address. A block, so it is a second line of
+   that value rather than a tail on the end of it. */
+.facts__hint {
+  display: block;
+  margin-top: 2px;
+  max-width: 52ch;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.facts {
   display: flex;
   flex-direction: column;
+  gap: var(--space-3);
   margin: 0;
-}
-
-.details__row {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--space-4) 18px;
-  border-bottom: 1px solid var(--color-card-line);
-}
-
-.details__row:last-child {
-  border-bottom: 0;
-}
-
-.details__key {
-  margin: 0;
-}
-
-.details__value {
-  margin: 0;
-  font-size: var(--text-body);
-  font-weight: 600;
-  overflow-wrap: anywhere;
 }
 
 /*
- * Medium and up: two rows abreast. A key and a short value use a third of a 640 column, and
- * stacking three of them down a tablet is a phone layout that was allowed to grow taller.
+ * Label above value on a phone, side by side from 768. A two-column grid at 390 puts a Serbian
+ * label and a long address into two narrow columns and wraps both — which is how a detail list
+ * becomes unreadable on the device most likely to be holding it.
  */
-@media (min-width: 768px) {
-  .details {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .details__row {
-    border-bottom: 0;
-    border-right: 1px solid var(--color-card-line);
-  }
-
-  /* Only the internal seams: a divider on the card's own edge is a border on a card. */
-  .details__row:nth-child(2n),
-  .details__row:last-child {
-    border-right: 0;
-  }
-
-  .details__row:nth-child(n + 3) {
-    border-top: 1px solid var(--color-card-line);
-  }
-
-  /*
-   * An odd last row takes the whole width, so its divider is a full seam rather than a line that
-   * stops halfway across the card. Three details is exactly what this screen has, so this is the
-   * layout that actually ships and not an edge case.
-   */
-  .details__row:last-child:nth-child(odd) {
-    grid-column: 1 / -1;
-  }
+.facts__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-@media (min-width: 1024px) {
-  .details__row {
-    padding: var(--space-5);
-  }
-}
-
-/* ---- Language -------------------------------------------------------------------------------- */
-
-.language {
-  align-items: flex-start;
-}
-
-.language__hint {
+.facts__row dd {
   margin: 0;
-  padding-left: var(--space-1);
-  max-width: 46ch;
+  /* Regular weight, like `platform/person-page.css`: the label is the quiet half of the pair, and
+     bolding every value made the same fact list read louder here than on the platform's copy. */
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 768px) {
+  .facts__row {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--space-4);
+  }
+
+  .facts__row dt {
+    flex: 0 0 160px;
+  }
 }

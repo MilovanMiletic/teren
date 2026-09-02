@@ -5,10 +5,7 @@ import { TranslocoTestingModule } from '@jsverse/transloco';
 import { MockPlatformGateway } from '../../core/platform/mock-platform-gateway';
 import { PLATFORM_GATEWAY } from '../../core/platform/platform-gateway';
 import { ADMIN_SESSION_STORAGE_KEY, AdminSession } from '../../core/session/admin-session';
-import {
-  KnobbedPlatformGateway,
-  platformHttpError,
-} from '../../testing/platform-gateway-double';
+import { KnobbedPlatformGateway, platformHttpError } from '../../testing/platform-gateway-double';
 import { routeUrlFor } from '../../testing/route-table';
 import { ViewportService } from '../../ui/viewport.service';
 import en from '../../../../public/i18n/en.json';
@@ -119,6 +116,48 @@ describe('CompaniesPage', () => {
 
   async function press(label: string): Promise<void> {
     button(label).click();
+    await settle();
+  }
+
+  /**
+   * Type into one column's filter box, through the control the founder actually uses: open the
+   * column's menu from its funnel, then type. Never by calling the component — what is under test
+   * is the path from a key press on the glass to a row leaving the list.
+   */
+  /**
+   * Sort by a column, through its heading.
+   *
+   * **Not `press(label)`.** That helper matches any button whose text *or accessible name* contains
+   * the string, and this screen carries "Odjavi se" in its chrome — so pressing "Od" for the *Od*
+   * column signed the founder out instead, and the spec that did it looked like a broken sort.
+   */
+  async function sortByColumn(label: string): Promise<void> {
+    const control = [...element.querySelectorAll<HTMLButtonElement>('.sort')].find((candidate) =>
+      candidate.textContent?.trim().startsWith(label),
+    );
+    if (!control) {
+      throw new Error(`no column headed "${label}"`);
+    }
+    control.click();
+    await settle();
+  }
+
+  async function filterBy(column: string, value: string): Promise<void> {
+    const funnel = buttons().find((candidate) =>
+      candidate.getAttribute('aria-label')?.startsWith(`Kolona ${column}`),
+    );
+    if (!funnel) {
+      throw new Error(`no column control for "${column}"`);
+    }
+    funnel.click();
+    await settle();
+
+    const box = element.querySelector<HTMLInputElement>('.menu__input');
+    if (!box) {
+      throw new Error(`the "${column}" column offers no filter box`);
+    }
+    box.value = value;
+    box.dispatchEvent(new Event('input'));
     await settle();
   }
 
@@ -301,7 +340,9 @@ describe('CompaniesPage', () => {
     it('goes back to the people by the path the route table registers', async () => {
       await render();
 
-      await press('Ljudi');
+      // "Idi na ljude", not "Ljudi": this screen has a column headed *Ljudi*, and an icon whose
+      // only name was the destination's noun made the two indistinguishable (2026-09-02).
+      await press('Idi na ljude');
 
       expect(router.navigate).toHaveBeenCalledWith([peopleUrl]);
     });
@@ -315,6 +356,120 @@ describe('CompaniesPage', () => {
   });
 
   // ---- Adding a customer --------------------------------------------------------------------------
+
+  // ---- The column controls --------------------------------------------------------------------
+
+  /**
+   * The founder's 2026-09-02 note, both halves. *"Column headers in the second screenshot are
+   * black and in all the others it's not like that"* — this screen's headings were plain `<th>`
+   * text because it had no sort at all, so there was nothing in the cell to style. And *"one
+   * standard option beside all columns so I can filter or sort... super admin will have more than
+   * 10 clients hopefully"*.
+   */
+  describe('sorting and filtering the customers', () => {
+    /**
+     * The structural half of the founder's colour complaint: the heading is the **shared control**
+     * every other table in the product uses, so it cannot drift back into the browser's own black
+     * bold text without every table drifting with it.
+     */
+    it('heads every column with the same control the other tables use', async () => {
+      await render();
+
+      const heads = [...element.querySelectorAll('thead th')];
+      expect(heads.length).toBe(4);
+      // Three real columns carry the control; the fourth is the action and has nothing to sort.
+      expect(element.querySelectorAll('thead app-column-menu').length).toBe(3);
+      expect(heads[3].querySelector('.visually-hidden')?.textContent?.trim()).toBe('Radnja');
+      expect(element.querySelector('table')?.classList.contains('data-table')).toBe(true);
+    });
+
+    it('sorts by name, and turns it round on a second tap', async () => {
+      await render();
+
+      expect(listedNames()).toEqual(['Elektro Nikolić d.o.o.', 'Vodoinstal Petrović d.o.o.']);
+      expect(element.querySelector('.col--name')?.getAttribute('aria-sort')).toBe('ascending');
+
+      await sortByColumn('Firma');
+
+      expect(listedNames()).toEqual(['Vodoinstal Petrović d.o.o.', 'Elektro Nikolić d.o.o.']);
+      expect(element.querySelector('.col--name')?.getAttribute('aria-sort')).toBe('descending');
+    });
+
+    /**
+     * The useful direction on the first tap: the biggest customer, and the newest signing. A column
+     * that needed two taps to say something useful would cost one on every use, for ever.
+     */
+    it('opens the two other columns at their interesting end', async () => {
+      await render();
+
+      await sortByColumn('Ljudi');
+      expect(listedNames()).toEqual(['Vodoinstal Petrović d.o.o.', 'Elektro Nikolić d.o.o.']);
+      expect(element.querySelector('.col--people')?.getAttribute('aria-sort')).toBe('descending');
+
+      await sortByColumn('Od');
+      // Elektro signed on 20 August, Vodoinstal on the 1st: newest first.
+      expect(listedNames()).toEqual(['Elektro Nikolić d.o.o.', 'Vodoinstal Petrović d.o.o.']);
+      expect(element.querySelector('.col--since')?.getAttribute('aria-sort')).toBe('descending');
+      expect(element.querySelector('.col--people')?.getAttribute('aria-sort')).toBe('none');
+    });
+
+    it('narrows the list to the customer he is looking for, diacritics or not', async () => {
+      await render();
+
+      await filterBy('Firma', 'nikolic');
+
+      expect(listedNames()).toEqual(['Elektro Nikolić d.o.o.']);
+    });
+
+    /**
+     * **The dangerous state, said out loud** — and on this screen it is the most dangerous of the
+     * three, because the button beside a customer's name suspends him. A founder who does not know
+     * he is filtering is a founder about to suspend the wrong row.
+     */
+    it('says how much it is hiding, and offers one tap back to everybody', async () => {
+      await render();
+
+      await filterBy('Firma', 'nikolic');
+      expect(element.querySelector('.table-bar')?.textContent).toContain('Prikazano 1 od 2');
+
+      await press('Prikaži sve');
+
+      expect(listedNames()).toEqual(['Elektro Nikolić d.o.o.', 'Vodoinstal Petrović d.o.o.']);
+      expect(element.querySelector('.table-bar')).toBeNull();
+    });
+
+    it('says a filter is why the list is empty, not that Teren has no customers', async () => {
+      await render();
+
+      await filterBy('Firma', 'gradnja ilic');
+
+      expect(listedNames()).toEqual([]);
+      expect(text()).toContain('Nijedan red ne odgovara filteru.');
+      expect(text()).not.toContain('Još nema firmi.');
+    });
+
+    /** The same controls on a phone, as pills — the founder reads this screen on one. */
+    it('gives the phone the same controls, as pills', async () => {
+      viewport.atLeastMedium = () => false;
+      await render();
+
+      expect(element.querySelectorAll('.column-bar app-column-menu').length).toBe(3);
+
+      await filterBy('Firma', 'nikolic');
+      expect(listedNames()).toEqual(['Elektro Nikolić d.o.o.']);
+    });
+
+    /** A sort and a filter are ways of looking at a list, not places in the app. */
+    it('does not navigate, and does not re-read the server, to reorder or hide a row', async () => {
+      await render();
+
+      await sortByColumn('Ljudi');
+      await filterBy('Firma', 'nikolic');
+
+      expect(router.navigate).not.toHaveBeenCalled();
+      expect(gateway.companyListings).toBe(1);
+    });
+  });
 
   describe('adding a customer', () => {
     async function openAdd(): Promise<void> {

@@ -51,8 +51,9 @@ nothing else. So the screen was not buildable without widening that answer first
   asserts the call went through the office gateway for exactly that reason.
 - `/company/profile` (`features/company/account-page.*`): who he is, the address he signs in with
   given the weight the foreman's screen gives a username, his company, when the account was opened,
-  the previous sign-in, this browser's own session and when it expires, and the language switcher.
-  Three deliberate layouts; the two-pane grid at ≥1024.
+  the previous sign-in, and this browser's own session with the date it expires. Three deliberate
+  layouts; two panes at ≥1024. *(Rebuilt the same day — see below. As first shipped it was a hero
+  card with an avatar and carried its own language switcher; both are gone.)*
 - The director's row on `/company` opens it, at both widths, exactly as a foreman's row opens his.
 - `company.account.*` in both dictionaries.
 
@@ -96,6 +97,137 @@ typed route and false of one deliberate door.
 
 **The answer to the question, in one line:** M0 is fully built and not done. The gap is a server,
 not code.
+
+**Also built, same day: one control at the head of every column**
+
+The founder sent three screenshots of the admin surfaces with three notes: *"column headers in the
+second screenshot are black and in all the others it's not like that"*; the third column of
+`/company` *"needs to be in one row and renamed — I don't like this kind of name on the column"*;
+and *"I want one standard option right beside all columns so I can filter or sort if I want. Add
+that to all the tables. Super admin will have more than 10 clients hopefully and the company admin
+can have more workers."*
+
+**The colour was a symptom; the cause was three copies and one missing one.** `/company` and
+`/platform` each carried their own hand-built sortable header — the same four helpers, the same
+uppercase muted button, written twice. `/platform/companies` had no sort at all, so there was
+nothing in its `<th>` but text, and the browser's own black bold default is what the founder was
+looking at. Styling that one cell would have fixed the screenshot and left three implementations of
+one idea in the tree.
+
+So the header became a component, and the state behind it an object:
+
+- **`ui/table-controls.ts`** — the sort and the per-column filters of one list, with Serbian-aware
+  folding (`Jovanović` is found by typing `jovanovic`; **`đ` is folded explicitly**, because it has
+  no Unicode decomposition and `Đorđe` would otherwise be unfindable on a keyboard without the key).
+- **`ui/column-menu.ts`** — the control every column now carries: the label sorts on one tap, and
+  the funnel beside it opens a menu with **both directions named in words** (a date column says
+  *Prvo najnovije*, not "descending") and that column's filter box. Below 768 the same component
+  travels as a pill in the list's own control bar, so the phone can never fall behind the tablet on
+  what a list can be asked.
+- `.data-table`, `.table-bar` and `.column-bar` in `styles.css`: the furniture all three tables
+  share, so a fourth inherits the look rather than inventing one.
+
+**Two things about the filter that are not decoration.** It matches **the words the cell shows** —
+which is what lets one box serve a name, a date and a row of status chips without any column
+declaring a type; the state column is filtered by typing *kod ga čeka*. And a live filter is loud:
+a tinted funnel on the column, and a strip above the table reading *Prikazano 1 od 12* with one tap
+back to everybody. A table quietly showing one of twelve rows is the single state in which these
+screens can make an owner believe a foreman has been removed from his company — or, on the customer
+list, make the founder suspend the wrong row.
+
+**The column was renamed *Aktivnost*.** *Poslednji kontakt* broke over two lines at 1280 the moment
+the head cell had to hold a control as well as a word, which is what the founder was looking at.
+
+**Found while doing it, and both were real:** `/platform/companies` had an icon whose only
+accessible name was *Ljudi* standing on a screen with a column headed *Ljudi* — a spec pressed the
+wrong one and looked like a broken sort; the icon is *Idi na ljude* now. And the menu was
+absolutely positioned, which a two-row table clips: the table sits in a horizontal scroller and the
+phone's pill bar is another one, so it is placed from the trigger's own rectangle in viewport
+coordinates and closes on scroll.
+
+**Verified by execution:** 1363 PWA specs (was 1311), `ng build` clean, and — with a throwaway
+Playwright driving the running app at 390/768/1280/1920 against stubbed lists of twelve foremen and
+eleven customers — no horizontal overflow anywhere, the three header rows identical, the menu
+un-clipped over a one-row table, and the filtered state legible. Five mutations proven: dropping
+the owner row from the filter, dropping the phone's control bar when one row is left, reverting the
+customer table to plain `<th>` text, removing the follow loop, and removing the flip-above branch —
+each turns specs red; every file restored byte-identical (sha256).
+
+**The reviewer's two HIGH findings were both about the same wrong idea: measuring once.** The menu
+is `position: fixed`, and it was placed at open and left there. On a phone that put the filter box
+**56 px below the fold**, where `focus()` cannot scroll a fixed element into view and the scroll
+that would reach it closed the menu. And at every width, the first keystroke made the "showing 1 of
+12" strip appear above the table, which moved every column head down 61 px while the menu stayed —
+over the very row being searched for. The placement is a pure function now (`ui/menu-placement.ts`:
+right edge, clamped, spans the gutters below 768, **flips above when the room below is short**,
+pinned and scrollable when neither side fits) and the component re-runs it once a frame while the
+menu is open, writing the signal only when the numbers change. Re-proven in the browser at 390×660:
+the box lands inside the viewport, and the menu tracks a trigger that moves −80 px.
+
+**Delta review: accept (2026-09-02).** It re-measured the follow loop in a browser — 60 rect reads
+a second while open, and **zero** after Escape, a re-tap, an outside tap or a navigation away — and
+probed the enlarged hit areas from both sides: the funnel's 44 px target begins exactly where the
+label's button ends, and on the phone it spans the pill's height and stops at its edge, 8 px clear
+of the next pill. One known behaviour it could not stage and I have not changed: `placeMenu` has no
+memory of the side it chose, so in a narrow band of viewport heights the "clear the filter" line
+appearing can flip the menu to the other side of its trigger and Backspace flip it back. The box
+stays reachable either way. *And a gap in `design/tokens.md` rather than in the code: the 10 px
+radius `select-field` and `column-menu` both reach for had never been written down, so it read as
+drift twice. It is written down now.*
+
+*Three smaller ones from the same review, all real: the funnel was **white on pale tint** inside a
+sorted pill — 1.2:1, on the one control whose job is to be loud, in the default state of `/company`;
+its tap target was 28 px against the token minimum of 44 (it is drawn small and hit large now,
+verified by clicking 6 px outside the disc); and the compact customer row offered an "Od" pill while
+printing no date, so the list reordered by a value no row showed.*
+
+**Also built, same day: the owner's account screen is the platform's, for the other role**
+
+The founder, off a screenshot of `/company/profile`: *"we have duplicated stuff for translation here
+— already have it in the header. Build this profile screen similar to the super admin."*
+
+Both halves were right. The language switcher is chrome: the app header carries it from 768 up and
+this screen's own compact bar carries it below that, so the in-page block was **one setting said
+three times on one screen**. And the screen it stood on was a shape nothing else in the product
+used — a hero card with an avatar, a boxed sign-in block, a two-up detail grid — so the owner's own
+account looked like a different product from the screen Teren staff read *about the same man*.
+
+It is now `platform/person-page`'s shape with this role's facts: the person is the title, a `detail`
+card carries his role chip and a fact list (label beside value from 768), an `actions` card beside
+it carries this browser's session, the sign-out hint and the password sentence, 7/5 at ≥1024. Three
+dictionary blocks went with the old markup (`company.account.language.*`, `.name`, `.details`), and
+four labels that shouted in the JSON went to sentence case — `.t-label` is what uppercases a label,
+and half of this screen's keys had it baked in.
+
+**The review found one defect and one piece of nonsense, both in the copy of the platform's head
+row.** `person-page`'s subtitle names one thing from one source; this screen's names an address that
+only the server has, under a `known()` that is true from the *stored session* — so every load
+flashed "no address on file" under his name, and in the unreachable state printed that claim
+**above** the notice saying nothing had been confirmed. A caveat after the claim is not a caveat.
+The line is drawn only from a server-supplied address now, pinned by two specs. And the sentence
+explaining the address had been left at the foot of the card, where "this address and your password"
+pointed at a timestamp; it is a second line of the address row now.
+
+**Delta review: accept.** It re-drove all three states in a browser — loading at 390 now reads
+*Milan Gradnja · Učitavanje naloga…* with no claim under the name, and the unreachable state puts
+the notice first and the "no address" sentence once, below it. *Two things it left open, both older
+than this screen's rework and neither a gate: with `status === 'ok'` the name and company still fall
+back to the session's copy when the server omits them, with no stale marker; and "Nema sačuvane
+imejl adrese" is itself untrue in the 503 state — the address is on file, the server was not
+reached. An em-dash is the honest answer there.* The `.t-label` rank collision it noticed (a section
+heading and a fact's term are the same 12 px uppercase) is written into `design/tokens.md` rather
+than fixed here: the two screens exist to look identical, so that one is fixed on both at once.
+
+*One deliberate loss, recorded rather than hidden:* the deleted language block carried the only
+sentence on the admin surface saying the client's report goes out in the **site's** language, not
+the browser's. It explained a control that no longer exists here, and it still ships on the
+foreman's `/profile`. If an owner needs it, it belongs beside a report, not beside his password.
+
+**Verified by execution:** 1368 specs, `ng build` clean, and driven in a browser at 390/768/1280/1920
+against a stubbed `/api/me` — no horizontal overflow, exactly one *visible* language switcher at
+every width, and the screen sitting beside `/platform/user/:id` as the same object. Four mutations
+proven: re-adding a switcher to the card, renaming the `actions` card, restoring the `known()`
+subtitle and removing the hint each turn specs red; every file restored byte-identical (sha256).
 
 **Next**
 

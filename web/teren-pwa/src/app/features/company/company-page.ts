@@ -1,7 +1,15 @@
-import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { DatePipe, formatDate } from '@angular/common';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  LOCALE_ID,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { TranslocoDirective } from '@jsverse/transloco';
+import { TranslocoDirective, TranslocoService } from '@jsverse/transloco';
 
 import {
   CompanyService,
@@ -11,21 +19,16 @@ import {
 } from '../../core/company/company.service';
 import { AdminSessionService } from '../../core/session/admin-session.service';
 import { AppHeader } from '../../ui/app-header';
+import { ColumnMenu } from '../../ui/column-menu';
 import { Icon } from '../../ui/icon';
 import { InfoPopover } from '../../ui/info-popover';
 import { LanguageSwitcher } from '../../ui/language-switcher';
 import { ModalSheet } from '../../ui/modal-sheet';
 import { SessionLink } from '../../ui/session-link';
+import { SortDirection, TableControls } from '../../ui/table-controls';
 import { ViewportService } from '../../ui/viewport.service';
 import { companyReasonFor } from './company-reason';
-import {
-  DEFAULT_DIRECTION,
-  PeopleSort,
-  PeopleSortKey,
-  StatusChip,
-  sortWorkers,
-  workerChips,
-} from './people';
+import { DEFAULT_DIRECTION, PeopleSortKey, StatusChip, sortWorkers, workerChips } from './people';
 
 /** One line of the people list: the person, and the chips that say how he stands. */
 interface PersonRow {
@@ -97,6 +100,7 @@ interface PersonRow {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AppHeader,
+    ColumnMenu,
     DatePipe,
     Icon,
     InfoPopover,
@@ -121,18 +125,33 @@ export class CompanyPage {
   protected readonly status = signal<CompanyStatus>('ok');
 
   /**
-   * How the list is ordered, **in the component and not in the URL**.
-   *
-   * A sort is a way of looking at a list, not a place in the app: nobody sends somebody else a
-   * link to "my foremen sorted by last contact", and the back gesture must mean "leave the office",
-   * not "undo my last three column taps". Keeping it out of the URL also keeps it off the router —
-   * a query parameter per tap would re-run `requiresCompanyAdmin` and, on this screen, re-read the
-   * whole list from the server to paint the same rows in a different order.
+   * How the list is ordered **and what is filtered out of it** — one object, shared with every
+   * other table in the product (`ui/table-controls.ts`), so the office, the platform directory and
+   * the customer list behave identically rather than each carrying its own copy of the same four
+   * helpers.
    *
    * It starts on the name, ascending, which is the order `GET /api/workers` already returns
    * (`OrderBy(u => u.DisplayName)`), so the first paint does not visibly reorder itself.
    */
-  protected readonly sort = signal<PeopleSort>({ key: 'name', direction: 'asc' });
+  protected readonly controls = new TableControls<PeopleSortKey>(
+    { key: 'name', direction: 'asc' },
+    DEFAULT_DIRECTION,
+  );
+
+  private readonly transloco = inject(TranslocoService);
+  private readonly locale = inject(LOCALE_ID);
+
+  /**
+   * The active language, as a signal.
+   *
+   * A filter matches **the words on the glass**, and the state column's words are chips this
+   * component translates. Without this, switching to English would leave a live Serbian filter
+   * matching rows that no longer say what he typed — a list quietly showing nothing, with no
+   * explanation on screen. `TranslocoService.translate` is not reactive on its own.
+   */
+  private readonly language = toSignal(this.transloco.langChanges$, {
+    initialValue: this.transloco.getActiveLang(),
+  });
 
   protected readonly addOpen = signal(false);
   protected readonly newName = signal('');
@@ -159,18 +178,42 @@ export class CompanyPage {
    */
   protected readonly director = computed(() => this.admins.session());
 
+  /**
+   * The owner's own row, **once the filters have had their say**.
+   *
+   * He is a row in this table like any other, so a filter that hides every foreman must hide him
+   * too — a directory that answers "Zoran" with the reader's own name at the top of it is a
+   * directory that did not do what it was asked.
+   */
+  protected readonly directorRow = computed(() => {
+    const boss = this.director();
+    if (!boss) {
+      return null;
+    }
+    return this.controls.passes((key) => this.directorText(boss.displayName, key)) ? boss : null;
+  });
+
   /** The list could not be confirmed with the server, so it is not a list of his company. */
   protected readonly unconfirmed = computed(() => !this.loading() && this.status() !== 'ok');
 
   protected readonly reasonKey = computed(() => companyReasonFor(this.status()));
 
-  /** His foremen, in the order the list shows them, each with the chips for his row. */
+  /** His foremen, filtered and then ordered the way the list shows them, with their chips. */
   protected readonly rows = computed<PersonRow[]>(() =>
-    sortWorkers(this.workers(), this.sort()).map((worker) => ({
+    sortWorkers(
+      this.workers().filter((worker) => this.controls.passes((key) => this.cellText(worker, key))),
+      this.controls.sort(),
+    ).map((worker) => ({
       worker,
       chips: workerChips(worker),
     })),
   );
+
+  /** How many people the list is drawing, the owner's own row included. */
+  protected readonly shown = computed(() => this.rows().length + (this.directorRow() ? 1 : 0));
+
+  /** How many there are altogether — the other half of "showing 3 of 12". */
+  protected readonly total = computed(() => this.workers().length + (this.director() ? 1 : 0));
 
   /**
    * Phones across the company that can still record.
@@ -204,35 +247,55 @@ export class CompanyPage {
   }
 
   /**
-   * Sort by a column: pick it up in its useful direction, tap it again to turn it round.
+   * The text a row shows in one column — **what a filter is matched against.**
    *
-   * The useful direction differs per column ({@link DEFAULT_DIRECTION}) — a name wants A→Ž, a date
-   * wants the most recent first — so a first tap never costs a second one.
+   * Matching the rendered words rather than the underlying field is what lets one filter box serve
+   * a name, a date and a row of status chips without any column declaring a type: what an owner
+   * types is what he is reading. The date is formatted with the same pattern and the same locale
+   * the cell uses, so "2026" finds the rows whose cell says 2026.
    */
-  protected sortBy(key: PeopleSortKey): void {
-    const current = this.sort();
-    this.sort.set(
-      current.key === key
-        ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
-        : { key, direction: DEFAULT_DIRECTION[key] },
-    );
-  }
-
-  /** `aria-sort` for a column header, so a screen reader reads the order the eye can see. */
-  protected ariaSort(key: PeopleSortKey): 'ascending' | 'descending' | 'none' {
-    const current = this.sort();
-    if (current.key !== key) {
-      return 'none';
+  private cellText(worker: Worker, key: PeopleSortKey): string {
+    switch (key) {
+      case 'name':
+        return `${worker.displayName} ${worker.username ?? ''}`;
+      case 'state':
+        return workerChips(worker)
+          .map((chip) => this.say(chip.key))
+          .join(' ');
+      case 'contact':
+        return worker.lastSeenAt
+          ? formatDate(worker.lastSeenAt, 'd. M. y.', this.locale)
+          : this.say('company.people.never');
     }
-    return current.direction === 'asc' ? 'ascending' : 'descending';
   }
 
-  protected sortedBy(key: PeopleSortKey): boolean {
-    return this.sort().key === key;
+  /** The same, for the one row that is not a worker: the owner reading the screen. */
+  private directorText(name: string, key: PeopleSortKey): string {
+    switch (key) {
+      case 'name':
+        return `${name} ${this.say('company.people.passwordAccount')}`;
+      case 'state':
+        return this.say('company.people.you');
+      case 'contact':
+        return this.say('company.people.none');
+    }
   }
 
-  protected ascending(): boolean {
-    return this.sort().direction === 'asc';
+  /** One translated word, re-read whenever the language changes — see {@link language}. */
+  private say(key: string): string {
+    return this.transloco.translate(key, {}, this.language());
+  }
+
+  protected sortBy(key: PeopleSortKey): void {
+    this.controls.sortBy(key);
+  }
+
+  protected setSort(key: PeopleSortKey, direction: SortDirection): void {
+    this.controls.setSort(key, direction);
+  }
+
+  protected setFilter(key: PeopleSortKey, value: string): void {
+    this.controls.setFilter(key, value);
   }
 
   /**

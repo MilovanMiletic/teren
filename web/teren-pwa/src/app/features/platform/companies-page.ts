@@ -1,7 +1,15 @@
-import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { DatePipe, formatDate } from '@angular/common';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  LOCALE_ID,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { TranslocoDirective } from '@jsverse/transloco';
+import { TranslocoDirective, TranslocoService } from '@jsverse/transloco';
 
 import {
   Customer,
@@ -10,14 +18,16 @@ import {
   serverAnswered,
 } from '../../core/platform/platform.service';
 import { AppHeader } from '../../ui/app-header';
+import { ColumnMenu } from '../../ui/column-menu';
 import { Icon } from '../../ui/icon';
 import { InfoPopover } from '../../ui/info-popover';
 import { LanguageSwitcher } from '../../ui/language-switcher';
 import { ModalSheet } from '../../ui/modal-sheet';
 import { SessionLink } from '../../ui/session-link';
+import { SortDirection, TableControls } from '../../ui/table-controls';
 import { ViewportService } from '../../ui/viewport.service';
 import { platformReasonFor } from './platform-reason';
-import { sortCustomers } from './platform-people';
+import { CUSTOMER_DEFAULT_DIRECTION, CustomerSortKey, sortCustomers } from './platform-people';
 
 /**
  * The customers (`/platform/companies`, F7): **who Teren sells to, and the one switch that turns a
@@ -57,6 +67,7 @@ import { sortCustomers } from './platform-people';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AppHeader,
+    ColumnMenu,
     DatePipe,
     Icon,
     InfoPopover,
@@ -81,7 +92,41 @@ export class CompaniesPage {
   protected readonly unconfirmed = computed(() => !this.loading() && this.status() !== 'ok');
   protected readonly reasonKey = computed(() => platformReasonFor(this.status()));
 
-  protected readonly listed = computed(() => sortCustomers(this.customers()));
+  /**
+   * How the list is ordered **and what is filtered out of it** — the same object the two people
+   * directories use (`ui/table-controls.ts`).
+   *
+   * This screen had no sort at all until 2026-09-02, which is why its headings were plain black
+   * `<th>` text while the two screens either side of it had muted uppercase controls: there was
+   * nothing in the cell to style. It starts on the name, which is the order the list already
+   * arrives in, so the first paint does not reshuffle itself.
+   */
+  protected readonly controls = new TableControls<CustomerSortKey>(
+    { key: 'name', direction: 'asc' },
+    CUSTOMER_DEFAULT_DIRECTION,
+  );
+
+  private readonly transloco = inject(TranslocoService);
+  private readonly locale = inject(LOCALE_ID);
+
+  /**
+   * The active language, as a signal: a filter matches the words on the glass, and one of this
+   * screen's cells is a translated em-dash. `TranslocoService.translate` is not reactive on its
+   * own, so without this a language switch would leave a live filter matching rows that no longer
+   * say what was typed.
+   */
+  private readonly language = toSignal(this.transloco.langChanges$, {
+    initialValue: this.transloco.getActiveLang(),
+  });
+
+  protected readonly listed = computed(() =>
+    sortCustomers(
+      this.customers().filter((customer) =>
+        this.controls.passes((key) => this.cellText(customer, key)),
+      ),
+      this.controls.sort(),
+    ),
+  );
 
   protected readonly activeCount = computed(
     () => this.customers().filter((customer) => customer.suspendedAt === null).length,
@@ -212,6 +257,46 @@ export class CompaniesPage {
   protected mustReload(): boolean {
     const status = this.actionStatus() ?? this.addStatus();
     return status !== null && !serverAnswered(status);
+  }
+
+  /**
+   * The text a row shows in one column — **what a filter is matched against.**
+   *
+   * The rendered words rather than the underlying fields, so what the founder types is what he is
+   * reading: the name cell carries the *suspended* chip, so filtering the name column on
+   * "suspendovana" finds the customers that are off, and the date is formatted with the pattern and
+   * locale the cell itself uses.
+   */
+  private cellText(customer: Customer, key: CustomerSortKey): string {
+    switch (key) {
+      case 'name':
+        return customer.suspendedAt
+          ? `${customer.name} ${this.say('platform.companies.suspended')}`
+          : customer.name;
+      case 'people':
+        return `${customer.activeUserCount} / ${customer.userCount}`;
+      case 'since':
+        return customer.createdAt
+          ? formatDate(customer.createdAt, 'd. M. y.', this.locale)
+          : this.say('platform.none');
+    }
+  }
+
+  /** One translated word, re-read whenever the language changes — see {@link language}. */
+  private say(key: string): string {
+    return this.transloco.translate(key, {}, this.language());
+  }
+
+  protected sortBy(key: CustomerSortKey): void {
+    this.controls.sortBy(key);
+  }
+
+  protected setSort(key: CustomerSortKey, direction: SortDirection): void {
+    this.controls.setSort(key, direction);
+  }
+
+  protected setFilter(key: CustomerSortKey, value: string): void {
+    this.controls.setFilter(key, value);
   }
 
   protected openPeople(): void {

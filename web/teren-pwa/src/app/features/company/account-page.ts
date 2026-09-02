@@ -53,11 +53,23 @@ import { companyReasonFor } from './company-reason';
  * form that silently discarded what he typed is the failure mode this product keeps writing tests
  * against.
  *
+ * **A language switcher.** It had one, and it was the third copy on the same screen: the app
+ * header carries the switcher from 768 up and this screen's own compact bar carries it below that,
+ * so the in-page block was a setting said three times (founder, 2026-09-02).
+ *
+ * ## Built like the platform's account screen, on purpose
+ *
+ * Same shapes as `platform/person-page.html` (founder, 2026-09-02: *"build this profile screen
+ * similar to the super admin"*): the person is the title, a `detail` card carries his chips and a
+ * fact list, and an `actions` card beside it carries what applies to him here. It was a hero card
+ * with an avatar and a boxed sign-in block — which made one man's own account look like a different
+ * product from the screen Teren staff read about the same man.
+ *
  * ## Three layouts
  *
- *   compact   <768      one column: who he is, then what he can change.
- *   medium    768–1023  the same order on the 640 column, detail rows two-up.
- *   expanded  ≥1024     identity and details take 7 of 12 columns, language and the session 5.
+ *   compact   <768      one column: who he is, then this browser's credential.
+ *   medium    768–1023  the same order on the 640 column, label beside value in the fact lists.
+ *   expanded  ≥1024     the account takes 7 of 12 columns, this browser's credential 5.
  */
 @Component({
   selector: 'app-account-page',

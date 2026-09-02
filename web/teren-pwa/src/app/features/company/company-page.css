@@ -5,18 +5,19 @@
  *                       chips and the last contact beneath, a chevron. One row, one tap, one
  *                       navigation. Nothing expands in place, which is what turned a single
  *                       foreman into an endless scroll on the screen this replaces.
- *   medium    768–1023  a real `<table>` on the 640 column, the three numbers as a strip above it,
- *                       and the form and the help **two-up** below — a tablet gains proportion
- *                       rather than a taller phone.
- *   expanded  ≥1024     a 12-column application layout: the table claims 8 columns and the height
- *                       of the window; the rail beside it holds the two things that are not the
- *                       list. The reverse of what shipped before, where the rail held everything
- *                       useful and the main column held air.
+ *   medium    768–1023  a real `<table>` on the 640 column, with the three numbers as a strip
+ *                       above it — a tablet gains proportion rather than a taller phone.
+ *   expanded  ≥1024     a 12-column application layout, and the table claims all twelve. **There
+ *                       is no rail** (founder, 2026-09-01): adding a foreman is a dialog and "how
+ *                       codes work" is a popover, both behind the head row's icons, because the
+ *                       rail held the useful half of a 1920 screen while the table beside it held
+ *                       air. This comment described that rail for a day after it was deleted.
  *
  * **No artboard exists for this screen** — `design/` carries Welcome and Login and nothing for an
  * admin surface. Every shape here is borrowed from something the founder has already approved: the
- * head row and the two-pane grid from the archive and the profile, the row list from Home's recent
- * entries, the notice and chip objects from `styles.css`. Every value comes from
+ * head row from the archive and the profile, the row list from Home's recent entries, the notice
+ * and chip objects from `styles.css`, and — since 2026-09-02 — the table furniture (`.data-table`,
+ * `.table-bar`, `.column-bar`) that all three of the product's tables share. Every value comes from
  * `design/tokens.md`; there is no raw hex in this file.
  */
 
@@ -134,11 +135,6 @@
   min-width: 0;
 }
 
-.people__table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
 /*
  * The columns are given widths rather than left to the browser, and that is not tidiness.
  * `overflow-wrap: anywhere` on the name — which a 30-character Serbian surname needs — drops its
@@ -150,69 +146,36 @@
 }
 
 .col--contact {
-  width: 140px;
+  /*
+   * Wide enough for the heading **and its control**, which is what the 140 px this replaced was
+   * not: the label, the sort chevron and the filter funnel together broke "POSLEDNJI KONTAKT" over
+   * two lines at 1280 while every other heading sat on one (founder, 2026-09-02). The word itself
+   * is shorter now — the column says *Aktivnost* — and the width is the belt to that braces.
+   */
+  width: 168px;
 }
 
 .col--go {
   width: 44px;
 }
 
-th,
-td {
-  text-align: left;
-  vertical-align: middle;
-}
-
-/* ---- Sortable column headers --------------------------------------------------------------- */
-
-thead th {
-  padding: 0;
-  border-bottom: 1px solid var(--color-card-line);
-}
-
 /*
- * The button fills the header cell rather than sitting inside it, so the target is the whole
- * column heading — 44 px tall on a tablet's touch screen, not a 12 px word.
+ * The header row and the control inside it now live in `styles.css` (`.data-table`) and
+ * `ui/column-menu.ts`. What used to stand here — the uppercase muted button, its chevron and the
+ * zero-padded `<th>` around it — was one of three copies, and the copy `/platform/companies` never
+ * had is exactly why that screen's headings rendered as the browser's own black bold text
+ * (founder, 2026-09-02).
  */
-.sort {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  width: 100%;
-  min-height: var(--tap-min);
-  padding: 0 18px;
-  border: 0;
-  background: transparent;
-  color: var(--color-ink-2);
-  font-size: var(--text-label);
-  font-weight: 600;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-  text-align: left;
-  cursor: pointer;
-}
-
-.sort__arrow {
-  flex: none;
-  color: var(--color-accent-deep);
-}
-
-/* One glyph, both directions: the descending chevron turned over. */
-.sort__arrow--asc {
-  transform: rotate(180deg);
-}
 
 /* ---- Group headers and rows ---------------------------------------------------------------- */
 
 /*
- * The group band, in both renderings, plus the phone's sort row: one declaration of the tint and
- * the padding they share. Merged rather than repeated three times because this stylesheet sits
- * against the 6 kB `anyComponentStyle` budget, and a warning nobody can fix by deleting a comment
- * is a warning that gets ignored.
+ * The group band, in both renderings: one declaration of the tint and the padding they share.
+ * Merged rather than repeated because this stylesheet sits against the 6 kB `anyComponentStyle`
+ * budget, and a warning nobody can fix by deleting a comment is a warning that gets ignored.
  */
 .group__label,
-.list__group,
-.sort-bar {
+.list__group {
   padding: var(--space-3) 18px;
   background: var(--color-canvas);
 }
@@ -354,42 +317,6 @@ thead th {
   white-space: nowrap;
 }
 
-/*
- * The sort control the table's column headers carry from 768 up. Three pills on the canvas above
- * the card, 44 px tall, and a second tap on the live one turns it round. A `<select>` would have
- * been fewer pixels and one more tap plus a native wheel for a man with gloves on.
- */
-.sort-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.sort-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-height: var(--tap-min);
-  padding: 0 var(--space-4);
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-card);
-  box-shadow: var(--shadow-card);
-  color: var(--color-ink-2);
-  font-size: var(--text-meta);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.sort-pill--on {
-  background: var(--color-ink);
-  color: var(--color-card);
-}
-
-.sort-pill--on .sort__arrow {
-  color: var(--color-card);
-}
-
 /* ---- The rail ------------------------------------------------------------------------------- */
 
 /* Inside the dialog, which supplies its own padding — see `ui/modal-sheet.ts`. */
@@ -479,7 +406,7 @@ thead th {
   }
 
   .col--contact {
-    width: 160px;
+    width: 180px;
   }
 
   .stats__cell {
@@ -494,7 +421,7 @@ thead th {
   .cell,
   .cell--empty,
   .group__label,
-  .sort {
+  .table-bar {
     padding-left: var(--space-5);
     padding-right: var(--space-5);
   }
@@ -518,9 +445,5 @@ thead th {
 
   .row-button:hover {
     background: var(--color-accent-tint-1);
-  }
-
-  .sort:hover {
-    color: var(--color-ink);
   }
 }

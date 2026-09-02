@@ -1,4 +1,5 @@
 import { Worker } from '../../core/company/company.service';
+import { SortDirection } from '../../ui/table-controls';
 
 /**
  * How a foreman stands today, as one value — the thing the people list sorts by.
@@ -78,7 +79,8 @@ export function workerChips(worker: Worker): StatusChip[] {
 /** The three facts on a row worth ordering by. */
 export type PeopleSortKey = 'name' | 'state' | 'contact';
 
-export type SortDirection = 'asc' | 'desc';
+/** One definition for every list in the product — see `ui/table-controls.ts`. */
+export type { SortDirection };
 
 export interface PeopleSort {
   readonly key: PeopleSortKey;

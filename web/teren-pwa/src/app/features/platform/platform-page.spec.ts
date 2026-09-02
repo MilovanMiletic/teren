@@ -5,10 +5,7 @@ import { TranslocoTestingModule } from '@jsverse/transloco';
 import { MockPlatformGateway } from '../../core/platform/mock-platform-gateway';
 import { PLATFORM_GATEWAY } from '../../core/platform/platform-gateway';
 import { ADMIN_SESSION_STORAGE_KEY, AdminSession } from '../../core/session/admin-session';
-import {
-  KnobbedPlatformGateway,
-  platformHttpError,
-} from '../../testing/platform-gateway-double';
+import { KnobbedPlatformGateway, platformHttpError } from '../../testing/platform-gateway-double';
 import { routeUrlFor } from '../../testing/route-table';
 import { ViewportService } from '../../ui/viewport.service';
 import en from '../../../../public/i18n/en.json';
@@ -144,6 +141,60 @@ describe('PlatformPage', () => {
   async function press(label: string): Promise<void> {
     button(label).click();
     await settle();
+  }
+
+  /**
+   * Sort by a column, through its heading — never through `press(label)`, which matches any button
+   * whose text or accessible name contains the string and would find the chrome's own controls
+   * first on a screen where a column is headed *Firma* and an icon is labelled *Firme*.
+   */
+  async function sortByColumn(label: string): Promise<void> {
+    const control = [...element.querySelectorAll<HTMLButtonElement>('.sort')].find((candidate) =>
+      candidate.textContent?.trim().startsWith(label),
+    );
+    if (!control) {
+      throw new Error(`no column headed "${label}"`);
+    }
+    control.click();
+    await settle();
+  }
+
+  /**
+   * Type into one column's filter box, through the control the founder actually uses: open the
+   * column's menu from its funnel, then type.
+   */
+  async function filterBy(column: string, value: string): Promise<void> {
+    const funnel = buttons().find((candidate) =>
+      candidate.getAttribute('aria-label')?.startsWith(`Kolona ${column}`),
+    );
+    if (!funnel) {
+      throw new Error(`no column control for "${column}"`);
+    }
+    funnel.click();
+    await settle();
+
+    const box = element.querySelector<HTMLInputElement>('.menu__input');
+    if (!box) {
+      throw new Error(`the "${column}" column offers no filter box`);
+    }
+    box.value = value;
+    box.dispatchEvent(new Event('input'));
+    await settle();
+  }
+
+  /** The group bands the directory is drawing, as a screen reader would read them out. */
+  function groupBands(): string[] {
+    return [...element.querySelectorAll('.group__label')].map(
+      (node) => node.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+    );
+  }
+
+  /** The names the directory is drawing, in the order it draws them, whichever rendering is on. */
+  function listedNames(): string[] {
+    const selector = viewport.atLeastMedium()
+      ? 'tr.person .person__name'
+      : '.row-button .person__name';
+    return [...element.querySelectorAll(selector)].map((node) => node.textContent?.trim() ?? '');
   }
 
   /** One person's row, so an assertion about *this* account cannot be answered by another. */
@@ -442,11 +493,11 @@ describe('PlatformPage', () => {
     it('turns a column round on a second tap, and only one column is ever the sorted one', async () => {
       await render();
 
-      await press('Osoba');
+      await sortByColumn('Osoba');
       expect(element.querySelector('.col--person')?.getAttribute('aria-sort')).toBe('ascending');
       expect(element.querySelector('.col--state')?.getAttribute('aria-sort')).toBe('none');
 
-      await press('Osoba');
+      await sortByColumn('Osoba');
       expect(element.querySelector('.col--person')?.getAttribute('aria-sort')).toBe('descending');
     });
 
@@ -457,7 +508,88 @@ describe('PlatformPage', () => {
     it('does not navigate, and does not re-read the server, to reorder rows', async () => {
       await render();
 
-      await press('Firma');
+      await sortByColumn('Firma');
+
+      expect(router.navigate).not.toHaveBeenCalled();
+      expect(gateway.userListings).toBe(1);
+    });
+  });
+
+  // ---- Filtering -------------------------------------------------------------------------------
+
+  /**
+   * The other half of the founder's 2026-09-02 note: *"one standard option beside all columns so I
+   * can filter or sort... super admin will have more than 10 clients hopefully"*. Three accounts
+   * need no filter; sixty do, and the screen that lists them is the one he opens to answer "did
+   * that admin ever set his password?".
+   */
+  describe('filtering', () => {
+    it('narrows the directory to the account he is looking for', async () => {
+      await render();
+
+      await filterBy('Osoba', 'petar');
+
+      expect(listedNames()).toEqual(['Petar Petrović']);
+      // A group with nothing left in it takes its heading with it, rather than printing a band
+      // over air that reads as rows which failed to load. Asserted on the bands themselves: the
+      // words "Teren tim" are also this screen's subtitle and one of its three summary labels.
+      expect(groupBands()).toEqual(['Administratori firmi']);
+    });
+
+    /** An address is what a support message carries, so the name column matches on it too. */
+    it('finds a man by the address under his name', async () => {
+      await render();
+
+      await filterBy('Osoba', 'zoran.jovanovic');
+
+      expect(listedNames()).toEqual(['Zoran Jovanović']);
+    });
+
+    /** One customer's people, which is the question a support call actually starts with. */
+    it('narrows to one customer’s people, diacritics or not', async () => {
+      await render();
+
+      await filterBy('Firma', 'petrovic');
+
+      expect(listedNames()).toEqual(['Petar Petrović', 'Zoran Jovanović']);
+    });
+
+    it('says how much it is hiding, and offers one tap back to everybody', async () => {
+      await render();
+
+      await filterBy('Osoba', 'petar');
+      expect(element.querySelector('.table-bar')?.textContent).toContain('Prikazano 1 od 3');
+
+      await press('Prikaži sve');
+
+      expect(listedNames()).toEqual(['Milovan Miletić', 'Petar Petrović', 'Zoran Jovanović']);
+      expect(element.querySelector('.table-bar')).toBeNull();
+    });
+
+    it('says a filter is why the directory is empty, not that the product is', async () => {
+      await render();
+
+      await filterBy('Osoba', 'nikola');
+
+      expect(listedNames()).toEqual([]);
+      expect(text()).toContain('Nijedan red ne odgovara filteru.');
+      expect(text()).not.toContain('Još nema naloga.');
+    });
+
+    it('gives the phone the same controls, as pills', async () => {
+      viewport.atLeastMedium = () => false;
+      await render();
+
+      expect(element.querySelectorAll('.column-bar app-column-menu').length).toBe(3);
+
+      await filterBy('Osoba', 'petar');
+      expect(listedNames()).toEqual(['Petar Petrović']);
+    });
+
+    it('does not navigate, and does not re-read the server, to hide a row', async () => {
+      await render();
+
+      await filterBy('Osoba', 'petar');
 
       expect(router.navigate).not.toHaveBeenCalled();
       expect(gateway.userListings).toBe(1);
@@ -656,7 +788,9 @@ describe('PlatformPage', () => {
       await attempt();
 
       expect(text()).toContain('Osoba nije mogla da se doda');
-      expect(text()).toContain('Ta adresa već ima nalog. Pozovite taj nalog umesto pravljenja drugog.');
+      expect(text()).toContain(
+        'Ta adresa već ima nalog. Pozovite taj nalog umesto pravljenja drugog.',
+      );
       expect(element.querySelector('#platform-add-name')).not.toBeNull();
       expect(text()).not.toContain('NJEGOV LINK');
     });

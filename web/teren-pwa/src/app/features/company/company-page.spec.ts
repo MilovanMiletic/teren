@@ -155,6 +155,41 @@ describe('CompanyPage', () => {
     await settle();
   }
 
+  /**
+   * Type into one column's filter box, through the control an owner actually uses: open the
+   * column's menu from its funnel, then type.
+   *
+   * Deliberately not a call to `setFilter` on the component. What is under test is the path from a
+   * key press on the glass to a row leaving the list, and a spec that reaches past the control
+   * would stay green with the funnel unwired — which is exactly the class of defect that shipped a
+   * screen nobody could navigate in `ee37f04`.
+   */
+  async function filterBy(column: string, value: string): Promise<void> {
+    const funnel = buttons().find((candidate) =>
+      candidate.getAttribute('aria-label')?.startsWith(`Kolona ${column}`),
+    );
+    if (!funnel) {
+      throw new Error(`no column control for "${column}"`);
+    }
+    funnel.click();
+    await settle();
+
+    const box = element.querySelector<HTMLInputElement>('.menu__input');
+    if (!box) {
+      throw new Error(`the "${column}" column offers no filter box`);
+    }
+    box.value = value;
+    box.dispatchEvent(new Event('input'));
+    await settle();
+  }
+
+  /** The group bands the table is drawing, as a screen reader would read them out. */
+  function groupBands(): string[] {
+    return [...element.querySelectorAll('tbody th[scope="rowgroup"], .list__group')].map(
+      (node) => node.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+    );
+  }
+
   /** The people in the order the screen lists them, whichever rendering is on. */
   /**
    * The **foremen**, in the order the list is drawing them.
@@ -379,8 +414,8 @@ describe('CompanyPage', () => {
         ...['company-page.ts', 'company-page.html', 'people.ts'].map((file) =>
           readFileSync(join(process.cwd(), 'src', 'app', 'features', 'company', file), 'utf8'),
         ),
-        ...['info-popover.ts', 'modal-sheet.ts'].map((file) =>
-          readFileSync(join(process.cwd(), 'src', 'app', 'ui', file), 'utf8'),
+        ...['info-popover.ts', 'modal-sheet.ts', 'column-menu.ts', 'table-controls.ts'].map(
+          (file) => readFileSync(join(process.cwd(), 'src', 'app', 'ui', file), 'utf8'),
         ),
       ]
         .join('\n')
@@ -391,6 +426,127 @@ describe('CompanyPage', () => {
       for (const forbidden of ['readCode', 'issueCode', 'shareText', 'clipboard', 'data-code']) {
         expect(source, `the people list must not reach for ${forbidden}`).not.toContain(forbidden);
       }
+    });
+  });
+
+  // ---- Filtering ----------------------------------------------------------------------------
+
+  /**
+   * The half of the founder's 2026-09-02 note that is not about colour: *"one standard option
+   * beside all columns so I can filter or sort... super admin will have more than 10 clients
+   * hopefully and the company admin can have more workers"*.
+   *
+   * The filter matches **the words the cell shows**, which is what lets one box serve a name, a
+   * date and a row of chips without any column declaring a type.
+   */
+  describe('filtering', () => {
+    it('narrows the list to the man he is looking for, and takes his own row with it', async () => {
+      await render();
+
+      await filterBy('Osoba', 'zoran');
+
+      expect(listedNames()).toEqual(['Zoran Jovanović']);
+      // His own row goes too — he is a row in this table like any other, and a directory that
+      // answers "Zoran" with the reader's own name at the top did not do what it was asked.
+      expect(element.querySelector('.person--you')).toBeNull();
+      expect(groupBands()).toEqual(['Poslovođe 1']);
+    });
+
+    /**
+     * An owner hunting for Marković types `markovic`; on a phone keyboard every accented letter is
+     * a long press. `foldForFilter` is what makes that work, and this is the screen proving it.
+     */
+    it('finds a Serbian surname typed without its diacritics', async () => {
+      await render();
+
+      await filterBy('Osoba', 'markovic');
+
+      expect(listedNames()).toEqual(['Marko Marković']);
+    });
+
+    /** The state column is chips, and a chip is a word — so it filters like any other column. */
+    it('filters on what the chips say, not on a field nobody can see', async () => {
+      await render();
+
+      await filterBy('Stanje', 'kod ga čeka');
+
+      expect(listedNames()).toEqual(['Zoran Jovanović']);
+    });
+
+    /**
+     * **The dangerous state, said out loud.** A table quietly showing one of three rows is how a
+     * screen makes an owner believe a foreman has been removed from his company.
+     */
+    it('says how much it is hiding, and offers one tap back to everybody', async () => {
+      await render();
+
+      await filterBy('Osoba', 'zoran');
+
+      const bar = element.querySelector('.table-bar');
+      expect(bar?.textContent).toContain('Prikazano 1 od 3');
+
+      await press('Prikaži sve');
+
+      expect(listedNames()).toEqual(['Marko Marković', 'Zoran Jovanović']);
+      expect(element.querySelector('.table-bar')).toBeNull();
+      expect(element.querySelector('.person--you')).not.toBeNull();
+    });
+
+    /**
+     * Three different silences, and the screen never confuses them: the server could not be
+     * reached, the company has no foremen, or a filter is hiding them.
+     */
+    it('says a filter is why the list is empty, not that the company is', async () => {
+      await render();
+
+      await filterBy('Osoba', 'nikola');
+
+      expect(listedNames()).toEqual([]);
+      expect(text()).toContain('Nijedan red ne odgovara filteru.');
+      expect(text()).not.toContain('Dodajte prvog i dajte mu kod');
+    });
+
+    /**
+     * The phone gets the same control, because an owner reaches this screen on one (decision 9) and
+     * a list of twelve men is exactly where a filter earns its place.
+     */
+    it('filters on a phone through the same control the table uses', async () => {
+      viewport.atLeastMedium = () => false;
+      viewport.expanded = () => false;
+      await render();
+
+      expect(element.querySelectorAll('.column-bar app-column-menu').length).toBe(3);
+
+      await filterBy('Osoba', 'zoran');
+
+      expect(listedNames()).toEqual(['Zoran Jovanović']);
+      expect(element.querySelector('.table-bar')?.textContent).toContain('Prikazano 1 od 3');
+    });
+
+    /**
+     * **The way out survives the filter that needs it.** The control bar is drawn from two rows up,
+     * so a filter narrowing the list to one row would have taken the only "show all" on a phone
+     * away with it — leaving an owner looking at one man and no way back.
+     */
+    it('keeps the phone’s controls on screen when the filter has left one row', async () => {
+      viewport.atLeastMedium = () => false;
+      viewport.expanded = () => false;
+      await render();
+
+      await filterBy('Osoba', 'zoran');
+
+      expect(element.querySelectorAll('.column-bar app-column-menu').length).toBe(3);
+      expect(buttons().some((b) => b.textContent?.includes('Prikaži sve'))).toBe(true);
+    });
+
+    /** A sort is a way of looking at a list; so is a filter. Neither is a place in the app. */
+    it('does not navigate, and does not re-read the server, to hide a row', async () => {
+      await render();
+
+      await filterBy('Osoba', 'zoran');
+
+      expect(router.navigate).not.toHaveBeenCalled();
+      expect(gateway.workerListings).toBe(1);
     });
   });
 
@@ -503,10 +659,11 @@ describe('CompanyPage', () => {
       expect(element.querySelector('.col--state')?.getAttribute('aria-sort')).toBe('descending');
     });
 
+    /** The column is headed *Aktivnost* since 2026-09-02 — see the dictionary, not this spec. */
     it('sorts by last contact with the most recent first on the first tap', async () => {
       await render();
 
-      await press('Poslednji kontakt');
+      await press('Aktivnost');
 
       // Zoran called home; Marko never has, and "never" is not the oldest date.
       expect(listedNames()).toEqual(['Zoran Jovanović', 'Marko Marković']);

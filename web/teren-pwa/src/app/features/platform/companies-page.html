@@ -21,7 +21,14 @@
         [body]="t('platform.companies.about.body')"
       />
 
-      <!-- The way back to the people. Both directions exist, so neither screen is a dead end. -->
+      <!--
+        The way back to the people. Both directions exist, so neither screen is a dead end.
+
+        **Its name is a verb** ("Idi na ljude") and not the destination's noun, because this screen
+        has a column headed *Ljudi* and an icon whose only name is "Ljudi" would have a screen
+        reader announce two different things identically — and, on 2026-09-02, had a spec press this
+        control believing it was sorting a column.
+      -->
       <button
         type="button"
         class="btn-icon"
@@ -82,20 +89,115 @@
       </dl>
 
       <section class="card people wide" [attr.aria-label]="t('platform.companies.caption')">
+        <!--
+          Only while a filter is live, and at every width: a list quietly showing three of twenty
+          customers is the one state in which this screen can make the founder believe a customer
+          was never created — or, worse, suspend the wrong one because the row he expected is not
+          where he expected it.
+        -->
+        @if (controls.filtering()) {
+          <div class="table-bar" role="status">
+            <span class="t-meta">
+              {{ t('table.filter.showing', { shown: listed().length, total: customers().length }) }}
+            </span>
+            <button type="button" class="table-bar__clear" (click)="controls.clearFilters()">
+              {{ t('table.filter.clearAll') }}
+            </button>
+          </div>
+        }
+
+        <!--
+          Below 768 the same three controls the column heads carry, as pills: one tap on the word
+          sorts, one on the funnel filters.
+        -->
+        @if (!viewport.atLeastMedium()) {
+          <div class="column-bar" role="group" [attr.aria-label]="t('platform.companies.caption')">
+            <app-column-menu
+              variant="pill"
+              kind="text"
+              [label]="t('platform.companies.name')"
+              [sort]="controls.directionFor('name')"
+              [filter]="controls.filterFor('name')"
+              (toggled)="sortBy('name')"
+              (sorted)="setSort('name', $event)"
+              (filterChanged)="setFilter('name', $event)"
+            />
+            <app-column-menu
+              variant="pill"
+              kind="number"
+              [label]="t('platform.companies.people')"
+              [sort]="controls.directionFor('people')"
+              [filter]="controls.filterFor('people')"
+              (toggled)="sortBy('people')"
+              (sorted)="setSort('people', $event)"
+              (filterChanged)="setFilter('people', $event)"
+            />
+            <app-column-menu
+              variant="pill"
+              kind="date"
+              [label]="t('platform.companies.since')"
+              [sort]="controls.directionFor('since')"
+              [filter]="controls.filterFor('since')"
+              (toggled)="sortBy('since')"
+              (sorted)="setSort('since', $event)"
+              (filterChanged)="setFilter('since', $event)"
+            />
+          </div>
+        }
+
         @if (listed().length === 0) {
-          <p class="t-meta state">{{ t('platform.companies.empty') }}</p>
+          <!-- No customers at all, and none that answer the filter, are two sentences. -->
+          <p class="t-meta state" role="status">
+            {{ controls.filtering() ? t('table.filter.empty') : t('platform.companies.empty') }}
+          </p>
         } @else if (viewport.atLeastMedium()) {
           <div class="people__scroll">
-            <table class="people__table">
+            <table class="people__table data-table">
               <caption class="visually-hidden">
-                {{ t('platform.companies.caption') }}
+                {{
+                  t('platform.companies.caption')
+                }}
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">{{ t('platform.companies.name') }}</th>
-                  <th scope="col">{{ t('platform.companies.people') }}</th>
-                  <th scope="col">{{ t('platform.companies.since') }}</th>
-                  <th scope="col">
+                  <th scope="col" class="col--name" [attr.aria-sort]="controls.ariaSort('name')">
+                    <app-column-menu
+                      kind="text"
+                      [label]="t('platform.companies.name')"
+                      [sort]="controls.directionFor('name')"
+                      [filter]="controls.filterFor('name')"
+                      (toggled)="sortBy('name')"
+                      (sorted)="setSort('name', $event)"
+                      (filterChanged)="setFilter('name', $event)"
+                    />
+                  </th>
+                  <th
+                    scope="col"
+                    class="col--people"
+                    [attr.aria-sort]="controls.ariaSort('people')"
+                  >
+                    <app-column-menu
+                      kind="number"
+                      [label]="t('platform.companies.people')"
+                      [sort]="controls.directionFor('people')"
+                      [filter]="controls.filterFor('people')"
+                      (toggled)="sortBy('people')"
+                      (sorted)="setSort('people', $event)"
+                      (filterChanged)="setFilter('people', $event)"
+                    />
+                  </th>
+                  <th scope="col" class="col--since" [attr.aria-sort]="controls.ariaSort('since')">
+                    <app-column-menu
+                      kind="date"
+                      [label]="t('platform.companies.since')"
+                      [sort]="controls.directionFor('since')"
+                      [filter]="controls.filterFor('since')"
+                      (toggled)="sortBy('since')"
+                      (sorted)="setSort('since', $event)"
+                      (filterChanged)="setFilter('since', $event)"
+                    />
+                  </th>
+                  <th scope="col" class="col--action">
                     <span class="visually-hidden">{{ t('platform.companies.actionColumn') }}</span>
                   </th>
                 </tr>
@@ -118,7 +220,11 @@
                       {{ customer.activeUserCount }} / {{ customer.userCount }}
                     </td>
                     <td class="t-meta">
-                      {{ customer.createdAt ? (customer.createdAt | date: 'd. M. y.') : t('platform.none') }}
+                      {{
+                        customer.createdAt
+                          ? (customer.createdAt | date: 'd. M. y.')
+                          : t('platform.none')
+                      }}
                     </td>
                     <td class="row__action">
                       <button
@@ -147,6 +253,20 @@
                   >{{ customer.activeUserCount }} / {{ customer.userCount }}
                   {{ t('platform.companies.people') }}</span
                 >
+                <!--
+                  The signing date, which the table has had a column for since this screen was
+                  built and the phone had nowhere to show. It has to be here now: below 768 the same
+                  three controls travel as pills, and a list that reorders itself by a value no row
+                  prints is a list that looks broken (review, 2026-09-02).
+                -->
+                <span class="t-meta t-num">
+                  {{ t('platform.companies.since') }}
+                  {{
+                    customer.createdAt
+                      ? (customer.createdAt | date: 'd. M. y.')
+                      : t('platform.none')
+                  }}
+                </span>
                 @if (customer.suspendedAt) {
                   <span class="chip chip--err">{{ t('platform.companies.suspended') }}</span>
                 }
@@ -199,7 +319,9 @@
               {{ t('platform.add.cancel') }}
             </button>
             <button type="submit" class="btn btn--row" [disabled]="!canAdd()">
-              {{ adding() ? t('platform.companies.add.adding') : t('platform.companies.add.submit') }}
+              {{
+                adding() ? t('platform.companies.add.adding') : t('platform.companies.add.submit')
+              }}
             </button>
           </div>
         </form>
@@ -215,9 +337,7 @@
       -->
       <app-modal-sheet
         [heading]="
-          customer.suspendedAt
-            ? t('platform.companies.resume')
-            : t('platform.companies.suspend')
+          customer.suspendedAt ? t('platform.companies.resume') : t('platform.companies.suspend')
         "
         (close)="cancelAsk()"
       >

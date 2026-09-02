@@ -5,7 +5,7 @@ import { TranslocoTestingModule } from '@jsverse/transloco';
 import { COMPANY_GATEWAY } from '../../core/company/company-gateway';
 import { MockCompanyGateway } from '../../core/company/mock-company-gateway';
 import { ADMIN_SESSION_STORAGE_KEY, AdminSession } from '../../core/session/admin-session';
-import { KnobbedGateway, httpError } from '../../testing/company-gateway-double';
+import { KnobbedGateway, deferred, httpError } from '../../testing/company-gateway-double';
 import { routeUrlFor } from '../../testing/route-table';
 import en from '../../../../public/i18n/en.json';
 import sr from '../../../../public/i18n/sr.json';
@@ -160,6 +160,96 @@ describe('AccountPage', () => {
     // Not an empty card: an account that failed to load and an account with nothing in it look
     // identical unless one of them says which it is.
     expect(text()).not.toContain('Milan Gradnja');
+  });
+
+  /**
+   * **The founder's note of 2026-09-02, pinned**: *"we have duplicated stuff for translation here —
+   * already have it in the header"*.
+   *
+   * The switcher belongs to the chrome, and this screen's chrome carries it twice over already: the
+   * app header from 768 up, and the compact bar below it, where the header is `display: none`. A
+   * third copy inside the content was one setting said three times on one screen. Asserted on the
+   * **content** rather than on the document, because the two chrome copies both render here — jsdom
+   * applies no media queries, so counting them all would pin the wrong thing.
+   */
+  it('carries no language control of its own — the chrome already has one at every width', async () => {
+    await render();
+
+    expect(element.querySelectorAll('.content app-language-switcher').length).toBe(0);
+    // **Exactly two on the whole screen, not "none in the content"**: the header's and the compact
+    // bar's, one of which is visible at any width. Counting the whole document rather than the
+    // content is what makes a third copy anywhere — including a well-meaning one in the head row —
+    // fail this (review, 2026-09-02).
+    expect(element.querySelectorAll('app-language-switcher').length).toBe(2);
+    expect(element.querySelectorAll('.bar--compact app-language-switcher').length).toBe(1);
+  });
+
+  /**
+   * Built like the platform's own account screen (founder, same note): the person is the title, a
+   * `detail` card carries his chips and a fact list, and an `actions` card beside it carries what
+   * applies to him here. The two screens describe the same man to two different readers, and until
+   * this they looked like two products.
+   */
+  it('is shaped like the platform’s account screen, not like a profile of its own', async () => {
+    await render();
+
+    expect(element.querySelector('.head__title')?.textContent?.trim()).toBe('Petar Petrović');
+    expect(element.querySelector('.card.detail')).not.toBeNull();
+    expect(element.querySelector('.card.actions')).not.toBeNull();
+    // The label/value pairs the platform draws, in the same order of facts.
+    // Sentence case in the dictionary: `.t-label` is what uppercases a label, and four of these
+    // keys shouted in the JSON while the rest of the screen's did not (2026-09-02).
+    expect(
+      [...element.querySelectorAll('.detail .facts__row dt')].map((n) => n.textContent),
+    ).toEqual(['Prijavljujete se sa', 'Firma', 'Nalog otvoren', 'Prethodna prijava']);
+  });
+
+  /**
+   * **The head band names an address only when the server gave one.**
+   *
+   * `known()` is true from the stored session alone and `email()` is server-only, so the line under
+   * his name printed "no address on file" for the length of every fetch — and, in the unreachable
+   * state, printed that claim *above* the notice saying nothing had been confirmed. A caveat after
+   * the claim it qualifies is not a caveat.
+   */
+  it('never claims there is no address before the server has answered', async () => {
+    gateway.meError = httpError(503);
+    await render();
+
+    expect(element.querySelector('.head__sub')).toBeNull();
+    // The fact row still says it, once, and it sits below the notice that explains why.
+    const notice = text().indexOf('Nije provereno na serveru');
+    expect(notice).toBeGreaterThanOrEqual(0);
+    expect(text().indexOf('Nema sačuvane imejl adrese')).toBeGreaterThan(notice);
+  });
+
+  /** The same, in the state every visit passes through: nothing has come back yet. */
+  it('says nothing about an address while the account is still loading', async () => {
+    // Held open, so the screen is observed in the state it spends its first moments in.
+    gateway.meGate = deferred();
+    await render();
+
+    expect(text()).toContain('Učitavanje naloga…');
+    expect(text()).not.toContain('Nema sačuvane imejl adrese');
+    expect(element.querySelector('.head__sub')).toBeNull();
+
+    gateway.meGate.release();
+    await settle();
+    expect(element.querySelector('.head__sub')?.textContent?.trim()).toBe(
+      MockCompanyGateway.ADMIN_EMAIL,
+    );
+  });
+
+  /**
+   * The sentence explaining the address sits **under the address**. At the foot of the card, where
+   * the rebuild first put it, "this address and your password" pointed at a timestamp.
+   */
+  it('keeps the sign-in hint attached to the address it is about', async () => {
+    await render();
+
+    const row = element.querySelector('.detail .facts__row');
+    expect(row?.textContent).toContain(MockCompanyGateway.ADMIN_EMAIL);
+    expect(row?.textContent).toContain('Ova adresa i vaša lozinka');
   });
 
   it('offers no re-activation and no code entry — those belong to a phone', async () => {

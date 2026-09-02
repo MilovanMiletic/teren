@@ -42,6 +42,36 @@
       "other": "{{count}} photos"
     }
   },
+  "table": {
+    "menu": "{{column}} column: order and filter",
+    "sort": {
+      "text": {
+        "asc": "A → Z",
+        "desc": "Z → A"
+      },
+      "date": {
+        "asc": "Oldest first",
+        "desc": "Newest first"
+      },
+      "state": {
+        "asc": "Needs attention first",
+        "desc": "Settled first"
+      },
+      "number": {
+        "asc": "Lowest first",
+        "desc": "Highest first"
+      }
+    },
+    "filter": {
+      "label": "Filter",
+      "placeholder": "Contains…",
+      "on": "Filter the {{column}} column",
+      "clear": "Clear this column’s filter",
+      "clearAll": "Show all",
+      "showing": "Showing {{shown}} of {{total}}",
+      "empty": "No rows match the filter."
+    }
+  },
   "home": {
     "project": {
       "label": "Site",
@@ -675,10 +705,10 @@
       "foremen": "Foremen",
       "person": "Person",
       "state": "State",
-      "contact": "Last contact",
+      "contact": "Activity",
       "open": "open",
       "openColumn": "Open",
-      "sortBy": "Sort the foremen",
+      "sortBy": "Order and filter the foremen",
       "you": "you",
       "passwordAccount": "Signs in with a password",
       "noUsername": "no username",
@@ -809,29 +839,23 @@
       "loading": "Loading your account…",
       "back": "Back to the people",
       "open": "Open my account",
-      "name": "NAME",
-      "username": "USERNAME",
+      "username": "Username",
       "noEmail": "No email address on file",
-      "details": "ACCOUNT",
       "company": "Company",
       "created": "Account opened",
       "lastLogin": "Previous sign-in",
       "signIn": {
-        "label": "YOU SIGN IN WITH",
+        "label": "You sign in with",
         "hint": "This address, and your password. A new password link is sent here too."
       },
       "session": {
-        "label": "THIS BROWSER",
+        "label": "This browser",
         "signedIn": "Signed in",
         "expires": "Stays signed in until",
         "hint": "Sign out at the top of the screen. Nothing recorded is kept here — your foremen’s entries live on their phones."
       },
-      "language": {
-        "label": "LANGUAGE",
-        "hint": "The language of the app in this browser. The client’s report goes out in the language of the site."
-      },
       "password": {
-        "label": "PASSWORD",
+        "label": "Password",
         "body": "To change it, ask Teren for a new link. The link sets a new password and works once."
       },
       "stale": {
@@ -916,7 +940,7 @@
       "company": "Customer",
       "state": "State",
       "empty": "No accounts yet.",
-      "open": "People",
+      "open": "Go to people",
       "openColumn": "Open"
     },
     "person": {

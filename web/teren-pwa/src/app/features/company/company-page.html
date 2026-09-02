@@ -114,6 +114,23 @@
         At expanded it spans all twelve columns — there is no longer a rail to leave room for.
       -->
       <section class="card people wide" [attr.aria-label]="t('company.people.caption')">
+        <!--
+          Only while a filter is live, and at every width. A table quietly showing three of twelve
+          rows is the one state in which this screen can make an owner believe a foreman has been
+          removed from his company, so the count and the way out of it are printed rather than left
+          to a tinted funnel in one column head.
+        -->
+        @if (controls.filtering()) {
+          <div class="table-bar" role="status">
+            <span class="t-meta">
+              {{ t('table.filter.showing', { shown: shown(), total: total() }) }}
+            </span>
+            <button type="button" class="table-bar__clear" (click)="controls.clearFilters()">
+              {{ t('table.filter.clearAll') }}
+            </button>
+          </div>
+        }
+
         @if (viewport.atLeastMedium()) {
           <!--
               A real table from 768 up: a header row a screen reader can name, `scope` on every
@@ -122,7 +139,7 @@
               ever outgrow the column — the page itself never scrolls sideways.
             -->
           <div class="people__scroll">
-            <table class="people__table">
+            <table class="people__table data-table">
               <caption class="visually-hidden">
                 {{
                   t('company.people.caption')
@@ -130,44 +147,42 @@
               </caption>
               <thead>
                 <tr>
-                  <th scope="col" class="col--person" [attr.aria-sort]="ariaSort('name')">
-                    <button type="button" class="sort" (click)="sortBy('name')">
-                      <span>{{ t('company.people.person') }}</span>
-                      @if (sortedBy('name')) {
-                        <app-icon
-                          name="chevron-down"
-                          [size]="14"
-                          class="sort__arrow"
-                          [class.sort__arrow--asc]="ascending()"
-                        />
-                      }
-                    </button>
+                  <th scope="col" class="col--person" [attr.aria-sort]="controls.ariaSort('name')">
+                    <app-column-menu
+                      kind="text"
+                      [label]="t('company.people.person')"
+                      [sort]="controls.directionFor('name')"
+                      [filter]="controls.filterFor('name')"
+                      (toggled)="sortBy('name')"
+                      (sorted)="setSort('name', $event)"
+                      (filterChanged)="setFilter('name', $event)"
+                    />
                   </th>
-                  <th scope="col" class="col--state" [attr.aria-sort]="ariaSort('state')">
-                    <button type="button" class="sort" (click)="sortBy('state')">
-                      <span>{{ t('company.people.state') }}</span>
-                      @if (sortedBy('state')) {
-                        <app-icon
-                          name="chevron-down"
-                          [size]="14"
-                          class="sort__arrow"
-                          [class.sort__arrow--asc]="ascending()"
-                        />
-                      }
-                    </button>
+                  <th scope="col" class="col--state" [attr.aria-sort]="controls.ariaSort('state')">
+                    <app-column-menu
+                      kind="state"
+                      [label]="t('company.people.state')"
+                      [sort]="controls.directionFor('state')"
+                      [filter]="controls.filterFor('state')"
+                      (toggled)="sortBy('state')"
+                      (sorted)="setSort('state', $event)"
+                      (filterChanged)="setFilter('state', $event)"
+                    />
                   </th>
-                  <th scope="col" class="col--contact" [attr.aria-sort]="ariaSort('contact')">
-                    <button type="button" class="sort" (click)="sortBy('contact')">
-                      <span>{{ t('company.people.contact') }}</span>
-                      @if (sortedBy('contact')) {
-                        <app-icon
-                          name="chevron-down"
-                          [size]="14"
-                          class="sort__arrow"
-                          [class.sort__arrow--asc]="ascending()"
-                        />
-                      }
-                    </button>
+                  <th
+                    scope="col"
+                    class="col--contact"
+                    [attr.aria-sort]="controls.ariaSort('contact')"
+                  >
+                    <app-column-menu
+                      kind="date"
+                      [label]="t('company.people.contact')"
+                      [sort]="controls.directionFor('contact')"
+                      [filter]="controls.filterFor('contact')"
+                      (toggled)="sortBy('contact')"
+                      (sorted)="setSort('contact', $event)"
+                      (filterChanged)="setFilter('contact', $event)"
+                    />
                   </th>
                   <th scope="col" class="col--go">
                     <span class="visually-hidden">{{ t('company.people.openColumn') }}</span>
@@ -175,36 +190,40 @@
                 </tr>
               </thead>
 
-              <tbody>
-                <tr class="group">
-                  <th colspan="4" scope="rowgroup" class="t-label group__label">
+              <!--
+                The whole band, not just the row: a filter that excludes the owner must take his
+                group heading with him, or the table prints an empty "VLASNIK FIRME" over nothing
+                and reads as a row that failed to load.
+              -->
+              @if (directorRow(); as boss) {
+                <tbody>
+                  <tr class="group">
                     <!--
-                        The band's own flex box is an inner span on purpose: `display: flex` on a
-                        `<th>` takes it out of the table's layout, and `colspan` is then ignored —
-                        the tint shrank to the first column and the group header stopped reading as
-                        one. It cost a screenshot to see and is invisible in the markup.
-                      -->
-                    <!--
-                        **`profile.role.company_admin`, not a heading of this screen's own**
-                        (founder, 2026-09-01): one role has one name across the app, and that name
-                        already ships on the profile screen. A `company.people.directors` key would
-                        be a second place to reword it and a second place to forget.
-                      -->
-                    <span class="group__inner">{{ t('profile.role.company_admin') }}</span>
-                  </th>
-                </tr>
-                @if (director(); as boss) {
-                  <!--
-                      One row, and it is the session in this browser. There is no endpoint that
-                      lists a company's admins, so the screen shows the man reading it and invents
-                      nobody — see `CompanyPage.director`.
+                      The band's own flex box is an inner span on purpose: `display: flex` on a
+                      `<th>` takes it out of the table's layout, and `colspan` is then ignored — the
+                      tint shrank to the first column and the group header stopped reading as one.
+                      It cost a screenshot to see and is invisible in the markup.
 
-                      **It opens, exactly as a foreman's row does** (2026-09-01). Until it did, the
-                      owner was the only person in the product with no page of his own: his address,
-                      the date his account was opened and the last time it was signed into were
-                      readable by Teren staff on the platform directory and by nobody else, himself
-                      included.
+                      **`profile.role.company_admin`, not a heading of this screen's own** (founder,
+                      2026-09-01): one role has one name across the app, and that name already ships
+                      on the profile screen. A `company.people.directors` key would be a second place
+                      to reword it and a second place to forget.
                     -->
+                    <th colspan="4" scope="rowgroup" class="t-label group__label">
+                      <span class="group__inner">{{ t('profile.role.company_admin') }}</span>
+                    </th>
+                  </tr>
+                  <!--
+                    One row, and it is the session in this browser. There is no endpoint that lists
+                    a company's admins, so the screen shows the man reading it and invents nobody —
+                    see `CompanyPage.director`.
+
+                    **It opens, exactly as a foreman's row does** (2026-09-01). Until it did, the
+                    owner was the only person in the product with no page of his own: his address,
+                    the date his account was opened and the last time it was signed into were
+                    readable by Teren staff on the platform directory and by nobody else, himself
+                    included.
+                  -->
                   <tr class="person person--open person--you" (click)="openAccount()">
                     <th scope="row" class="cell cell--person">
                       <button
@@ -229,23 +248,40 @@
                       <app-icon name="chevron-right" [size]="18" class="person__chevron" />
                     </td>
                   </tr>
-                }
-              </tbody>
+                </tbody>
+              }
 
               <tbody>
                 <tr class="group">
                   <th colspan="4" scope="rowgroup" class="t-label group__label">
                     <span class="group__inner">
                       {{ t('company.people.foremen') }}
-                      <span class="t-num group__count">{{ workers().length }}</span>
+                      <!--
+                        The count of what is **drawn**, not of what exists. With a filter live the
+                        two differ, and a band saying 12 over three rows is the screen contradicting
+                        itself; the strip above the table is where "3 of 12" is said in full.
+                      -->
+                      <span class="t-num group__count">{{ rows().length }}</span>
                     </span>
                   </th>
                 </tr>
 
                 @if (rows().length === 0) {
+                  <!--
+                    Three different silences, and the screen never confuses them: the server could
+                    not be reached, the company has no foremen, or a filter is hiding them. The
+                    third one is the dangerous one — an owner who does not know he is filtering
+                    concludes his men are gone.
+                  -->
                   <tr>
                     <td colspan="4" class="cell cell--empty t-meta">
-                      {{ unconfirmed() && reasonKey() ? t(reasonKey()!) : t('company.empty.body') }}
+                      @if (unconfirmed() && reasonKey()) {
+                        {{ t(reasonKey()!) }}
+                      } @else if (controls.filtering()) {
+                        {{ t('table.filter.empty') }}
+                      } @else {
+                        {{ t('company.empty.body') }}
+                      }
                     </td>
                   </tr>
                 }
@@ -301,8 +337,8 @@
               foreman into an endless scroll on the screen this replaced.
             -->
           <div class="list">
-            <h2 class="t-label list__group">{{ t('profile.role.company_admin') }}</h2>
-            @if (director(); as boss) {
+            @if (directorRow(); as boss) {
+              <h2 class="t-label list__group">{{ t('profile.role.company_admin') }}</h2>
               <button type="button" class="row-button row row--you" (click)="openAccount()">
                 <span class="row__text">
                   <span class="row__top">
@@ -321,72 +357,62 @@
 
             <h2 class="t-label list__group">
               {{ t('company.people.foremen') }}
-              <span class="t-num group__count">{{ workers().length }}</span>
+              <span class="t-num group__count">{{ rows().length }}</span>
             </h2>
 
             <!--
-                The sort control the table's own column headers carry from 768 up. Three pills, and
-                a second tap on the live one turns it round.
-              -->
-            @if (rows().length > 1) {
-              <div class="sort-bar" role="group" [attr.aria-label]="t('company.people.sortBy')">
-                <button
-                  type="button"
-                  class="sort-pill"
-                  [class.sort-pill--on]="sortedBy('name')"
-                  [attr.aria-pressed]="sortedBy('name')"
-                  (click)="sortBy('name')"
-                >
-                  {{ t('company.people.person') }}
-                  @if (sortedBy('name')) {
-                    <app-icon
-                      name="chevron-down"
-                      [size]="14"
-                      class="sort__arrow"
-                      [class.sort__arrow--asc]="ascending()"
-                    />
-                  }
-                </button>
-                <button
-                  type="button"
-                  class="sort-pill"
-                  [class.sort-pill--on]="sortedBy('state')"
-                  [attr.aria-pressed]="sortedBy('state')"
-                  (click)="sortBy('state')"
-                >
-                  {{ t('company.people.state') }}
-                  @if (sortedBy('state')) {
-                    <app-icon
-                      name="chevron-down"
-                      [size]="14"
-                      class="sort__arrow"
-                      [class.sort__arrow--asc]="ascending()"
-                    />
-                  }
-                </button>
-                <button
-                  type="button"
-                  class="sort-pill"
-                  [class.sort-pill--on]="sortedBy('contact')"
-                  [attr.aria-pressed]="sortedBy('contact')"
-                  (click)="sortBy('contact')"
-                >
-                  {{ t('company.people.contact') }}
-                  @if (sortedBy('contact')) {
-                    <app-icon
-                      name="chevron-down"
-                      [size]="14"
-                      class="sort__arrow"
-                      [class.sort__arrow--asc]="ascending()"
-                    />
-                  }
-                </button>
+              The very controls the table's column heads carry from 768 up, travelling as pills:
+              one tap on the word sorts, one on the funnel filters. It is the same component, so
+              the phone can never fall behind the tablet on what a list can be asked.
+
+              Drawn from two rows up, because with one foreman there is nothing to order — but
+              **never hidden while a filter is live**, or the only way to clear it disappears with
+              the rows it removed.
+            -->
+            @if (rows().length > 1 || controls.filtering()) {
+              <div class="column-bar" role="group" [attr.aria-label]="t('company.people.sortBy')">
+                <app-column-menu
+                  variant="pill"
+                  kind="text"
+                  [label]="t('company.people.person')"
+                  [sort]="controls.directionFor('name')"
+                  [filter]="controls.filterFor('name')"
+                  (toggled)="sortBy('name')"
+                  (sorted)="setSort('name', $event)"
+                  (filterChanged)="setFilter('name', $event)"
+                />
+                <app-column-menu
+                  variant="pill"
+                  kind="state"
+                  [label]="t('company.people.state')"
+                  [sort]="controls.directionFor('state')"
+                  [filter]="controls.filterFor('state')"
+                  (toggled)="sortBy('state')"
+                  (sorted)="setSort('state', $event)"
+                  (filterChanged)="setFilter('state', $event)"
+                />
+                <app-column-menu
+                  variant="pill"
+                  kind="date"
+                  [label]="t('company.people.contact')"
+                  [sort]="controls.directionFor('contact')"
+                  [filter]="controls.filterFor('contact')"
+                  (toggled)="sortBy('contact')"
+                  (sorted)="setSort('contact', $event)"
+                  (filterChanged)="setFilter('contact', $event)"
+                />
               </div>
             }
 
             @if (rows().length === 0) {
               <p class="row row--static t-meta" role="status">
-                {{ unconfirmed() && reasonKey() ? t(reasonKey()!) : t('company.empty.body') }}
+                @if (unconfirmed() && reasonKey()) {
+                  {{ t(reasonKey()!) }}
+                } @else if (controls.filtering()) {
+                  {{ t('table.filter.empty') }}
+                } @else {
+                  {{ t('company.empty.body') }}
+                }
               </p>
             }
 

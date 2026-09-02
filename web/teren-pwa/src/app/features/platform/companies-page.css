@@ -149,56 +149,49 @@
   overflow-x: auto;
 }
 
-.people__table {
-  width: 100%;
-  border-collapse: collapse;
-  text-align: left;
+/*
+ * The columns are given widths rather than left to the browser: a header cell now holds a label, a
+ * sort chevron and a filter funnel, and auto layout would hand the width to whichever of those is
+ * longest rather than to the company names the screen exists to show.
+ */
+.col--name {
+  width: 45%;
 }
 
-.people__table th,
-.people__table td {
-  padding: var(--space-3) 18px;
+.col--people {
+  width: 150px;
+}
+
+.col--since {
+  width: 180px;
+}
+
+/*
+ * The action, kept to a button's width rather than left to take every pixel the other three did
+ * not want. Without it the suspend button was a 300 px slab across a third of a 1280 screen — the
+ * heaviest action on the platform, drawn as the largest thing on the page.
+ */
+.col--action {
+  width: 200px;
+}
+
+/*
+ * The table's own furniture — its width, its collation of borders and the zero-padded header cell
+ * the column control fills — is `.data-table` in `styles.css` now, and the control itself is
+ * `ui/column-menu.ts`. Only the body cells' padding is this screen's business.
+ *
+ * That move is the fix for the founder's 2026-09-02 note: this file and the office's had a copy of
+ * the header styling each, `/platform/companies` had none, and so one of three tables rendered its
+ * headings in the browser's own black bold text.
+ */
+.people__table tbody th,
+.people__table tbody td {
+  padding: var(--space-3) var(--col-pad);
   border-bottom: 1px solid var(--color-card-line);
-  vertical-align: middle;
-}
-
-.people__table thead th {
-  padding: 0 18px;
-  background: var(--color-canvas);
-}
-
-.sort {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-height: var(--tap-min);
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--color-ink-2);
-  font-size: var(--text-label);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-
-.sort__arrow {
-  transition: transform 120ms ease;
-}
-
-.sort__arrow--asc {
-  transform: rotate(180deg);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .sort:hover {
-    color: var(--color-accent-deep);
-  }
 }
 
 .group__label {
-  padding: var(--space-3) 18px;
+  padding: var(--space-3) var(--col-pad);
   background: var(--color-canvas);
   color: var(--color-ink-2);
 }

@@ -513,6 +513,93 @@ button {
   color: var(--color-ink-2);
 }
 
+/* ---- Tables ------------------------------------------------------------------------------
+ *
+ * The parts every list in the product shares, so a fourth table inherits the look instead of
+ * inventing a fourth one. The column head itself is a component (`ui/column-menu.ts`); what lives
+ * here is the furniture around it.
+ *
+ * `--col-pad` is the horizontal padding of a header cell, handed down to that component: a custom
+ * property crosses a component boundary where a class name cannot, so the heading lines up with the
+ * cells beneath it and the expanded layout can widen both in one place.
+ */
+
+.data-table {
+  --col-pad: 18px;
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.data-table th,
+.data-table td {
+  text-align: left;
+  vertical-align: middle;
+}
+
+/*
+ * Zero padding on a header cell is deliberate and load-bearing: the column control inside it
+ * supplies its own from `--col-pad`, and takes the cell's full height as its tap target.
+ */
+.data-table thead th {
+  padding: 0;
+  border-bottom: 1px solid var(--color-card-line);
+  background: var(--color-canvas);
+  font-weight: 600;
+}
+
+@media (min-width: 1024px) {
+  .data-table {
+    --col-pad: var(--space-5);
+  }
+}
+
+/*
+ * The line that appears only while a filter is live.
+ *
+ * A table quietly showing three of twelve rows is the one state where a screen can make an owner
+ * believe a man has been removed from his company, so the count and the way out of it are printed
+ * above the list rather than left to the tinted funnel in one column head.
+ */
+.table-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) 18px;
+  border-bottom: 1px solid var(--color-card-line);
+  background: var(--color-accent-tint-1);
+  color: var(--color-ink-2);
+}
+
+.table-bar__clear {
+  min-height: var(--tap-min);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--color-accent-deep);
+  font-family: var(--font-family);
+  font-size: var(--text-meta);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/*
+ * Below 768 there is no table to hang a header off, so the same controls travel as a row of pills
+ * above the list. It scrolls sideways inside itself rather than wrapping to three lines on a
+ * 390 px screen — the page itself never scrolls sideways at any width.
+ */
+.column-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) 18px;
+  overflow-x: auto;
+  background: var(--color-canvas);
+}
+
 /* Available to screen readers, invisible on screen — used where the icon is the whole button. */
 .visually-hidden {
   position: absolute;

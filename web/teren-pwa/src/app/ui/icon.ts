@@ -33,7 +33,8 @@ export type IconName =
   | 'log-in'
   | 'log-out'
   | 'copy'
-  | 'building';
+  | 'building'
+  | 'filter';
 
 /**
  * The icon set: stroke-based, 24 px grid, stroke-width 2, round caps and joins
@@ -224,6 +225,13 @@ export type IconName =
           <path d="M9 7h2" />
           <path d="M9 11h2" />
           <path d="M9 15h2" />
+        }
+        @case ('filter') {
+          <!--
+            The funnel every column head carries. Deliberately not a chevron: a chevron beside a
+            column label reads as "this opens the sort", and this control also filters.
+          -->
+          <path d="M3 5h18l-7 8v6l-4 2v-8z" />
         }
       }
     </svg>

@@ -42,6 +42,36 @@
       "other": "{{count}} fotografija"
     }
   },
+  "table": {
+    "menu": "Kolona {{column}}: redosled i filter",
+    "sort": {
+      "text": {
+        "asc": "Redom A → Ž",
+        "desc": "Redom Ž → A"
+      },
+      "date": {
+        "asc": "Prvo najstarije",
+        "desc": "Prvo najnovije"
+      },
+      "state": {
+        "asc": "Prvo ono što traži pažnju",
+        "desc": "Prvo ono što je rešeno"
+      },
+      "number": {
+        "asc": "Prvo najmanje",
+        "desc": "Prvo najviše"
+      }
+    },
+    "filter": {
+      "label": "Filter",
+      "placeholder": "Sadrži…",
+      "on": "Filter za kolonu {{column}}",
+      "clear": "Skloni filter sa ove kolone",
+      "clearAll": "Prikaži sve",
+      "showing": "Prikazano {{shown}} od {{total}}",
+      "empty": "Nijedan red ne odgovara filteru."
+    }
+  },
   "home": {
     "project": {
       "label": "Gradilište",
@@ -675,10 +705,10 @@
       "foremen": "Poslovođe",
       "person": "Osoba",
       "state": "Stanje",
-      "contact": "Poslednji kontakt",
+      "contact": "Aktivnost",
       "open": "otvori",
       "openColumn": "Otvori",
-      "sortBy": "Sortiraj poslovođe",
+      "sortBy": "Redosled i filter poslovođa",
       "you": "vi",
       "passwordAccount": "Prijava lozinkom",
       "noUsername": "nema korisničko ime",
@@ -809,29 +839,23 @@
       "loading": "Učitavanje naloga…",
       "back": "Vrati se na ljude",
       "open": "Otvori moj nalog",
-      "name": "IME",
-      "username": "KORISNIČKO IME",
+      "username": "Korisničko ime",
       "noEmail": "Nema sačuvane imejl adrese",
-      "details": "NALOG",
       "company": "Firma",
       "created": "Nalog otvoren",
       "lastLogin": "Prethodna prijava",
       "signIn": {
-        "label": "PRIJAVLJUJETE SE SA",
+        "label": "Prijavljujete se sa",
         "hint": "Ova adresa i vaša lozinka. Na nju stiže i link za novu lozinku."
       },
       "session": {
-        "label": "OVAJ PRETRAŽIVAČ",
+        "label": "Ovaj pretraživač",
         "signedIn": "Prijavljeni ste",
         "expires": "Prijava važi do",
         "hint": "Odjava je na vrhu ekrana. Ovde se ništa snimljeno ne čuva — unosi vaših poslovođa stoje na njihovim telefonima."
       },
-      "language": {
-        "label": "JEZIK",
-        "hint": "Jezik aplikacije u ovom pretraživaču. Izveštaj klijentu ide na jeziku gradilišta."
-      },
       "password": {
-        "label": "LOZINKA",
+        "label": "Lozinka",
         "body": "Za promenu tražite od Terena novi link. Link postavlja novu lozinku i važi jednom."
       },
       "stale": {
@@ -916,7 +940,7 @@
       "company": "Firma",
       "state": "Stanje",
       "empty": "Još nema naloga.",
-      "open": "Ljudi",
+      "open": "Idi na ljude",
       "openColumn": "Otvori"
     },
     "person": {

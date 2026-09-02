@@ -303,13 +303,58 @@ before being presented as done; gating fixes go back to the implementer and are 
   No sign-out on the screen (`session-link.ts` is already in its chrome and argues for one place)
   and **no change-password control — there is no authenticated route for it**, which is a real gap
   for a locked-out owner and the honest thing the screen says instead.
-- **Suites: 1311 PWA specs** (71 files) and **910 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
+- **Language switching is chrome, and only chrome (2026-09-02).** `/company/profile` shipped with a
+  language block of its own, which made it the **third** copy on one screen — the app header carries
+  the switcher from 768 up, and each admin screen's `.bar--compact` carries it below that, where the
+  header is `display: none`. No screen puts one in its content. *The same day, that screen was
+  rebuilt into `platform/person-page`'s shape (founder: "build this profile screen similar to the
+  super admin"): name as the title, a `detail` card of chips and facts, an `actions` card beside it,
+  7/5 at ≥1024. Until then the owner's own account looked like a different product from the screen
+  Teren staff read about the same man.*
+  *The trap in copying that head row: `person-page`'s subtitle names one thing from **one** source,
+  and this screen's names a **server-only** address under a `known()` that is true from the stored
+  session — so it flashed "no address on file" under his name on every load, and printed that claim
+  above the "nothing was confirmed" notice when the server was unreachable. **A caveat that arrives
+  after the claim is not a caveat.***
+- **Every table in the product is one control now (2026-09-02).** The founder's three screenshots:
+  `/platform/companies` drew black bold headings while the two screens either side of it drew muted
+  uppercase ones. **The colour was the symptom.** `/company` and `/platform` each had a hand-built
+  sortable header — same four helpers, written twice — and the customers screen had no sort at all,
+  so there was nothing in its `<th>` but text and the browser's default is what he saw. Now:
+  `ui/table-controls.ts` (sort + per-column filters, Serbian folding — **`đ` is folded explicitly**,
+  it has no Unicode decomposition) and `ui/column-menu.ts` (label sorts on one tap; the funnel beside
+  it opens both directions **named in words** and that column's filter box; below 768 the same
+  component travels as a pill), plus `.data-table` / `.table-bar` / `.column-bar` in `styles.css`.
+  *The filter matches **the words the cell shows**, which is what lets one box serve a name, a date
+  and a row of chips. A live filter is loud on purpose — tinted funnel, and a strip reading
+  "Prikazano 1 od 12" with one tap back — because a table quietly showing one of twelve rows is how
+  a screen makes an owner believe a foreman was removed from his company.*
+  *`/company`'s third column is **Aktivnost**: "Poslednji kontakt" broke over two lines once the head
+  cell had to hold a control as well as a word.*
+  *Two traps found while doing it: `/platform/companies` had an icon named **Ljudi** on a screen with
+  a column headed **Ljudi** (it is "Idi na ljude" now — a spec pressed the wrong one and looked like
+  a broken sort), and the menu must be `position: fixed`, because the table sits in a horizontal
+  scroller and the phone's pill bar is another one — absolutely positioned, a **two-row** table
+  clipped it, and two rows is what the founder's screenshots show.*
+  ***A fixed menu must be placed every frame, not once.*** The reviewer's two gating finds were the
+  same mistake seen twice: measured at open, the filter box landed **56 px below the fold** on a
+  390×660 phone — and `focus()` cannot scroll a fixed element into view, while the scroll that would
+  reach it closed the menu — and at every width the first keystroke inserted the "showing 1 of 12"
+  strip, moving every column head 61 px down while the menu stayed over the row being searched for.
+  `ui/menu-placement.ts` is a pure function (clamped, spans the gutters below 768, **flips above**
+  when the room below is short, pinned and scrollable when neither fits) and `column-menu.ts` re-runs
+  it once an animation frame while open. *`ng test` cannot see any of this — jsdom lays nothing out;
+  the geometry is spec'd through the pure function and the follow loop through a stubbed rect.*
+  *Two more from that review worth carrying: the funnel was **white on pale tint** inside a sorted
+  pill (1.2:1, in `/company`'s default state), and a 28 px tap target against the token minimum of
+  44 — it is drawn small and hit large (`::after { inset: -8px }`).*
+- **Suites: 1368 PWA specs** (74 files) and **910 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
   + Testcontainers over real Postgres, ~66 s; PdfPig in tests only, so report assertions read text
   back out of the rendered PDF). `dotnet test` needs Docker running.
   *The figures here were stale before 2026-08-30 (403/447 recorded against an actual 436/476) —
   both were re-measured off the tree, not carried forward.*
-- **Check at session start:** the tree is green — **910 backend tests and 1311 PWA specs, both
-  re-verified by execution 2026-09-02**, `dotnet build` clean with 0 warnings, `ng build` clean with
+- **Check at session start:** the tree is green — **910 backend tests and 1368 PWA specs, the PWA
+  suite re-verified by execution 2026-09-02**, `dotnet build` clean with 0 warnings, `ng build` clean with
   no budget warning.
 - **"It doesn't work" has meant "it isn't running" twice in a row (2026-09-01).** First "frontend was
   destroyed, build again" — a stopped `ng serve`. Then "backend also doesn't work" — no `Teren.Api`
