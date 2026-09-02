@@ -9,7 +9,7 @@ import {
   provideAppInitializer,
   provideBrowserGlobalErrorListeners,
 } from '@angular/core';
-import { provideRouter, withComponentInputBinding } from '@angular/router';
+import { provideRouter, withComponentInputBinding, withViewTransitions } from '@angular/router';
 import { provideServiceWorker } from '@angular/service-worker';
 import { provideTransloco } from '@jsverse/transloco';
 
@@ -29,7 +29,17 @@ registerLocaleData(localeSrLatn, LOCALE_BY_LANGUAGE.sr);
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
-    provideRouter(routes, withComponentInputBinding()),
+    // The route cross-fade (styles.css §Route changes). `withViewTransitions` asks the browser for
+    // a snapshot of the screen being left and the one arriving; the stylesheet says the two fade
+    // over --motion-slow, and nothing else about a navigation moves.
+    //
+    // **It cannot break navigation where it is unsupported.** Angular checks for
+    // `document.startViewTransition` and runs an ordinary navigation without it — which is Firefox,
+    // older Safari, and every spec in this suite, because jsdom has no such function. The screen
+    // simply changes. `motion.spec.ts` pins that — it navigates with this provider and without the
+    // function — because a fade nobody sees is a cosmetic loss and a navigation that never
+    // completes is the product.
+    provideRouter(routes, withComponentInputBinding(), withViewTransitions()),
     provideHttpClient(withFetch()),
     // B3: the site list now comes from `GET /api/projects`, cached locally, with the built-in
     // demo list as the last resort. Nothing above this line changed with it — which is what the

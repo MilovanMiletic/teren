@@ -49,6 +49,16 @@ import { Icon } from './icon';
  *
  * It renders projected content and holds no state of its own, so it cannot fetch or carry a
  * credential. The screens are responsible for what they put inside — and their specs scan for it.
+ *
+ * ## The one thing every call site has to write
+ *
+ * `animate.leave="modal--leaving"`, on the `<app-modal-sheet>` element. It cannot be moved in here:
+ * this component is rendered by an `@if` in the screen that owns it, so the node Angular removes is
+ * the host element, in the *parent's* template — and Angular 22.1 compiles an `animate.leave`
+ * **host binding** to nothing (measured against the shipped bundle: no `animateLeave` instruction,
+ * the class never applied, the dialog gone on the same frame). Without the attribute the dialog
+ * still closes correctly and simply does not fade, so nothing is broken by forgetting it and
+ * nothing would go red either — which is why `motion.spec.ts` scans every call site for it.
  */
 @Component({
   selector: 'app-modal-sheet',
@@ -89,6 +99,33 @@ import { Icon } from './icon';
       z-index: var(--z-overlay);
       display: flex;
       background: rgba(26, 26, 26, 0.35);
+      /*
+       * The scrim arrives on its own, a shade faster than the panel, so the screen behind darkens
+       * before the sheet lands on it rather than with it (design/tokens.md §Motion).
+       */
+      animation: teren-fade-in var(--motion-fast) var(--ease-standard) both;
+    }
+
+    /*
+     * Leaving: the whole overlay, scrim and panel together, accelerating away.
+     *
+     * **The class is set by the five screens that open this, not by this component**, and that is
+     * not a stylistic choice — see the class comment. What Angular removes is the app-modal-sheet
+     * element in the *parent's* control flow, and Angular 22.1 compiles an animate.leave HOST
+     * binding to nothing at all: the property was there, the stylesheet was there, and the dialog
+     * still vanished on the same frame. Found by driving a browser; no unit test in this suite can
+     * see it, because jsdom animates nothing and removes the node immediately either way. So the
+     * binding lives on the element in each screen, where it is supported, and a spec scans for it.
+     *
+     * The animation must also be on the host itself rather than on the overlay inside it, for the
+     * same underlying reason: Angular decides whether to wait by reading the animations on the
+     * element it just classed. Opacity on the host reaches the fixed overlay in its subtree without
+     * becoming that overlay's containing block, which a transform here would.
+     * (No backticks in this block: it is a template literal.)
+     */
+    :host(.modal--leaving) {
+      animation: teren-pop-out var(--motion-base) var(--ease-exit) both;
+      pointer-events: none;
     }
 
     /*
@@ -105,6 +142,12 @@ import { Icon } from './icon';
         calc(var(--space-8) + env(safe-area-inset-bottom));
       background: var(--color-card);
       overflow-y: auto;
+      /*
+       * **Compact: it comes up from the bottom edge**, because that is the edge it is anchored to
+       * — the sheet owns the whole screen, so a panel that faded in place would have no direction
+       * at all and a panel that dropped from the top would fight the thumb that opened it.
+       */
+      animation: teren-sheet-up var(--motion-base) var(--ease-standard) both;
     }
 
     .modal__panel:focus-visible {
@@ -145,6 +188,11 @@ import { Icon } from './icon';
         padding: var(--space-5);
         border-radius: var(--radius-card-hero);
         box-shadow: var(--shadow-card);
+        /*
+         * A centred box is not anchored to an edge, so it takes the app's ordinary "something
+         * opened" gesture — 8 px up and a fade — instead of the sheet's slide.
+         */
+        animation: teren-pop-in var(--motion-base) var(--ease-standard) both;
       }
     }
   `,

@@ -314,7 +314,41 @@ it as success and the `LogCritical` is the only signal.
 1020 tests over a thousand scratch databases and gives space back only when the distro stops; a full
 `dotnet test` took the engine down once today. `src/Teren.Api/bin` and `tests/.../bin` hold Debug and
 Release side by side (~600 MB); `docker builder prune` reclaimed 2.8 GB inside the VHDX. Several GB
-need freeing before "re-run both suites after every review" is safe on this machine.
+need freeing before "re-run both suites after every review" is safe on this machine. *Later the
+same evening it happened again* — free space went 5.8 GB → 487 MB → 4.8 GB inside half an hour with
+nothing of that size written: the machine has 15.7 GB of RAM and the **pagefile peaked at 4.6 GB**
+under two suites, Docker and three agents at once. The disk is not merely full, it is the swap
+headroom. Docker's `docker_data.vhdx` is 9.5 GB and does not shrink on its own. Two remedies, both
+the founder's: free real space on C:, and run one suite at a time.
+
+**Motion pass — implementer's report (review running at commit time; founder asked for the push)**
+
+- `design/tokens.md` **§Motion** (binding): `--motion-fast 120`, `--motion-base 200`, `--motion-slow
+  300`, `--motion-pulse 1200`, `--motion-meter 90` ms; `--ease-standard`, `--ease-exit`; and the rule
+  that outranks the table — *nothing on the capture path may add latency to the thirty-second entry*.
+- **Route changes** cross-fade via `withViewTransitions()`, falling back to a plain navigation where
+  the API is missing (spec'd). **Every control** dips to 0.97 on press (0.94 on the small discs, 0.99
+  on whole-card buttons). **Skeletons** on the three directories, the log, Home's recent list and the
+  archive, the `role="status"` sentence kept for readers. **A row that was not in the previous list**
+  fades and rises 8 px (`ui/arrival.ts`), never on first paint, and — after a trap — only once the
+  store has answered; the archive waits for *both* halves of its local+server merge or the server's
+  forty rows would all bounce in. **Modals** slide up from the bottom below 768 and rise in place
+  above; popovers and the column menu fade and rise; exits are click-through. The saved screen's tick
+  arrives once. **Reduced motion** collapses everything with no exceptions.
+- *Pre-existing defect fixed on the way:* Home printed "Za ovo gradilište još nema unosa" and the
+  archive "Arhiva je prazna" for the first frames of every load. An unread list and an empty one are
+  different claims; only one belongs in words.
+- *Two traps worth keeping:* `animate.leave` as a **host** binding compiles to nothing in Angular
+  22.1 — it lives on the element at each of the five `<app-modal-sheet>` call sites, and a spec scans
+  for it. And a component-scoped enter rule outranked the global exit, so the leaving sheet **replayed
+  its fade-in**; the three overlay rules are global single-class rules in declaration order now, pinned.
+- +25 specs (`arrival.spec.ts`, `motion.spec.ts` — no stylesheet may write a duration of its own,
+  every token must exist, keyframes once, every modal call site carries the leave binding), five
+  mutation proofs. **1661/1661**, build clean at 463.83 kB (two 6 kB component budgets forced shared
+  rules into `styles.css`, which is where they belonged). Playwright at 390/768/1280 on five routes
+  against the production build: no overflow, skeletons paint, the fixed column menu lands in-viewport
+  and follows its trigger, overlays in and out, reduced motion collapses. *One judgement call, named:*
+  Home's project picker animates, on the capture path — it gates nothing.
 
 **Frontend fix increment — delta review: ACCEPT, whole increment now accept.** All three mutations
 re-run in the reviewer's isolated copy: exactly 1, 3 and 3 red as claimed; 1636/1636 and a clean build

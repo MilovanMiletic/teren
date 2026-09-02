@@ -214,6 +214,21 @@ export function pageWindow(page: number, pageCount: number, slots = SLOTS): numb
       font-weight: 600;
       font-variant-numeric: tabular-nums;
       cursor: pointer;
+      /*
+       * The same press feedback every other control in the product gives (styles.css §Press
+       * feedback), and 0.94 rather than 0.97 for the same reason the column funnel uses it: three
+       * per cent of a 36 px disc is one pixel. The rows swap under the pager the moment the click
+       * is handled — the scale is drawn alongside that, never before it.
+       */
+      transition:
+        background-color var(--motion-fast) var(--ease-standard),
+        color var(--motion-fast) var(--ease-standard),
+        transform var(--motion-fast) var(--ease-standard);
+    }
+
+    .pager__step:not(:disabled):active,
+    .pager__page:active {
+      transform: scale(0.94);
     }
 
     .pager__step::after,

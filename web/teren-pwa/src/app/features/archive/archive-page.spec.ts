@@ -127,6 +127,28 @@ describe('ArchivePage', () => {
     expect(element.querySelectorAll('.day')).toHaveLength(3);
   });
 
+  /**
+   * The trap the arrival fold was written around.
+   *
+   * This list is a **merge**: the phone's rows paint first and the server's land a moment later. A
+   * naive "animate anything that was not in the previous render" would therefore treat the server's
+   * whole archive as newly arrived and bounce every row of it, on every single load — the exact
+   * noise the mechanism exists to prevent, delivered by the mechanism itself. So the first
+   * *complete* list is adopted silently (`archive-page.ts`, `ui/arrival.ts`).
+   */
+  it('does not animate the server’s rows landing behind the phone’s', async () => {
+    await captureEntry(store, { project: PROJECT });
+    archive.listEntries.mockResolvedValue({
+      status: 'ok',
+      items: [listItem({ id: 'srv-1' }), listItem({ id: 'srv-2', entry_date: '2026-08-19' })],
+    });
+
+    const element = await render();
+    await waitForRows(element, 3);
+
+    expect(element.querySelectorAll('.row-arriving')).toHaveLength(0);
+  });
+
   it('says the list is partial rather than letting it look short', async () => {
     // "This site has one entry" and "this is the one entry your phone holds" are different
     // claims, and only one of them is true when the server could not be asked.

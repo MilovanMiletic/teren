@@ -106,6 +106,45 @@ Strict 4/8 grid: 4, 8, 12, 16, 20, 24, 32. Page gutter **16 px**. Card internal 
 Minimum **44 px** (icon buttons); rows/buttons **48–56 px**; primary action full-width
 **52–56 px**. Record circle **120 px** (home) / **176 px** (capture-focused), stop **128 px**.
 
+## Motion
+
+Motion in this product has one job: **tell the reader what just changed**. A screen that redraws
+silently makes a foreman check twice, and a screen that dances makes an owner distrust it. So the
+vocabulary is deliberately small — three durations for gestures, two for the things that repeat,
+two curves — and every animation in the app is built from it. No component invents a duration, the
+same way no component invents a hex.
+
+| Token | Value | Use |
+|---|---|---|
+| `motion-fast` | `120ms` | Press feedback, hover tint, a status chip changing value, an arrow turning over |
+| `motion-base` | `200ms` | Something arriving or leaving: a card, a list row, a modal, a popover, a column menu |
+| `motion-slow` | `300ms` | A whole screen changing — the route cross-fade, and nothing else |
+| `motion-pulse` | `1200ms` | The two things that repeat: the recording dot, and a loading skeleton |
+| `motion-meter` | `90ms` | The live audio meter only. Faster than `fast` on purpose: it tracks a signal in real time, it is not feedback for a gesture |
+
+| Easing | Curve | Use |
+|---|---|---|
+| `ease-standard` | `cubic-bezier(0.2, 0, 0, 1)` | Everything entering, and every state change. Leaves fast, settles slowly |
+| `ease-exit` | `cubic-bezier(0.4, 0, 1, 1)` | Only things leaving. Accelerates away, because nobody watches an exit |
+
+### The rule that outranks the table
+
+**Nothing on the capture path may add latency to the thirty-second entry.** Motion *overlaps* work;
+it never precedes it. No animation may have to finish before a tap takes effect, no press may wait
+on a transition, and the record button, the photo button and "Gotovo" are never gated on a frame.
+The recording screen keeps exactly one animation (the pulsing dot, which is information: it says
+the microphone is live) and the saved screen keeps exactly one (the success mark arriving). That is
+the whole budget for that flow, and it is spent.
+
+### Reduced motion
+
+`prefers-reduced-motion: reduce` collapses **every** animation and transition in the app to
+`0.001ms` — a single wildcard rule in `styles.css`, no per-component exceptions and no "but this one
+is important". A reader who has asked the operating system for stillness has asked this product too.
+Anything that would only be understandable *because* it moved is a defect in the screen, not a
+reason for an exemption: every state this product animates is also written down in words, a colour
+or a count.
+
 ## Icons
 
 Stroke-based inline SVG, 24 px grid (Lucide-style), stroke-width 2 (2.5 small status glyphs),

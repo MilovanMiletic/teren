@@ -169,7 +169,7 @@ export interface SelectOption {
     .trigger__caret {
       flex: none;
       color: var(--color-ink-2);
-      transition: transform 120ms ease;
+      transition: transform var(--motion-fast) var(--ease-standard);
     }
 
     .trigger[aria-expanded='true'] .trigger__caret {

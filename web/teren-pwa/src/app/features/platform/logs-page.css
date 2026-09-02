@@ -218,6 +218,13 @@
   cursor: pointer;
 }
 
+/*
+ * These chips are the nearest thing this product has to a row of tabs, so they carry the shared
+ * `.press` class from `styles.css` in the template: the fill and the ink cross-fade as one goes on
+ * and off, and the chip dips under a finger. The request to the server goes out on the click, never
+ * after the transition — motion overlaps work (design/tokens.md §Motion).
+ */
+
 .toggle--on {
   border-color: var(--color-ink);
   background: var(--color-ink);
@@ -358,7 +365,7 @@
 
 .line__chevron {
   color: var(--color-ink-2);
-  transition: transform 120ms ease;
+  transition: transform var(--motion-fast) var(--ease-standard);
 }
 
 .line__chevron--open {

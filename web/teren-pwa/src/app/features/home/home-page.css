@@ -375,6 +375,21 @@
   border-bottom: 0;
 }
 
+/*
+ * **A row that arrived while he was looking at the screen** wears `.row-arriving`, whose rule and
+ * keyframes are in `styles.css` — the archive's rows wear the same one, so the two lists move
+ * identically, and `ui/arrival.ts` is what decides which row it goes on.
+ *
+ * The founder's *"when some new entry was added"*, and this is the screen where it happens: he taps
+ * Gotovo, the router brings him back here, and the entry he just recorded is at the top of a list
+ * he is already reading.
+ *
+ * `background-color` is deliberately not in those keyframes. A row that flashed a tint would be
+ * making a claim about *state* — the chip beside it is what says whether the entry reached the
+ * server — and this animation only says "this is the new one". Nothing waits for it either: the
+ * row is fully interactive on its first frame, tap included.
+ */
+
 .recent__text {
   display: flex;
   flex-direction: column;
@@ -416,7 +431,21 @@
   }
 }
 
-/* ---- Project sheet ------------------------------------------------------------------------ */
+/* ---- Project sheet ------------------------------------------------------------------------
+ *
+ * **Its motion is three global classes on the elements** — `overlay-scrim`, `overlay-sheet` and
+ * `overlay-out` in `styles.css` — rather than rules here, and for a reason worth keeping: their
+ * declaration order is what lets the exit outrank the enter. Written the obvious way, the enter
+ * would live in this file, carry Angular's `[_ngcontent]` attribute, outrank a global exit class,
+ * and **replay as the sheet was being removed** — which is exactly what a browser run showed. This
+ * stylesheet also sits inside 100 bytes of its 6 kB budget.
+ *
+ * **This is on the capture path, and it is still allowed**, because it gates nothing: the site list
+ * is a live control on the first frame and choosing one is one tap whether the fade has finished or
+ * not (design/tokens.md §Motion). The alternative was worse than the dogma — the picker and the
+ * office dialogs are the same object, and having one of them arrive while the other simply appears
+ * teaches a reader that arriving means nothing.
+ */
 
 .sheet {
   position: fixed;

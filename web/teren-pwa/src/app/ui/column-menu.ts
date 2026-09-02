@@ -152,6 +152,7 @@ export type ColumnKind = 'text' | 'date' | 'state' | 'number';
         <div
           #panel
           class="menu"
+          animate.leave="menu--out"
           role="group"
           [id]="id"
           [attr.aria-label]="t('table.menu', { column: label() })"
@@ -277,7 +278,31 @@ export type ColumnKind = 'text' | 'date' | 'state' | 'number';
     .sort__arrow {
       flex: none;
       color: var(--color-accent-deep);
-      transition: transform 120ms ease;
+      transition: transform var(--motion-fast) var(--ease-standard);
+    }
+
+    /*
+     * Press feedback, on the two controls and **never on the host** (design/tokens.md §Motion).
+     *
+     * That exception is the whole reason this is written out per element instead of on the pill:
+     * the menu is position: fixed, and a transform on any ancestor of a fixed element makes that
+     * ancestor its containing block — so a scale on the host would drag the menu out of the
+     * viewport coordinates {@link placeMenu} computed for it, once per frame, while it is open.
+     * The two controls are siblings of the menu, so they are safe to move. (No backticks in this
+     * block: it is a template literal.)
+     */
+    .sort:not(.sort--static),
+    .more {
+      transition:
+        color var(--motion-fast) var(--ease-standard),
+        background-color var(--motion-fast) var(--ease-standard),
+        transform var(--motion-fast) var(--ease-standard);
+    }
+
+    /* 0.94 and not the 0.97 a pill uses: three per cent of a 28 px disc is under a pixel. */
+    .sort:not(.sort--static):active,
+    .more:active {
+      transform: scale(0.94);
     }
 
     /* One glyph, both directions: the descending chevron turned over. */
@@ -368,6 +393,25 @@ export type ColumnKind = 'text' | 'date' | 'state' | 'number';
       box-shadow: var(--shadow-card);
       text-align: left;
       cursor: default;
+      /*
+       * **The animation is on the menu itself**, which is the only element it may be on: it is the
+       * fixed box, so a transform here is harmless, and a transform on any wrapper of it would
+       * become its containing block and break the placement loop above.
+       *
+       * The transform in the keyframes and the top/left this element carries inline are two
+       * different things and do not fight: the inline pair is the fixed position, the keyframe
+       * moves it 8 px relative to that and ends at zero.
+       */
+      animation: teren-pop-in var(--motion-base) var(--ease-standard) both;
+    }
+
+    /*
+     * Leaving. The pointer-events: none is the part that matters: a fading 240 px panel that still
+     * takes clicks sits over the very rows the reader is going back to.
+     */
+    .menu--out {
+      animation: teren-pop-out var(--motion-base) var(--ease-exit) both;
+      pointer-events: none;
     }
 
     .menu__title {

@@ -65,7 +65,13 @@ import { Icon } from './icon';
     </button>
 
     @if (open()) {
-      <div class="pop" [id]="id">
+      <!--
+        The animate.leave binding keeps the bubble in the DOM for one motion-base while pop--out
+        fades it, then Angular removes it. Where the browser reports no animation — and jsdom is
+        one — it goes at once, so nothing about the disclosure's behaviour depends on the fade.
+        (No backticks in this block: it is a template literal.)
+      -->
+      <div class="pop" animate.leave="pop--out" [id]="id">
         <span class="pop__title">{{ heading() }}</span>
         <p class="t-meta pop__body">{{ body() }}</p>
       </div>
@@ -92,6 +98,14 @@ import { Icon } from './icon';
       box-shadow: var(--shadow-card);
       color: var(--color-ink);
       cursor: pointer;
+      /* The same press feedback as every other 44 px chrome circle (styles.css). */
+      transition:
+        background-color var(--motion-fast) var(--ease-standard),
+        transform var(--motion-fast) var(--ease-standard);
+    }
+
+    .info:active {
+      transform: scale(0.97);
     }
 
     /*
@@ -120,6 +134,18 @@ import { Icon } from './icon';
         0 2px 6px rgba(26, 26, 26, 0.06),
         0 10px 28px rgba(26, 26, 26, 0.09);
       text-align: left;
+      /* The app's one "something opened" gesture: 8 px up and a fade (styles.css §Arriving). */
+      animation: teren-pop-in var(--motion-base) var(--ease-standard) both;
+    }
+
+    /*
+     * Leaving. The pointer-events: none matters more here than the fade does: without it the
+     * bubble is still a click target for one motion-base after it was dismissed, sitting over the
+     * row underneath it.
+     */
+    .pop--out {
+      animation: teren-pop-out var(--motion-base) var(--ease-exit) both;
+      pointer-events: none;
     }
 
     .pop__title {

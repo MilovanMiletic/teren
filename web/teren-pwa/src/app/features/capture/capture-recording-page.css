@@ -40,7 +40,12 @@
   height: 8px;
   border-radius: 50%;
   background: var(--color-err-icon);
-  animation: teren-pulse 1.2s ease-in-out infinite;
+  /*
+   * The one animation the recording screen is allowed, and it is information rather than
+   * decoration: it says the microphone is live. Tokenised at --motion-pulse, the same beat the
+   * loading skeletons use, so the product has one heartbeat and not two.
+   */
+  animation: teren-pulse var(--motion-pulse) ease-in-out infinite;
 }
 
 @keyframes teren-pulse {
@@ -104,7 +109,12 @@
   background: var(--color-accent);
   transform: scaleY(0.12);
   transform-origin: center;
-  transition: transform 90ms linear;
+  /*
+   * `linear`, and --motion-meter rather than --motion-fast: this bar is following a voice in real
+   * time, not acknowledging a press. An eased curve would make the meter lag the sound it is
+   * drawing, and at 120 ms the lag is visible (design/tokens.md §Motion).
+   */
+  transition: transform var(--motion-meter) linear;
 }
 
 .live__hint {

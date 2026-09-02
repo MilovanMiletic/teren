@@ -140,6 +140,15 @@
   border-top: 0;
 }
 
+/*
+ * **A day that arrived while the list was on screen** wears `.row-arriving` from `styles.css`,
+ * the same class and keyframes Home's recent rows use, so the two lists move identically.
+ * `ui/arrival.ts` decides which row it goes on — and on this screen it is usually somebody else's
+ * work appearing: the owner has the archive open on a tablet, a foreman on the other side of the
+ * site sends his day up, and the row for it slides in rather than being there the next time he
+ * happens to look down.
+ */
+
 .row__text {
   display: flex;
   flex-direction: column;

@@ -112,6 +112,32 @@
   --z-content: 1;
   --z-header: 10;
   --z-overlay: 100;
+
+  /* ---- Motion (design/tokens.md §Motion) ----------------------------------------------------
+   *
+   * Three durations for gestures, two for the things that repeat, two curves — and every animation
+   * in the app is built from them. A component inventing `160ms ease-out` is the same defect as a
+   * component inventing a hex, and `motion.spec.ts` scans the shipped source for both.
+   *
+   * The rule that outranks the table: **nothing on the capture path may add latency to the
+   * thirty-second entry.** Motion overlaps work, it never precedes it: no press waits on a
+   * transition and no tap is gated on a frame. That is why the two durations that repeat are
+   * decorative-only, and why the recording screen's budget is one pulse.
+   */
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --motion-slow: 300ms;
+  /* The two things that loop: the recording dot, and a loading skeleton. */
+  --motion-pulse: 1200ms;
+  /*
+   * The live audio meter, and nothing else. Faster than `fast` deliberately — it is tracking a
+   * signal in real time rather than acknowledging a gesture, and at 120 ms the bars lag the voice.
+   */
+  --motion-meter: 90ms;
+
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  /* Only for things leaving. Accelerates away, because nobody watches an exit. */
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
 }
 
 @media (min-width: 768px) {
@@ -333,6 +359,70 @@ button {
   cursor: default;
 }
 
+/* ---- Press feedback ------------------------------------------------------------------------
+ *
+ * The founder's ask, in one sentence: *"have some animations when you click"*. Every control in
+ * the product gives the same answer to a finger — it dips 3 % and comes back — so the gesture is
+ * learned once and is then true of the record button, a column head and a pager arrow alike.
+ *
+ * **It is feedback, never a gate.** `transform` and `opacity` are the two properties a compositor
+ * can animate without laying the page out again, and nothing in the app waits for one of them to
+ * finish: the click handler has already run by the time the scale is painted. That is what keeps
+ * this rule compatible with the thirty-second entry (design/tokens.md §Motion).
+ *
+ * A disabled control does not move, because it did not do anything.
+ */
+.btn,
+.btn-icon,
+.table-bar__clear,
+.stats__cell--tap,
+.press {
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+
+.btn:active:not(:disabled),
+.btn-icon:active:not(:disabled),
+.table-bar__clear:active,
+.stats__cell--tap:active,
+.press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/*
+ * `.press` is the same gesture for a control a **feature** stylesheet owns — the log screen's level
+ * chips, and whatever the fourth screen invents. It is a class on the element rather than a rule
+ * per component for two reasons: one definition cannot drift, and a component's own stylesheet is
+ * measured against a 6 kB budget that four transition properties eat a fortieth of.
+ *
+ * `.press--tight` dips 6 % instead of 3, for the small round controls — a column funnel, a pager
+ * arrow. Three per cent of a 28 px disc is under a pixel, which is not feedback. Declared after
+ * the rule above so it wins at equal specificity.
+ */
+.press--tight:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+/*
+ * A whole card that is a button dips less than a pill does.
+ *
+ * At 0.97 a 1200 px-wide row visibly shrinks away from its neighbours and the gaps around it
+ * breathe; at 0.99 the same gesture reads as the surface taking the press. The bigger the surface,
+ * the smaller the number.
+ */
+.card-interactive {
+  transition:
+    box-shadow var(--motion-base) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+
+.card-interactive:active {
+  transform: scale(0.99);
+}
+
 .btn--primary {
   background: var(--color-accent-deep);
   color: var(--color-card);
@@ -479,7 +569,20 @@ button {
 
 /* ---- Status chips ----------------------------------------------------------------------- */
 
+/*
+ * The chip carries a **transition on its own colours**, and this is the one piece of motion in the
+ * app that is about the server rather than about a finger.
+ *
+ * `EntryStatusRefresher` re-reads `GET /api/entries` every twenty seconds while Home is on screen,
+ * so the chip on a row he is looking at goes `PRIMLJEN` → `ČEKA POTVRDU` under his eyes — the exact
+ * moment the day's entry starts needing him. Repainted instantly that is a flicker he does not
+ * register; crossfaded over `motion-fast` it is a change he sees without the row moving. The word
+ * itself swaps at once (it is the fact), only the tint and the ink travel.
+ */
 .chip {
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -511,6 +614,184 @@ button {
 .chip--neutral {
   background: var(--color-canvas);
   color: var(--color-ink-2);
+}
+
+/* ---- Loading ------------------------------------------------------------------------------
+ *
+ * A list that is being fetched, drawn as the shape of the thing that is coming.
+ *
+ * The four directories (`/company`, `/platform`, `/platform/companies`, `/platform/logs`) all used
+ * to print one grey sentence — *"Učitava se…"* — in a card the width of the table, which says
+ * "something is happening" and nothing about **what**. A pulsing outline of the rows says both, and
+ * it says it in the same place and at the same size the rows will occupy, so the screen does not
+ * jump when they arrive.
+ *
+ * **The sentence did not go away, it went behind the skeleton.** `role="status"` with a
+ * `visually-hidden` line is what a screen reader gets, because a pulsing rectangle announces
+ * nothing at all. Every one of these blocks is therefore two things: bars for the eye, a sentence
+ * for the ear.
+ *
+ * `opacity` only — no shimmering gradient sliding across the bar. A gradient animates
+ * `background-position`, which is a paint every frame on a card the width of a 1920 table, on
+ * hardware that includes a five-year-old Android phone.
+ */
+.card--loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  /*
+   * A list card's own padding, so a screen does not need a rule of its own to place its skeleton.
+   * The four directories put `.state` on the same element and that padding wins, which is right:
+   * they are wider cards and set their own.
+   */
+  padding: var(--space-4) 18px;
+}
+
+.skeleton {
+  display: block;
+  height: 12px;
+  border-radius: var(--radius-pill);
+  background: var(--color-card-line);
+  animation: teren-skeleton var(--motion-pulse) var(--ease-standard) infinite;
+}
+
+/* A heading bar: shorter than the row it sits above, and a step taller. */
+.skeleton--head {
+  width: 45%;
+  height: 16px;
+}
+
+.skeleton--short {
+  width: 40%;
+}
+
+/* The height of a list row rather than of a line of text — Home's recent entries, the archive. */
+.skeleton--row {
+  height: 20px;
+}
+
+@keyframes teren-skeleton {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* ---- Arriving -----------------------------------------------------------------------------
+ *
+ * A row coming into a list somebody is already reading. Two screens use it — Home's recent entries
+ * and the archive's days — and **which** row is new is a fact about the list, decided in
+ * `ui/arrival.ts` and never by the stylesheet.
+ *
+ * Both the class and the keyframes live here rather than in either component, and the keyframes
+ * *must*: Angular's emulated encapsulation rewrites selectors and leaves `@keyframes` names alone,
+ * so the same name written in two component sheets is one global definition with two authors and a
+ * race over which one ships. One definition, two screens naming it, and the two lists therefore
+ * move identically — which is the point, since a foreman sees both.
+ */
+.row-arriving {
+  animation: teren-row-in var(--motion-base) var(--ease-standard) both;
+}
+
+@keyframes teren-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/*
+ * The same gesture for something that opens rather than arrives: a popover, a column menu, a
+ * modal's panel. Identical curve and distance on purpose — a reader learns one movement.
+ */
+@keyframes teren-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/*
+ * A plain fade in, for the scrim behind an overlay.
+ *
+ * Its own keyframe rather than `teren-pop-in` without the transform: a backdrop that slid would
+ * show the page behind it through a moving edge. Both dialogs in the app (`ui/modal-sheet.ts` and
+ * Home's project sheet) name this one, so the two darken identically.
+ */
+@keyframes teren-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---- An overlay, in three classes ----------------------------------------------------------
+ *
+ * Home's project sheet — the scrim, the panel, and the way out — as global classes named from the
+ * template rather than as rules in `home-page.css`.
+ *
+ * **The order of these three is load-bearing, and so is the fact that they are global.** All three
+ * are single-class selectors, so the exit only wins because it is declared last. Written the
+ * obvious way instead — the enter in the component's own stylesheet, the exit as a global class —
+ * the component rule carries Angular's `[_ngcontent]` attribute, outranks the global one, and the
+ * *enter* animation replays as the sheet is being removed. That is what a browser showed:
+ * `animationName` on the leaving sheet read `teren-fade-in`, so the sheet faded back **in** and
+ * then vanished. `!important` would have fixed it and broken something worse — it would have
+ * outranked the reduced-motion rule too.
+ *
+ * `ui/modal-sheet.ts` keeps its own copies, because its panel animates differently per device class
+ * (up from the bottom edge on a phone, in place at 768) and that cannot be one class.
+ */
+.overlay-scrim {
+  animation: teren-fade-in var(--motion-fast) var(--ease-standard) both;
+}
+
+.overlay-sheet {
+  animation: teren-sheet-up var(--motion-base) var(--ease-standard) both;
+}
+
+/*
+ * Leaving. `pointer-events: none` is the half that is a defect rather than a decoration: a fading
+ * panel that still takes clicks sits over the very rows the reader is going back to.
+ */
+.overlay-out {
+  animation: teren-pop-out var(--motion-base) var(--ease-exit) both;
+  pointer-events: none;
+}
+
+/* And leaving: straight down and out, no travel. Nobody watches an exit (--ease-exit). */
+@keyframes teren-pop-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* The compact modal owns the whole screen, so it comes up from the bottom edge of it. */
+@keyframes teren-sheet-up {
+  from {
+    transform: translateY(6%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 /* ---- Tables ------------------------------------------------------------------------------
@@ -778,12 +1059,53 @@ app-table-pager {
   }
 }
 
+/* ---- Route changes -------------------------------------------------------------------------
+ *
+ * One cross-fade for the whole app, and it is the only thing `motion-slow` is spent on.
+ *
+ * `withViewTransitions()` (app.config.ts) hands the browser a snapshot of the old screen and the
+ * new one; these two rules say how they trade places. A fade and nothing else, deliberately: a
+ * slide has a direction, a direction implies a hierarchy, and this app's navigation is not a stack
+ * — Home reaches the archive, the archive reaches a confirmation gate, and the gate goes back to
+ * Home. Any slide would be lying about half of those.
+ *
+ * `startViewTransition` does not exist in every browser (Safari and Firefox arrived late) or in
+ * jsdom. Angular's router **falls back to an ordinary navigation** when it is missing — the screen
+ * changes with no animation, which is exactly the outcome these rules describe anyway. That
+ * fallback is pinned in `app.routes.spec.ts`, because a broken navigation is a broken product and a
+ * missing fade is not.
+ */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--motion-slow);
+  animation-timing-function: var(--ease-standard);
+}
+
+/* ---- Reduced motion -------------------------------------------------------------------------
+ *
+ * Every animation and transition in the app, collapsed. **No exceptions, and none may be added:**
+ * a reader who has asked the operating system for stillness has asked this product too, and every
+ * state Teren animates is also written down as a word, a colour or a count — so nothing is lost
+ * with the motion.
+ *
+ * The delays are here as well as the durations. Without them a staggered enter still costs its
+ * stagger: the element sits invisible for its delay and then snaps in, which is a slower screen
+ * than the one that never animated.
+ */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.001ms !important;
+    animation-delay: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+    transition-delay: 0.001ms !important;
+  }
+
+  /* The router's snapshots are not elements, so the wildcard above cannot reach them. */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.001ms !important;
   }
 }

@@ -184,7 +184,7 @@
 }
 
 .sort__arrow {
-  transition: transform 120ms ease;
+  transition: transform var(--motion-fast) var(--ease-standard);
 }
 
 .sort__arrow--asc {

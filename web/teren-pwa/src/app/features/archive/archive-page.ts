@@ -10,7 +10,7 @@ import {
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TranslocoDirective } from '@jsverse/transloco';
-import { map, of, switchMap } from 'rxjs';
+import { map, of, startWith, switchMap } from 'rxjs';
 
 import { EntryListItemResponse } from '../../core/api/api-types';
 import { ArchiveRow, groupArchiveRowsByDay, mergeArchiveRows } from '../../core/archive/archive-rows';
@@ -22,6 +22,7 @@ import { DayLabel, dayLabel, localDay } from '../../core/db/local-day';
 import { LocalEntry, canRevise } from '../../core/db/models';
 import { ProjectService } from '../../core/projects/project.service';
 import { AppHeader } from '../../ui/app-header';
+import { NOTHING_PAINTED, arrivals, isFresh } from '../../ui/arrival';
 import { DurationPipe } from '../../ui/duration.pipe';
 import { entryStatusKey, entryStatusTone } from '../../ui/entry-status';
 import { Icon } from '../../ui/icon';
@@ -114,12 +115,31 @@ export class ArchivePage {
 
   private readonly projectId = computed(() => this.project()?.id ?? null);
 
-  private readonly localEntries = toSignal(
+  /**
+   * What the phone holds, **and whether it has answered**.
+   *
+   * The Dexie live query resolves a tick after the screen paints, so with a bare empty initial
+   * value the archive's first frame was the full empty state — the book glyph and *"Arhiva je
+   * prazna"* — over a site with four years of entries. On the archive that sentence is worse than
+   * merely wrong: this is the screen that wins disputes, and the first thing it said was that there
+   * was nothing to win one with. A skeleton says "I do not know yet", which is what is true.
+   */
+  private readonly localState = toSignal(
     toObservable(this.projectId).pipe(
-      switchMap((id) => (id ? this.entries.watchEntriesForProject(id) : of([]))),
+      switchMap((id) =>
+        id
+          ? this.entries
+              .watchEntriesForProject(id)
+              .pipe(map((rows) => ({ loaded: true, rows: rows as LocalEntry[] })))
+          : of({ loaded: true, rows: [] as LocalEntry[] }),
+      ),
+      startWith({ loaded: false, rows: [] as LocalEntry[] }),
     ),
-    { initialValue: [] as LocalEntry[] },
+    { initialValue: { loaded: false, rows: [] as LocalEntry[] } },
   );
+
+  private readonly localEntries = computed(() => this.localState().rows);
+  private readonly localLoaded = computed(() => this.localState().loaded);
 
   /**
    * The archive itself: what the phone holds, merged with what the server listed.
@@ -133,6 +153,27 @@ export class ArchivePage {
   );
 
   protected readonly groups = computed(() => groupArchiveRowsByDay(this.rows()));
+
+  /**
+   * Nothing to draw yet, as opposed to nothing to draw.
+   *
+   * Only about the **local** read: the server's part of the list is allowed to be missing for ever
+   * (that is what the partial banner is for), and a screen that waited for a network answer before
+   * showing what the phone holds would be blank in the basement where it is read.
+   */
+  protected readonly listLoading = computed(() => !this.localLoaded() && this.rows().length === 0);
+
+  /**
+   * Which days arrived while the list was on screen (`ui/arrival.ts`).
+   *
+   * **Folded only once both halves have answered**, and that is the whole subtlety here. The
+   * archive's list is a merge: the phone's rows paint first and the server's forty land a moment
+   * later. Folded from the first frame, that second list would be forty "new" rows animating at
+   * once on every single load — the noise this mechanism exists to avoid, delivered by the
+   * mechanism itself. So the first *complete* list is adopted silently, and what moves afterwards
+   * is a real arrival: an entry recorded on this phone, or a day another foreman just sent up.
+   */
+  private readonly listArrival = signal(NOTHING_PAINTED);
 
   /** The list is on screen whenever there is no record open, and always at expanded width. */
   protected readonly showList = computed(() => this.expanded() || this.selectedId() === null);
@@ -175,6 +216,17 @@ export class ArchivePage {
   );
 
   constructor() {
+    // The arrival fold. It deliberately reads nothing until both halves of the merge have
+    // answered — see `listArrival` — so the early `return` is load-bearing rather than a guard
+    // against undefined: it also keeps `rows()` untracked until that moment.
+    effect(() => {
+      if (!this.localLoaded() || !this.remoteLoaded()) {
+        return;
+      }
+      const ids = this.rows().map((row) => row.id);
+      this.listArrival.update((previous) => arrivals(previous, ids));
+    });
+
     // Re-read whenever the site changes or the network comes back. Both are moments where what
     // the server would say has changed, and neither should need a manual refresh on a screen
     // somebody is scrolling.
@@ -209,6 +261,11 @@ export class ArchivePage {
 
   protected refreshDay(): void {
     this.day.set(localDay(new Date()));
+  }
+
+  /** Whether this day arrived after the list was first complete — see {@link listArrival}. */
+  protected arrived(row: ArchiveRow): boolean {
+    return isFresh(this.listArrival(), row.id);
   }
 
   protected label(row: ArchiveRow): DayLabel {

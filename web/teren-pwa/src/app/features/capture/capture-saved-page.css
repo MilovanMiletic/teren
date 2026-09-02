@@ -8,6 +8,18 @@
   text-align: center;
 }
 
+/*
+ * **The one motion on this screen, and the whole capture flow's second and last.**
+ *
+ * The tick arrives: it comes up 8 px and fades in over `--motion-base`, once, and then nothing on
+ * the screen moves again. It is worth exactly this much because of what the screen means — the
+ * evidence is on the phone and cannot now be lost — and it is worth no more than this because the
+ * foreman is already walking to the next job.
+ *
+ * Nothing waits for it. The buttons under the mark are live on the first frame; the entry was
+ * written to Dexie before this component was even created (`entry-store.ts`), so there is no
+ * network call and no save behind the animation for it to be hiding.
+ */
 .saved__mark {
   display: flex;
   align-items: center;
@@ -18,6 +30,7 @@
   background: var(--color-card);
   box-shadow: var(--shadow-card);
   color: var(--color-ok-icon);
+  animation: teren-pop-in var(--motion-base) var(--ease-standard) both;
 }
 
 .saved__body {

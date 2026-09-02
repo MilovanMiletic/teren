@@ -70,6 +70,15 @@ describe('HomePage', () => {
     await fixture.whenStable();
     await flushLiveQueries();
     fixture.detectChanges();
+    // The recent list is a Dexie live query, so the screen paints a **skeleton** until the store
+    // answers (`home-page.ts`) — an unread list and an empty one are not the same claim, and Home
+    // used to print "no entries yet" for the frames in between. Every assertion below is about the
+    // settled screen, and a fixed number of ticks is a guess that is right on an idle machine and
+    // wrong on a loaded one (see `waitUntil`).
+    await waitUntil(() => !(fixture.nativeElement as HTMLElement).querySelector('.card--loading'), {
+      onTick: () => fixture.detectChanges(),
+      describe: 'the recent list to answer',
+    });
     return fixture.nativeElement as HTMLElement;
   }
 
@@ -132,6 +141,42 @@ describe('HomePage', () => {
 
     expect(element.textContent).toContain('Unet u');
     expect(element.textContent).not.toContain('Još nije unet');
+  });
+
+  /**
+   * The founder's *"when some new entry was added"*, pinned where it can actually be seen.
+   *
+   * The set logic has its own spec (`ui/arrival.spec.ts`); this is about the wiring — that the
+   * class lands on the row that arrived and on no other, and, the half that matters more, **that a
+   * list does not animate on its first paint.** Twelve rows bouncing in every time he opens Home is
+   * decoration, and it would destroy the meaning of the one gesture that says *this is the new one*.
+   */
+  it('draws only the row that arrived while he was looking at the screen', async () => {
+    // Explicit timestamps, because the list is ordered by `capturedAt` and two captures a
+    // millisecond apart would leave which row is "first" up to the clock.
+    const project = DEMO_PROJECTS[0];
+    const now = Date.now();
+    await captureEntry(store, { project, capturedAt: new Date(now - 60_000).toISOString() });
+
+    const element = await render();
+    await waitUntil(() => element.querySelectorAll('.recent__row').length === 1, {
+      onTick: () => fixture.detectChanges(),
+      describe: 'the first recent row',
+    });
+
+    // First paint: the screen was opened, nothing arrived.
+    expect(element.querySelectorAll('.row-arriving').length).toBe(0);
+
+    await captureEntry(store, { project, capturedAt: new Date(now).toISOString() });
+    await waitUntil(() => element.querySelectorAll('.recent__row').length === 2, {
+      onTick: () => fixture.detectChanges(),
+      describe: 'the second recent row',
+    });
+
+    const arriving = element.querySelectorAll('.row-arriving');
+    expect(arriving.length, 'exactly the new row animates, not the list').toBe(1);
+    // The newest entry is first in the list, which is the row that should be moving.
+    expect(element.querySelectorAll('.recent__row')[0].classList).toContain('row-arriving');
   });
 
   it('shows a truthful pending count, read from the store', async () => {

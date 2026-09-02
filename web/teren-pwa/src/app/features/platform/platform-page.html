@@ -73,7 +73,18 @@
 
   <div class="column content">
     @if (loading()) {
-      <p class="card state t-meta wide" role="status">{{ t('platform.loading') }}</p>
+      <!--
+        The shape of the rows that are coming, rather than the sentence "Učitava se…" — which
+        says that something is happening and nothing about what. The sentence is still here for
+        a screen reader, because a pulsing rectangle announces nothing (styles.css §Loading).
+      -->
+      <div class="card state wide card--loading" role="status">
+        <span class="visually-hidden">{{ t('platform.loading') }}</span>
+        <span class="skeleton skeleton--head" aria-hidden="true"></span>
+        <span class="skeleton skeleton--row" aria-hidden="true"></span>
+        <span class="skeleton skeleton--row" aria-hidden="true"></span>
+        <span class="skeleton skeleton--row skeleton--short" aria-hidden="true"></span>
+      </div>
     } @else {
       @if (unconfirmed() && reasonKey(); as reason) {
         <!--
@@ -329,7 +340,11 @@
     }
 
     @if (addOpen()) {
-      <app-modal-sheet [heading]="t('platform.add.title')" (close)="cancelAdd()">
+      <app-modal-sheet
+        animate.leave="modal--leaving"
+        [heading]="t('platform.add.title')"
+        (close)="cancelAdd()"
+      >
         @if (issued(); as invite) {
           <!--
             Success, and the dialog stays open so the sentence is read rather than glimpsed.

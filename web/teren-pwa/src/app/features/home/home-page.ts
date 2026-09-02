@@ -11,7 +11,7 @@ import {
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { TranslocoDirective } from '@jsverse/transloco';
-import { of, switchMap } from 'rxjs';
+import { map, of, startWith, switchMap } from 'rxjs';
 
 import { AppStatus } from '../../core/app-status.service';
 import { ARCHIVE_ENTRY_PARAM } from '../../core/archive/archive-route';
@@ -25,6 +25,7 @@ import { EntryStatusRefresher } from '../../core/sync/entry-status-refresh.servi
 import { ActionLogService } from '../../core/telemetry/action-log.service';
 import { ACTIONS } from '../../core/telemetry/actions';
 import { AppHeader } from '../../ui/app-header';
+import { NOTHING_PAINTED, arrivals, isFresh } from '../../ui/arrival';
 import { DurationPipe } from '../../ui/duration.pipe';
 import { StatusTone, entryStatusKey, entryStatusTone } from '../../ui/entry-status';
 import { Icon } from '../../ui/icon';
@@ -103,12 +104,46 @@ export class HomePage {
     { initialValue: [] as LocalEntry[] },
   );
 
-  protected readonly recent = toSignal(
+  /**
+   * The last few entries, **and whether the store has answered yet** — two facts in one value,
+   * because on this screen they are read together and getting them out of step is a lie.
+   *
+   * The store is a Dexie live query: it resolves a tick after the screen paints. With a bare
+   * `initialValue: []` the first frame is therefore indistinguishable from an empty site, and Home
+   * printed *"Još nema unosa"* — "no entries yet" — under a foreman's four years of work, for one
+   * frame, on every single load. A skeleton is the honest answer to "I do not know yet"; the empty
+   * sentence is the answer to "there are none", and now only one of them can be on screen at a time.
+   */
+  private readonly recentState = toSignal(
     toObservable(this.projectId).pipe(
-      switchMap((id) => (id ? this.entries.watchRecentEntries(id) : of([]))),
+      switchMap((id) =>
+        id
+          ? this.entries
+              .watchRecentEntries(id)
+              .pipe(map((rows) => ({ loaded: true, rows: rows as LocalEntry[] })))
+          : // No site chosen is not a pending read: there is nothing to wait for, so the empty
+            // state is the truth immediately.
+            of({ loaded: true, rows: [] as LocalEntry[] }),
+      ),
+      startWith({ loaded: false, rows: [] as LocalEntry[] }),
     ),
-    { initialValue: [] as LocalEntry[] },
+    { initialValue: { loaded: false, rows: [] as LocalEntry[] } },
   );
+
+  protected readonly recent = computed(() => this.recentState().rows);
+
+  /** Waiting on the local store. Drawn as the shape of the rows that are coming, never as prose. */
+  protected readonly recentLoading = computed(() => !this.recentState().loaded);
+
+  /**
+   * Which recent rows arrived while he was looking at this screen (`ui/arrival.ts`).
+   *
+   * This is the founder's *"when some new entry was added"*, and Home is the screen where it
+   * actually happens: he finishes a capture, the router brings him back here, and the row for the
+   * entry he has just recorded appears in a list he is already reading. It rises and fades in over
+   * `motion-base`; the twelve rows that were already there do not move.
+   */
+  private readonly recentArrival = signal(NOTHING_PAINTED);
 
   protected readonly pendingCount = toSignal(this.entries.watchPendingCount(), { initialValue: 0 });
 
@@ -155,6 +190,28 @@ export class HomePage {
   protected readonly todayEntry = computed<LocalEntry | null>(() => this.todayEntries()[0] ?? null);
 
   constructor() {
+    // Which rows are new is a fold over successive lists, so it is computed once per list rather
+    // than per render: a `computed` that wrote to a signal would be a side effect in a derivation,
+    // and reading it twice in one frame would then answer differently.
+    //
+    // **It does not fold until the store has answered**, and that guard is not defensive — without
+    // it the skeleton *creates* the defect it was added to fix. The loading frame is an empty list,
+    // so the fold would adopt *that* as the first paint and then see the foreman's five real
+    // entries as five arrivals, animating the whole list on every load. The unanswered state is not
+    // a list, and it is not adopted as one.
+    effect(() => {
+      const state = this.recentState();
+      if (!state.loaded) {
+        return;
+      }
+      this.recentArrival.update((previous) =>
+        arrivals(
+          previous,
+          state.rows.map((entry) => entry.id),
+        ),
+      );
+    });
+
     // Re-ask the server what it now thinks of this project's entries. Runs when the site changes
     // and when the network comes back — the two moments where the answer can have changed while
     // nobody was looking.
@@ -175,6 +232,11 @@ export class HomePage {
       const timer = setInterval(() => this.refreshStatuses(), STATUS_POLL_INTERVAL_MS);
       inject(DestroyRef).onDestroy(() => clearInterval(timer));
     }
+  }
+
+  /** Whether this row arrived after the list was first drawn — see {@link recentArrival}. */
+  protected arrived(entry: LocalEntry): boolean {
+    return isFresh(this.recentArrival(), entry.id);
   }
 
   /** "Danas" / "Juče" / a date, for a recent row. */

@@ -34,7 +34,19 @@
           </p>
         }
 
-        @if (rows().length === 0) {
+        @if (listLoading()) {
+          <!--
+            The store has not answered. An empty archive and an unread one look identical, and this
+            screen is the one that must never say the wrong one of the two: "Arhiva je prazna" over
+            a site with four years of entries was the first frame of every load before this.
+          -->
+          <div class="card card--loading" role="status">
+            <span class="visually-hidden">{{ t('archive.title') }}</span>
+            <span class="skeleton skeleton--head" aria-hidden="true"></span>
+            <span class="skeleton skeleton--row" aria-hidden="true"></span>
+            <span class="skeleton skeleton--row skeleton--short" aria-hidden="true"></span>
+          </div>
+        } @else if (rows().length === 0) {
           <div class="empty">
             <span class="empty__mark" aria-hidden="true">
               <app-icon name="book" [size]="36" />
@@ -64,10 +76,16 @@
               <ul class="card day__list">
                 @for (row of group.rows; track row.id) {
                   <li>
+                    <!--
+                      `row--new` marks a day that was not in the previous complete list
+                      (`ui/arrival.ts`) — never on the first paint, and never for the server's
+                      forty rows landing behind the phone's four.
+                    -->
                     <button
                       type="button"
                       class="row-button row"
                       data-log="archive.entry.open"
+                      [class.row-arriving]="arrived(row)"
                       [class.row--selected]="row.id === selectedId()"
                       [attr.aria-current]="row.id === selectedId() ? 'true' : null"
                       (click)="open(row)"

@@ -424,7 +424,11 @@
           **Facts this page already showed** — decision 13 means no code and no share text may
           appear here, and there is nothing in this block that could carry one.
         -->
-        <app-modal-sheet [heading]="t('company.detail.details')" (close)="closeDetails()">
+        <app-modal-sheet
+          animate.leave="modal--leaving"
+          [heading]="t('company.detail.details')"
+          (close)="closeDetails()"
+        >
           <dl class="details">
             <div class="details__row">
               <dt class="t-meta details__key">{{ t('company.detail.username') }}</dt>
