@@ -1,0 +1,119 @@
+# Teren — continuous integration.
+#
+# Runs on every push to main and on every pull request. Two jobs in parallel, one per half of the
+# product, each doing exactly what CLAUDE.md's "check at session start" does by hand:
+#
+#   backend   dotnet build, then dotnet test — 991 xunit.v3 tests over a REAL Postgres through
+#             Testcontainers. GitHub's Ubuntu runners ship Docker, so the suite runs unchanged.
+#   frontend  npm ci, ng build (production), ng test — 1575 vitest specs under jsdom.
+#
+# Two things here exist because of lessons recorded in CLAUDE.md, and removing either silently
+# turns the pipeline into a green light that means nothing:
+#
+#   * `ng test` exits 0 even when specs fail. The frontend job therefore reads the summary line
+#     out of the log and fails on "N failed" or on a missing summary (a hung or crashed run), and
+#     never trusts the exit code.
+#   * "ng build clean with no budget warning" is a standing claim about the tree. A budget
+#     *warning* does not fail `ng build`, so the job greps the build log for one and fails on it.
+#
+# The backend build is NOT run with warnings-as-errors: CS9107 in DemoIdentitySeedTests.cs is
+# pre-existing and documented; the tree has one warning and this pipeline should say so, not hide
+# it behind a red X the day someone touches an unrelated file.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch cancels the run it superseded — nobody waits on a stale tree.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend — build and 991 tests over Postgres
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build (Release)
+        run: dotnet build --no-restore --configuration Release
+
+      # Plain `dotnet test`, no `--nologo`: with the Microsoft.Testing.Platform runner
+      # (global.json) unknown flags are forwarded to the runner and rejected (CLAUDE.md).
+      # Testcontainers finds the runner's Docker daemon on its own.
+      - name: Test (real Postgres via Testcontainers)
+        run: dotnet test --no-build --configuration Release
+
+  frontend:
+    name: Frontend — build and 1575 specs
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: web/teren-pwa
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 24: Angular CLI 22 refuses anything older (CLAUDE.md, toolchain).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/teren-pwa/package-lock.json
+
+      - name: Install (npm ci against the committed lockfile)
+        run: npm ci
+
+      - name: Build (production) — clean, and no budget warning
+        run: |
+          set -o pipefail
+          npx ng build --configuration production 2>&1 | tee build.log
+          if grep -qiE '(^|[^a-z])warning' build.log; then
+            echo "::error::ng build produced a warning; the tree is required to build clean (see budgets in angular.json)."
+            exit 1
+          fi
+
+      # `ng test` exits 0 on failing specs. Read the summary line instead.
+      - name: Test (vitest, jsdom)
+        env:
+          CI: "true"
+        run: |
+          set -o pipefail
+          npx ng test --watch=false 2>&1 | tee test.log
+          # Strip ANSI colour codes so the summary can be matched.
+          sed -E 's/\x1b\[[0-9;]*m//g' test.log > test.plain
+          if ! grep -qE '^\s*Tests\s+.*[0-9]+ passed' test.plain; then
+            echo "::error::no vitest summary line found — the run hung or crashed before reporting."
+            exit 1
+          fi
+          if grep -qE '^\s*Tests\s+.*[0-9]+ failed|^\s*Test Files\s+.*[0-9]+ failed' test.plain; then
+            echo "::error::vitest reported failing specs (ng test exits 0 regardless, so this check is the gate)."
+            grep -E '^\s*(FAIL|×)' test.plain | head -50
+            exit 1
+          fi
+          grep -E '^\s*(Test Files|Tests)\s' test.plain
+
+      - name: Keep the logs when something fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-logs
+          path: |
+            web/teren-pwa/build.log
+            web/teren-pwa/test.log
+          if-no-files-found: ignore

@@ -83,6 +83,26 @@ things we've done. Commit when you are done and push. Now, we want to build a de
 Committed and pushed from this session on his instruction — the standing rule that the founder
 commits himself is set aside for this one commit, not changed.
 
+**Later the same evening — the VPS question, and a pipeline**
+
+- Founder: *"Let's start with VPS — Kamatera free trial?"* Checked the page: 30 days, $100 credit,
+  card required, then **$39/month** for 2 vCPU / 4 GB against Hetzner's ~€4.5, and no S3-compatible
+  storage. Recommended Hetzner CX22 (Nuremberg/Falkenstein, Ubuntu 24.04, SSH key, `get.docker.com`
+  once). The deploy machinery would run on either; a trial box is a box you move off in 30 days.
+- Founder: *"Do we have a CI/CD pipeline?"* No — `.github/workflows/` existed and was empty. *"Build
+  me that."* Built: **`ci.yml`** (backend build + 991 tests over Testcontainers Postgres, frontend
+  build + 1575 specs, in parallel, on every push to `main` and every PR; the vitest summary line is
+  parsed because `ng test` exits 0 on failure, and any `ng build` warning fails the job) and
+  **`deploy-dev.yml`** (`deploy/deploy.sh` from the runner after a green CI on `main`; dormant until
+  `TEREN_DEV_ENV`, `TEREN_DEV_SSH_KEY` and `TEREN_DEV_SSH_KNOWN_HOSTS` exist). Documented in
+  ARCHITECTURE §13 and CLAUDE.md. Both files parse; the backend's exact commands were run locally
+  before pushing; the first real run is the push itself.
+- Founder, in the same message: *"run the full code review in parallel for the frontend and the
+  backend with our senior subagents to check the state of the code and to know how good it is."*
+  Two whole-codebase state reviews launched against `c97c0e1`, read-only, graded A–F with a top-ten
+  and a "before the dev server / before a real phone" must-do list each. Their reports go in the next
+  entry, verbatim in substance.
+
 **Next**
 
 **The dev server (B3a for real).** `deploy/README.md` §2 is the shopping list and it still holds:

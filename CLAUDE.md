@@ -111,6 +111,13 @@ default **5080** and collides with the founder's running instance — use
 Translation dictionaries live in `web/teren-pwa/public/i18n/{en,sr}.json` (Angular 22 serves
 static files from `public/`, not `src/assets/`).
 
+**CI/CD (2026-09-02):** `.github/workflows/ci.yml` runs both suites on every push to `main` and
+every PR (backend over real Postgres — the runners have Docker; frontend parses vitest's summary
+line because `ng test` exits 0 on failure, and fails on any `ng build` warning).
+`deploy-dev.yml` runs `deploy/deploy.sh` against the dev host after a green CI on `main`; it is
+**dormant until the `TEREN_DEV_*` secrets exist**. ARCHITECTURE §13 has the detail and the one seam
+(`web.Dockerfile`'s device-token substitution) that must close before the first real deploy.
+
 ## Agents
 
 Four standing agents in `.claude/agents/`: `teren-backend-dev` (Opus) and `teren-frontend-dev`

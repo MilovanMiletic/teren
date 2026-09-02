@@ -1,0 +1,96 @@
+# Teren — continuous deployment to the DEV server.
+#
+# Runs after the CI workflow finishes GREEN on main, and on demand from the Actions tab. It does
+# exactly what a founder would do from his laptop — `deploy/deploy.sh` — from a runner instead,
+# so "the dev box is the latest green tree" is a property of the repository and not of somebody
+# remembering to run a script.
+#
+# It is DORMANT until three repository secrets exist (Settings → Secrets and variables → Actions):
+#
+#   TEREN_DEV_ENV               the whole contents of deploy/.env for the dev host (see
+#                               deploy/.env.example and deploy/README.md §4)
+#   TEREN_DEV_SSH_KEY           an ed25519 PRIVATE key whose public half is in the host's
+#                               ~/.ssh/authorized_keys — a key made for this purpose, not the
+#                               founder's own
+#   TEREN_DEV_SSH_KNOWN_HOSTS   the output of `ssh-keyscan <host>` — pins the host key, so the
+#                               runner refuses a machine that is not ours instead of asking
+#
+# Without them the job logs a notice and exits green, so enabling the pipeline before the VPS
+# exists costs nothing. Secrets never touch the repository: `.env` is written into the runner's
+# checkout and the runner is destroyed after the job.
+#
+# KNOWN SEAM, must be fixed before the first real run (JOURNAL 2026-09-02): deploy/web.Dockerfile
+# still substitutes a device-token placeholder that the identity work removed from
+# environment.ts, and stops with FATAL when TEREN_DEVICE_TOKEN is anything but the committed
+# default. Until that is fixed, leave TEREN_DEVICE_TOKEN at the default in TEREN_DEV_ENV — the
+# token is now only the demo device's server-side credential and the bundle no longer carries one.
+
+name: Deploy dev
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time. A second push queues behind the first rather than racing it on the host.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: deploy.sh → dev host
+    # Only after a green CI on main, or when a person pressed the button.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # The secrets context is not allowed in a job-level `if`, so the gate is an env flag that
+      # each step consults.
+      HAS_SECRETS: ${{ secrets.TEREN_DEV_ENV != '' && secrets.TEREN_DEV_SSH_KEY != '' && secrets.TEREN_DEV_SSH_KNOWN_HOSTS != '' }}
+    steps:
+      - name: Dormant — no dev host configured yet
+        if: env.HAS_SECRETS != 'true'
+        run: |
+          echo "::notice::Deploy dev is dormant: set TEREN_DEV_ENV, TEREN_DEV_SSH_KEY and TEREN_DEV_SSH_KNOWN_HOSTS to enable it."
+
+      - uses: actions/checkout@v4
+        if: env.HAS_SECRETS == 'true'
+        with:
+          # Deploy the exact commit CI approved, not whatever main is by the time this job starts.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: SSH identity and pinned host key
+        if: env.HAS_SECRETS == 'true'
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.TEREN_DEV_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.TEREN_DEV_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Write deploy/.env from the secret
+        if: env.HAS_SECRETS == 'true'
+        run: |
+          printf '%s\n' "${{ secrets.TEREN_DEV_ENV }}" > deploy/.env
+          chmod 600 deploy/.env
+          # Never print it. Confirm only that the two keys the ship step cannot do without are set.
+          grep -qE '^TEREN_SSH_HOST=.+' deploy/.env || { echo "::error::TEREN_SSH_HOST missing from TEREN_DEV_ENV"; exit 1; }
+          grep -qE '^TEREN_DOMAIN=.+' deploy/.env || { echo "::error::TEREN_DOMAIN missing from TEREN_DEV_ENV"; exit 1; }
+
+      # preflight → build → ship → database up → MIGRATE → app up → bucket CORS → verify.
+      # The order is the script's, and it is the point of the script (deploy/README.md §3).
+      - name: deploy/deploy.sh
+        if: env.HAS_SECRETS == 'true'
+        run: |
+          chmod +x deploy/deploy.sh deploy/storage/*.sh deploy/backup/*.sh
+          deploy/deploy.sh
+
+      - name: Scrub the runner
+        if: always() && env.HAS_SECRETS == 'true'
+        run: rm -f deploy/.env ~/.ssh/id_ed25519

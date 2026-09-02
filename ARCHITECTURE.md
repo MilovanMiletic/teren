@@ -1149,6 +1149,31 @@ to be up when his laptop is not.
 **Data rule:** staging carries seeded demo data only. No real customer entry goes into any
 environment before device binding (C5) and production hardening (C7).
 
+### Continuous integration and deployment (2026-09-02)
+
+**GitHub Actions, two workflows in `.github/workflows/`.**
+
+- **`ci.yml`** runs on every push to `main` and every pull request: a `backend` job (`dotnet build`
+  Release, then `dotnet test` — the 991 tests over a real Postgres, since the Ubuntu runners ship
+  Docker and Testcontainers needs nothing else) and a `frontend` job (`npm ci`, `ng build`
+  production, `ng test`) in parallel. **Two gates are hand-rolled because the tools lie:** `ng test`
+  exits 0 on failing specs, so the job parses vitest's summary line and fails on `N failed` or on a
+  missing summary; and a budget *warning* does not fail `ng build`, so the job greps the build log
+  for one. The backend is deliberately not built with warnings-as-errors — the one pre-existing
+  `CS9107` is documented, and the pipeline should report a warning, not hide it. A newer push to the
+  same ref cancels the run it superseded.
+- **`deploy-dev.yml`** runs after `CI` completes green on `main` (and on demand) and executes
+  `deploy/deploy.sh` from the runner against the dev host — the same command the founder would type,
+  so "the dev box is the latest green tree" is a property of the repository. It is **dormant until
+  three secrets exist** (`TEREN_DEV_ENV` = the whole `deploy/.env`, `TEREN_DEV_SSH_KEY`, and
+  `TEREN_DEV_SSH_KNOWN_HOSTS` from `ssh-keyscan`, which pins the host key); without them it logs a
+  notice and exits green. It deploys the exact SHA CI approved, one deploy at a time, and scrubs
+  `.env` and the key from the runner afterwards. Secrets never enter the repository.
+- **A seam that must close before the first real run:** `deploy/web.Dockerfile` still substitutes a
+  device-token placeholder that D7/F9 removed from `environment.ts`, and stops with `FATAL` when
+  `TEREN_DEVICE_TOKEN` is anything but the committed default. The token is now only the demo device's
+  server-side credential (provisioned by `seed`); the bundle carries none.
+
 ### Deployment and monitoring
 
 **Built at B3a (2026-08-30). It all lives in `deploy/`, and `deploy/README.md` is the runbook** —
