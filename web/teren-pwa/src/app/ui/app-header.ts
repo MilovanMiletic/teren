@@ -150,11 +150,25 @@ import { SessionLink } from './session-link';
       text-transform: uppercase;
     }
 
+    /*
+     * Drawn 40, hit 44 — the pattern the column funnel and the pager already use. The header bar
+     * is 64 px tall and two 44 px discs in it look like buttons stuck onto a toolbar, so the ink
+     * stays at 40 and the ::after below gives the thumb the two pixels a side that the token
+     * minimum is actually about. The bar exists from 768 up, which is a tablet: a touch device.
+     * (No backticks in this block: it is a template literal.)
+     */
     .header__back {
+      position: relative;
       width: 40px;
       height: 40px;
       background: var(--color-canvas);
       box-shadow: none;
+    }
+
+    .header__back::after {
+      content: '';
+      position: absolute;
+      inset: -2px;
     }
 
     .header__project {
@@ -170,12 +184,21 @@ import { SessionLink } from './session-link';
     }
 
     .header__project--pickable {
+      position: relative;
       min-height: 40px;
       padding: 0 var(--space-3);
       border-radius: var(--radius-pill);
       background: var(--color-canvas);
       color: var(--color-ink-2);
       cursor: pointer;
+    }
+
+    /* The same two pixels a side. This pill is wide, so only its height was ever short — but the
+       inset is written on all four so the rule reads the same everywhere it appears. */
+    .header__project--pickable::after {
+      content: '';
+      position: absolute;
+      inset: -2px;
     }
 
     .header__project-name {

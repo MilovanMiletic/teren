@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Teren.Api.Contracts;
 using Teren.Core.Entities;
+using Teren.Core.Time;
 
 namespace Teren.Api.Platform;
 
@@ -141,7 +142,7 @@ public sealed partial class PlatformDirectory
         // A string on the wire: a bigserial past 2^53 loses precision as a JSON number, and a log
         // id that is quietly wrong by one is a bug that appears years from now.
         log.Id.ToString(CultureInfo.InvariantCulture),
-        new DateTimeOffset(DateTime.SpecifyKind(log.At, DateTimeKind.Utc)),
+        UtcStamp.Of(log.At),
         log.Level,
         log.Source,
         log.Template,

@@ -102,37 +102,6 @@
   padding: var(--space-5);
 }
 
-/* ---- The three numbers ---------------------------------------------------------------------- */
-
-.stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  margin: 0;
-  overflow: hidden;
-}
-
-.stats__cell {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-4) 18px;
-  border-right: 1px solid var(--color-card-line);
-}
-
-.stats__cell:last-child {
-  border-right: 0;
-}
-
-.stats dt,
-.stats dd {
-  margin: 0;
-}
-
-.stats__value {
-  font-size: var(--text-h1);
-  line-height: 1.1;
-}
-
 /* ---- The directory -------------------------------------------------------------------------- */
 
 .people {

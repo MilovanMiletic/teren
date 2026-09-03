@@ -281,15 +281,37 @@ the browser is holding no session, or the one it holds was revoked. A fresh inst
 
 **A bare Npgsql `42703 column does not exist`.** Migrations did not run. `deploy.sh` always runs
 them; a manual `docker compose up -d` does not. **Since 2026-09-02 the box says so itself**:
-`curl -k https://$TEREN_DOMAIN/health/ready` answers 503 with `migrations: N migration(s) pending`,
-naming which context is behind, and the container healthcheck asks the same route. `/health` is
-liveness only and still answers `ok` on such a host — deliberately, because a liveness probe that
-goes red on a database blink restarts a healthy process.
+`curl -k https://$TEREN_DOMAIN/health/ready` answers 503, and the container healthcheck asks the
+same route. The body is plain text — the status on the first line, then one line per failing check,
+naming the context that is behind:
 
-**What readiness does *not* cover.** It asks the schema, the two contexts and the job server's
-heartbeat. It says nothing about a missing time-zone database, an unset AI key or an absent relay:
-each of those is a working host that cannot do one job, and each is warned about at deploy time and
-recorded on the entry (`failure_reason`) rather than turned into an outage.
+```
+Unhealthy
+migrations: TerenDbContext: 8 migration(s) pending
+```
+
+The two contexts are asked in order and the first one behind is the one named, so fixing that one
+and asking again can surface `TerenIdentityDbContext` next; `migrate` applies both. Nothing beyond
+that vocabulary is in the body — the migration names and any exception text go to the log, because
+this route is unauthenticated. `/health` is liveness only and still answers `ok` on such a host —
+deliberately, because a liveness probe that goes red on a database blink restarts a healthy
+process.
+
+**What readiness does *not* cover.** It asks the schema, the two contexts and **this process's own**
+job server's heartbeat (a server row outlives its process by up to Hangfire's five-minute timeout,
+so counting any row would have called a crash-restarted container ready). It says nothing about a
+missing time-zone database, an unset AI key or an absent relay: each of those is a working host that
+cannot do one job, and each is warned about at deploy time and recorded on the entry
+(`failure_reason`) rather than turned into an outage.
+
+**Pointing a monitor at readiness.** `/health/ready` is rate-limited to **120 requests a minute per
+client address** and answers 429 above that; `/health` is not limited at all. The limit is a
+constant in the code, not a setting, so nothing in a `.env` can throttle a deploy's own
+verification. It is about three and a half times what this repository's own probes ask for — the
+container healthcheck every 15 s plus `deploy.sh` polling every 2 s while a first deploy waits on
+ACME — so a probe of one every five seconds still has room. Poll `/health` if you want a
+one-second heartbeat: readiness costs four database round trips and a Hangfire storage read per
+hit, which is exactly why it is bounded.
 
 **Entries sit in `needs_review`.** Read `failure_reason` on the entry — it names the missing key.
 `deploy.sh` warns at deploy time about every key whose absence leaves a working host that cannot do

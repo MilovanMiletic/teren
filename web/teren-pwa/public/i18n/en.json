@@ -8,6 +8,12 @@
         "body": "The browser is not allowing local storage. Recording is disabled until that is fixed — nothing recorded earlier has been lost."
       }
     },
+    "update": {
+      "title": "A new version is ready",
+      "body": "Reload whenever it suits you. Nothing is lost — recordings and entries stay on the phone.",
+      "action": "Reload",
+      "later": "Not now"
+    },
     "install": {
       "title": "Add Teren to your home screen",
       "body": "It opens like an app and keeps working where there is no signal.",
@@ -174,6 +180,10 @@
       "row": "Correct",
       "rowLabel": "Correct the entry recorded at {{time}}"
     },
+    "superseded": {
+      "title": "The report has already gone to the client",
+      "body": "This record was changed after the report was handed over for sending, so that change is not in it. This entry can no longer be corrected — a correction is a new entry for that day."
+    },
     "report": {
       "title": "Report sent to the client",
       "body": "This is the PDF the client received. Download it to keep it or to pass it on.",
@@ -318,6 +328,10 @@
       "reported": {
         "title": "This entry has already been sent",
         "body": "A sent entry never changes. Record a new entry with the correction; it will refer back to this one."
+      },
+      "superseded": {
+        "title": "The report has already gone to the client",
+        "body": "This record was changed after the report was handed over for sending, so that change is not in it. Confirming again changes nothing — a correction is a new entry for that day."
       }
     },
     "field": {

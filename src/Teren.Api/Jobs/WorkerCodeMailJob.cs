@@ -108,7 +108,7 @@ public sealed class WorkerCodeMailJob(
 
         // His language, not the company's and not a project's: a report speaks the project's
         // language because the client reads it; this speaks his, because he does.
-        var strings = InviteStrings.For(worker.Language);
+        var strings = WorkerInviteStrings.For(worker.Language);
 
         // The same words the admin pastes into a chat (GET /api/workers/{id}/share-text), from the
         // same builder. One copy of the message the founder has to review, and a man who gets it

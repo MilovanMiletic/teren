@@ -357,10 +357,21 @@
 }
 
 .line__toggle {
+  position: relative;
   width: 36px;
   height: 36px;
   background: transparent;
   box-shadow: none;
+}
+
+/* Drawn 36, hit 44 — the pattern `ui/column-menu.ts` set for the funnel beside a column label,
+   and for the same reason: a 44 px disc in the last cell would out-weigh the timestamp the row
+   is read by. The row itself is also a target, but that is a convenience, not a substitute:
+   this is the control that says what it does. */
+.line__toggle::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
 }
 
 .line__chevron {

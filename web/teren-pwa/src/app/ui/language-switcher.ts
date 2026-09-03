@@ -76,8 +76,21 @@ import { Icon } from './icon';
     }
 
     :host(.on-header) .langs__button {
+      position: relative;
       min-height: 40px;
       padding: 0 var(--space-3);
+    }
+
+    /*
+     * Drawn 40, hit 44 — the pattern the pager and the column funnel use. Two pixels a side, and
+     * the two buttons sit 4 px apart, so the overhangs meet exactly and never overlap: SR and EN
+     * keep separate targets, which on a control that changes the whole app's language matters
+     * more than on most. (No backticks in this block: it is a template literal.)
+     */
+    :host(.on-header) .langs__button::after {
+      content: '';
+      position: absolute;
+      inset: -2px;
     }
 
     :host(.on-header) .langs__button--active {

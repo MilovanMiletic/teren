@@ -204,6 +204,20 @@ builder.Services.AddRateLimiter(limiter =>
                 QueueLimit = 0,
             }));
 
+    // The only other public, unauthenticated route with a cost. See ReadinessRateLimitPolicy for
+    // why the number is what it is and why it is a constant rather than a setting; /health stays
+    // unlimited because it is a constant and refusing a liveness probe restarts a healthy process.
+    limiter.AddPolicy(
+        ReadinessRateLimitPolicy.Name,
+        http => RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = ReadinessRateLimitPolicy.PermitLimit,
+                Window = ReadinessRateLimitPolicy.Window,
+                QueueLimit = 0,
+            }));
+
     limiter.OnRejected = async (context, ct) =>
     {
         var retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var window)
@@ -477,10 +491,14 @@ app.MapGet("/health", () => Results.Ok(new HealthResponse("ok", "teren-api")));
 
 // Readiness: can this host actually serve a request. Both migration histories, both contexts, and
 // the job server where one is expected. `deploy.sh` and the container healthcheck ask this one.
+//
+// Rate-limited, unlike /health, because this one costs four database round trips and a Hangfire
+// storage read per hit and is answered to anybody. The window is wide enough that no probe this
+// repository ships can reach it (ReadinessRateLimitPolicy).
 app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
     ResponseWriter = ReadinessEndpoint.WriteAsync,
-});
+}).RequireRateLimiting(ReadinessRateLimitPolicy.Name);
 
 // The public door: activation, login, set-password. DELIBERATELY NOT under /api, so that
 // TenancyTests.Every_api_route_sits_behind_the_token stays literally true rather than

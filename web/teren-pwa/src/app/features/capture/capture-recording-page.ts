@@ -339,7 +339,14 @@ export class CaptureRecordingPage implements OnDestroy {
     }
   }
 
-  /** Abandon the take. The only path that throws captured audio away, and it is explicit. */
+  /**
+   * Abandon the take. The only path that throws captured audio away, and it is explicit.
+   *
+   * **There is deliberately no `saving()` check in here.** The guard is the `[disabled]` binding in
+   * the template, in one place, so that removing it turns a spec red rather than being caught by a
+   * second copy of itself — and so that the control a foreman is looking at and the behaviour he
+   * gets can never disagree. See the comment beside the button for what the window is.
+   */
   protected async cancel(): Promise<void> {
     this.leaving = true;
     this.recorder.cancel();

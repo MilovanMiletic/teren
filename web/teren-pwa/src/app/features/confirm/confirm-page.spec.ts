@@ -33,6 +33,8 @@ class FakeApi {
 
   status = 'awaiting_confirmation';
   reportedAt: string | null = null;
+  /** The one terminal reason this client branches on. See `core/api/failure-reason.ts`. */
+  failureReason: string | null = null;
   structure: unknown = null;
   corrected: unknown = null;
   transcript: string | null =
@@ -65,7 +67,7 @@ class FakeApi {
       received_at: '2026-08-29T10:05:00.000Z',
       confirmed_at: null,
       reported_at: this.reportedAt,
-      failure_reason: null,
+      failure_reason: this.failureReason,
       raw_transcript: this.transcript,
       structure: this.structure,
       corrected: this.corrected,
@@ -614,6 +616,58 @@ describe('ConfirmPage', () => {
     expect(html.textContent).toContain('Ovaj unos je već poslat');
     expect(html.querySelector('textarea')).toBeNull();
     expect(buttonLabels()).not.toContain('Potvrdi unos');
+  });
+
+  /*
+   * ---- The loop, and the sentence that ends it ----------------------------------------------
+   *
+   * `superseded_after_send` is the server saying: the relay already has a report describing this
+   * day, and then somebody changed the day. It is terminal — `ux_report_entry_id` plus the absence
+   * of any `sent → sending` transition means the newer content can never get a report.
+   *
+   * On the wire it is indistinguishable from an entry that may still be corrected: status
+   * `confirmed`, `reported_at` null. So the archive offered the way back in, this screen drew a
+   * form, the confirmation succeeded, the report pass wrote the same reason back, and round it
+   * went — with no screen in the product ever naming the cause, because nothing outside
+   * `api-types.ts` read `failure_reason` at all.
+   */
+  it('draws no form on a record that was changed after its report went out', async () => {
+    api.status = 'confirmed';
+    api.reportedAt = null;
+    api.failureReason = 'superseded_after_send';
+    api.corrected = { schema_version: 1, notes: 'Postavljeni radijatori.' };
+    const html = await render(await givenEntry());
+
+    expect(html.textContent).toContain('Izveštaj je već otišao klijentu');
+    // No form and no gate: a confirmation here writes the same terminal reason straight back.
+    expect(html.querySelector('textarea')).toBeNull();
+    expect(buttonLabels()).not.toContain('Potvrdi unos');
+    // …and it must not be dressed as the ordinary "you may still correct this" state either.
+    expect(html.textContent).not.toContain('Unos možete ispravljati sve dok izveštaj ne ode');
+  });
+
+  it('says what happened rather than only refusing — the cause, and what to do instead', async () => {
+    // The half that makes the refusal honest. A screen that merely went read-only would leave a
+    // foreman staring at a confirmed day he cannot send, with nothing to act on.
+    api.status = 'confirmed';
+    api.failureReason = 'superseded_after_send';
+    const html = await render(await givenEntry());
+
+    const text = html.textContent ?? '';
+    expect(text).toContain('izveštaj predat na slanje');
+    expect(text).toContain('nov unos');
+  });
+
+  it('leaves every other confirmed entry exactly as it was — a reason it does not know is silence', async () => {
+    // The guard has to bite on one value and on nothing else. An unrecognised reason (and a null
+    // one) must leave the gate open, or a diagnostic string the server adds next month would
+    // silently seal every entry it lands on.
+    api.status = 'confirmed';
+    api.failureReason = 'report_interrupted';
+    const html = await render(await givenEntry());
+
+    expect(html.textContent).not.toContain('Izveštaj je već otišao klijentu');
+    expect(html.querySelector('textarea')).not.toBeNull();
   });
 
   it('still edits an entry that is confirmed but not yet reported', async () => {

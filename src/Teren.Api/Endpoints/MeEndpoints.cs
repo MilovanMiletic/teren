@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Teren.Api.Auth;
 using Teren.Api.Contracts;
 using Teren.Core.Entities;
+using Teren.Core.Time;
 using Teren.Infrastructure.Persistence;
 
 namespace Teren.Api.Endpoints;
@@ -92,18 +93,9 @@ public static class MeEndpoints
             user.Language,
             company,
             device,
-            Utc(user.CreatedAt),
-            UtcOrNull(user.LastLoginAt)));
+            UtcStamp.Of(user.CreatedAt),
+            UtcStamp.OrNull(user.LastLoginAt)));
     }
-
-    // Npgsql hands back an unspecified-kind DateTime for a timestamptz column, and serialising
-    // that produces a stamp with no offset that a browser then reads as local time. Same two
-    // helpers, for the same reason, as PlatformDirectory.
-    private static DateTimeOffset Utc(DateTime value) =>
-        new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
-
-    private static DateTimeOffset? UtcOrNull(DateTime? value) =>
-        value is null ? null : Utc(value.Value);
 
     /// <summary>
     /// Revokes <b>this</b> session and no other. A man signing out of a shared office machine must

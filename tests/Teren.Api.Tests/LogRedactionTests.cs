@@ -65,10 +65,6 @@ public sealed class LogRedactionTests
     private const string SafeReducer =
         @"\s*(\.\s*(Count|Length)\b|\.\s*Count\s*\(\s*\)|is\s+(not\s+)?null|[!=]=\s*null)";
 
-    private static readonly Regex LogCall = new(
-        @"\bLog(?:Information|Warning|Error|Debug|Trace|Critical|Verbose|Fatal)\s*\(",
-        RegexOptions.Compiled);
-
     /// <summary>
     /// String literals, removed before the scan.
     /// <para>
@@ -78,10 +74,12 @@ public sealed class LogRedactionTests
     /// well-behaved call site in the product. Stripping the literals leaves only the C#
     /// expressions, which is exactly what the rule is about.
     /// </para>
+    /// <para>
+    /// Shared with <see cref="LogTemplateTests"/> via <see cref="LogCallSites"/>: two guards over
+    /// the same text must not disagree about what a log call is.
+    /// </para>
     /// </summary>
-    private static readonly Regex StringLiterals = new(
-        "\"\"\"[\\s\\S]*?\"\"\"|@\"(?:[^\"]|\"\")*\"|\"(?:\\\\.|[^\"\\\\])*\"",
-        RegexOptions.Compiled);
+    private static readonly Regex StringLiterals = LogCallSites.StringLiterals;
 
     [Fact]
     public void No_log_call_site_interpolates_evidence()
@@ -240,34 +238,7 @@ public sealed class LogRedactionTests
         return false;
     }
 
-    /// <summary>
-    /// Every <c>Log*(</c> call in a file, from the method name to its matching close paren.
-    /// <para>
-    /// Balanced-paren scanning rather than a regex for the whole call: log statements here span
-    /// half a dozen lines and contain nested calls and ternaries, and a regex that tried to match
-    /// "up to the closing bracket" would stop at the first inner one and read half a call site.
-    /// </para>
-    /// </summary>
-    private static List<string> LogStatements(string code)
-    {
-        var statements = new List<string>();
-
-        foreach (Match match in LogCall.Matches(code))
-        {
-            var index = match.Index + match.Length;
-            var depth = 1;
-
-            while (index < code.Length && depth > 0)
-            {
-                depth += code[index] switch { '(' => 1, ')' => -1, _ => 0 };
-                index++;
-            }
-
-            statements.Add(code[match.Index..index]);
-        }
-
-        return statements;
-    }
+    private static List<string> LogStatements(string code) => LogCallSites.Statements(code);
 
     private static string Compress(string statement)
     {

@@ -8,6 +8,7 @@ import { TranslocoTestingModule } from '@jsverse/transloco';
 import { COMPANY_GATEWAY } from '../../core/company/company-gateway';
 import { MockCompanyGateway } from '../../core/company/mock-company-gateway';
 import { ADMIN_SESSION_STORAGE_KEY, AdminSession } from '../../core/session/admin-session';
+import { SESSION_STORAGE_KEY } from '../../core/session/session';
 import { describeClick } from '../../core/telemetry/action-descriptor';
 import { ActionLogService } from '../../core/telemetry/action-log.service';
 import { ACTIONS } from '../../core/telemetry/actions';
@@ -31,6 +32,21 @@ const ADMIN: AdminSession = {
   companyId: '33333333-3333-3333-3333-333333333333',
   companyName: 'Vodoinstal Petrović d.o.o.',
   signedInAt: '2026-08-31T08:00:00.000Z',
+};
+
+/**
+ * …and the same browser holding a foreman's activation. The founder's own phone: the demo device
+ * and the office console at once, which `company-link.ts` names as the ordinary case here.
+ */
+const DEVICE = {
+  token: 'trn_d_a-real-device',
+  deviceId: '11111111-1111-1111-1111-111111111111',
+  userId: '22222222-2222-2222-2222-222222222222',
+  username: 'zoran.jovanovic',
+  displayName: 'Zoran Jovanović',
+  companyId: ADMIN.companyId,
+  companyName: ADMIN.companyName,
+  activatedAt: '2026-08-30T07:00:00.000Z',
 };
 
 describe('CompanyPage', () => {
@@ -68,10 +84,16 @@ describe('CompanyPage', () => {
    * anybody signed in" question that decides whether a request is sent at all, are both part of
    * what this screen has to get right.
    */
-  async function render(signedIn = true): Promise<void> {
+  async function render(signedIn = true, onADeviceToo = false): Promise<void> {
     localStorage.clear();
     if (signedIn) {
       localStorage.setItem(ADMIN_SESSION_STORAGE_KEY, JSON.stringify(ADMIN));
+    }
+    // Written **before** the injector is built: `SessionService` reads storage once, in its
+    // constructor, into a signal. Seeding it afterwards leaves `activated()` false and the
+    // spec quietly describes an office tablet instead of the owner-foreman's own phone.
+    if (onADeviceToo) {
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(DEVICE));
     }
 
     TestBed.resetTestingModule();
@@ -1403,6 +1425,51 @@ describe('CompanyPage', () => {
 
       expect(element.querySelector('.pager__position')?.textContent?.trim()).toBe('2 / 2');
       expect(listedNames()).toHaveLength(7);
+    });
+  });
+
+  // ---- The way back in, after the server threw the credential away ---------------------------
+
+  describe('a 401 leaves a door open', () => {
+    /**
+     * **The ordinary case, not an edge one.**
+     *
+     * A 401 anywhere on this surface signs the admin out — one localStorage row, no evidence — and
+     * the screen then says *"Server više ne prihvata ovu prijavu. Prijavite se ponovo."* On an
+     * office tablet the chrome has already turned into a **Prijavi se**, because that browser holds
+     * no device session. The owner-foreman's own phone is the other half, and `company-link.ts`
+     * calls it the ordinary case for this whole surface: it holds a device session too, so
+     * `session-link` renders **nothing at all** by design — and one reload later
+     * `requiresCompanyAdmin` puts him on Home with no admin chrome on screen whatsoever.
+     *
+     * So the control has to be in the card that just told him to sign in.
+     */
+    it('offers a sign-in inside the card, on the phone where the chrome offers none', async () => {
+      gateway.workersError = httpError(401);
+      // The 401 is what removes the credential; the device session is what silences the chrome.
+      await render(true, true);
+
+      expect(text()).toContain('Server više ne prihvata ovu prijavu.');
+      // The chrome rule is untouched: a browser with a device session is offered nothing there.
+      expect(element.querySelector('app-session-link button')).toBeNull();
+
+      const control = element.querySelector<HTMLButtonElement>('.notice app-sign-in-again button');
+      expect(control, 'no way to sign in from the card that says to sign in').not.toBeNull();
+      expect(control!.textContent).toContain('Prijavi se');
+
+      control!.click();
+      await settle();
+      expect(router.navigate).toHaveBeenCalledWith(['/login']);
+    });
+
+    it('offers nothing of the kind on a 403, which signing in again cannot fix', async () => {
+      // The credential is intact and the role is the problem. A sign-in here would send an owner
+      // round a loop instead of to the person who can change his rights.
+      gateway.workersError = httpError(403);
+      await render(true, true);
+
+      expect(text()).toContain('Ovaj nalog to ne sme.');
+      expect(element.querySelector('app-sign-in-again button')).toBeNull();
     });
   });
 });

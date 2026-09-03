@@ -8,6 +8,7 @@ using Teren.Core.Entities;
 using Teren.Core.Reporting;
 using Teren.Core.Storage;
 using Teren.Core.Tenancy;
+using Teren.Core.Time;
 using Teren.Infrastructure.Persistence;
 using Teren.Infrastructure.Processing;
 using Teren.Infrastructure.Storage;
@@ -316,8 +317,8 @@ public sealed class EntryReporter(
                 photos,
                 new ReportProvenance(
                     entry.Id,
-                    Utc(entry.CreatedAt),
-                    UtcOrNull(entry.ReceivedAt),
+                    UtcStamp.Of(entry.CreatedAt),
+                    UtcStamp.OrNull(entry.ReceivedAt),
                     DateTimeOffset.UtcNow));
 
             pdf = renderer.RenderDaily(report);
@@ -574,7 +575,7 @@ public sealed class EntryReporter(
                 ct);
 
             photos.Add(new ReportPhoto(
-                item.Id, path, item.Sha256.TrimEnd(), UtcOrNull(item.CapturedAt)));
+                item.Id, path, item.Sha256.TrimEnd(), UtcStamp.OrNull(item.CapturedAt)));
         }
 
         return photos;
@@ -940,10 +941,4 @@ public sealed class EntryReporter(
 
         return ReportOutcome.Failed;
     }
-
-    private static DateTimeOffset Utc(DateTime value) =>
-        new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
-
-    private static DateTimeOffset? UtcOrNull(DateTime? value) =>
-        value is null ? null : Utc(value.Value);
 }

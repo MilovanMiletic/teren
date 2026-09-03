@@ -391,6 +391,64 @@ describe('CaptureRecordingPage', () => {
     expect(await db.captures.count()).toBe(0);
   });
 
+  it('will not discard a take that is being saved — the reflex tap after Stop', async () => {
+    /*
+     * The window is real and it is the ordinary one. He presses Stop; assembling the blob and
+     * writing the entry takes a second or two on a phone; his thumb is already on its way to the
+     * button directly underneath. Cancel used to call `discardCapture` unconditionally, so a take
+     * he had just decided to keep was deleted — with the chunks — one or two seconds after he
+     * decided to keep it. Pre-existing since B2.
+     *
+     * The recorder's argument for leaving cancel live during `stopping` was about a recorder that
+     * has hung. A *saving* take is not in that state: the audio is on disk and the screen is about
+     * to navigate away by itself.
+     */
+    const element = await configure();
+    const entryId = (await db.captures.toArray())[0].entryId;
+
+    // Hold the save open, which is exactly what a slow phone does.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const finishCapture = store.finishCapture.bind(store);
+    vi.spyOn(store, 'finishCapture').mockImplementationOnce(async (id, options) => {
+      await held;
+      return finishCapture(id, options);
+    });
+
+    element.querySelector<HTMLButtonElement>('.stop')?.click();
+    await flushLiveQueries(2);
+    fixture.detectChanges();
+
+    const cancel = element.querySelector<HTMLButtonElement>('.actions__cancel')!;
+    expect(cancel.disabled, 'cancel is live while the take is being written').toBe(true);
+    cancel.click();
+    await flushLiveQueries(2);
+
+    // Nothing was thrown away, and the recorder was never told to abandon the take.
+    expect(recorder.cancelled).toBe(false);
+    expect(await db.chunks.count()).toBe(2);
+
+    release();
+    await waitUntil(async () => (await db.entries.get(entryId))?.status === 'draft', {
+      onTick: () => fixture.detectChanges(),
+      describe: 'the take to finish saving',
+    });
+    expect((await db.entries.get(entryId))?.status).toBe('draft');
+  });
+
+  it('gives the way out back the moment saving fails, which is when it is a real choice', async () => {
+    // A failed save is the one state where abandoning still means something: the screen offers a
+    // retry, the chunks are on disk, and he may legitimately decide the take is not worth it.
+    const element = await configure();
+    vi.spyOn(store, 'finishCapture').mockRejectedValueOnce(new Error('quota exceeded'));
+
+    element.querySelector<HTMLButtonElement>('.stop')?.click();
+    await flushLiveQueries(5);
+    fixture.detectChanges();
+
+    expect(element.querySelector<HTMLButtonElement>('.actions__cancel')!.disabled).toBe(false);
+  });
+
   it('refuses to start without a site rather than recording something unsaveable', async () => {
     const element = await configure({ projects: false });
 

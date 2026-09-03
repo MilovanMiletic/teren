@@ -9,6 +9,7 @@ import { AppHeader } from '../../ui/app-header';
 import { Icon } from '../../ui/icon';
 import { LanguageSwitcher } from '../../ui/language-switcher';
 import { SessionLink } from '../../ui/session-link';
+import { SignInAgain } from '../../ui/sign-in-again';
 import { companyReasonFor } from './company-reason';
 
 /**
@@ -74,7 +75,15 @@ import { companyReasonFor } from './company-reason';
 @Component({
   selector: 'app-account-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AppHeader, DatePipe, Icon, LanguageSwitcher, SessionLink, TranslocoDirective],
+  imports: [
+    AppHeader,
+    DatePipe,
+    Icon,
+    LanguageSwitcher,
+    SessionLink,
+    SignInAgain,
+    TranslocoDirective,
+  ],
   templateUrl: './account-page.html',
   styleUrl: './account-page.css',
 })

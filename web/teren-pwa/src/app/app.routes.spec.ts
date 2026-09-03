@@ -195,13 +195,20 @@ function navigationTargets(): { targets: NavigationTarget[]; unresolvable: strin
  * bump of exactly two is what a new screen should cost here. A bump of one would mean a screen
  * somebody can reach and not leave.
  *
+ * **45 → 46**: `ui/sign-in-again.ts`, the control inside the "your sign-in is no longer
+ * accepted" card. A bump of **one** here rather than the usual pair, and that is right: it is not
+ * a new screen, it is the way *out* of a state seven existing screens can already land in — and
+ * the way out was the thing missing. On the owner-foreman's own phone the chrome deliberately
+ * offers no sign-in (`session-link.ts`), so after a 401 there was no reachable route to `/login`
+ * on screen at all.
+ *
  * Worth recording what this count could not catch, since it was green throughout. All forty
  * navigations resolved, `/platform` among them — but its *only* navigation was the one
  * `login-page.ts` performs on a successful sign-in, and on the founder's own browser `/login` was
  * itself unreachable (`requiresNoAdminSession`). A route table cannot see that: reachability is a
  * property of the guards, not of the paths. `device.guard.spec.ts` pins it where it lives.
  */
-const NAVIGATION_COUNT = 45;
+const NAVIGATION_COUNT = 46;
 
 /**
  * The query parameters a navigation may put on the URL, by the name of the constant that holds

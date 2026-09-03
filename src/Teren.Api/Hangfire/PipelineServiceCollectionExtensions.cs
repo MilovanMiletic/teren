@@ -1,6 +1,8 @@
+using Teren.Api.Health;
 using Teren.Api.Jobs;
 using Hangfire;
 using Hangfire.PostgreSql;
+using Hangfire.Server;
 using Teren.Core.Ai;
 using Teren.Core.Processing;
 using Teren.Core.Reporting;
@@ -94,6 +96,11 @@ public static class PipelineServiceCollectionExtensions
     public static IServiceCollection AddTerenJobs(
         this IServiceCollection services, IConfiguration configuration, string connectionString)
     {
+        // Registered in both branches so that nothing has to ask "is Hangfire on" to resolve it.
+        // With the job server off it simply stays empty, and the readiness check that would read
+        // it is not registered either.
+        services.AddSingleton<JobServerIdentity>();
+
         if (!configuration.GetValue("Hangfire:Enabled", defaultValue: true))
         {
             services.AddSingleton<IPipelineQueue, DisabledPipelineQueue>();
@@ -106,6 +113,12 @@ public static class PipelineServiceCollectionExtensions
             .UseSimpleAssemblyNameTypeSerializer()
             .UseRecommendedSerializerSettings()
             .UsePostgreSqlStorage(postgres => postgres.UseNpgsqlConnection(connectionString)));
+
+        // Runs alongside the workers and does one thing: records the server id Hangfire assigned
+        // to this process, which is what lets /health/ready ask about THIS job server rather than
+        // about any row in the table. `AddHangfireServer` resolves IBackgroundProcess from the
+        // container, so registering it here is the whole wiring.
+        services.AddSingleton<IBackgroundProcess, JobServerAnnouncement>();
 
         services.AddHangfireServer(server =>
         {

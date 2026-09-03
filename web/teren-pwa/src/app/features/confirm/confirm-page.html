@@ -96,6 +96,29 @@
       </div>
     }
 
+    @case ('superseded') {
+      <!--
+        The dead end this screen used to hide.
+
+        The entry reads `confirmed` with no `reported_at`, which every other rule in this app takes
+        as "he may still change his mind" — so the archive offered the way back, this screen drew a
+        form, the confirmation succeeded, and the report pass wrote the same terminal reason back.
+        Round and round, with nothing anywhere naming the cause. There is no form here and no
+        confirm button, because there is nothing a confirmation could achieve; what there is
+        instead is the one sentence that was missing.
+      -->
+      <div class="column content">
+        <section class="card state">
+          <app-icon name="alert-triangle" [size]="24" class="state__icon state__icon--err" />
+          <h2 class="t-h2">{{ t('confirm.state.superseded.title') }}</h2>
+          <p class="t-meta state__body">{{ t('confirm.state.superseded.body') }}</p>
+          <button type="button" class="btn btn--tertiary state__action" (click)="openRecord()">
+            {{ t('archive.detail.open') }}
+          </button>
+        </section>
+      </div>
+    }
+
     @case ('ready') {
       <div class="column content content--form">
         <!-- ---- Evidence: what he actually said, beside what is being corrected ----------- -->

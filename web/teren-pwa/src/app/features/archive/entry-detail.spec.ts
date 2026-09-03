@@ -667,6 +667,59 @@ describe('EntryDetail', () => {
     expect(element.textContent).not.toContain('Ovaj unos još može da se ispravi');
   });
 
+  it('shuts the door back in on a record that was changed after its report went out', async () => {
+    /*
+     * The disguise. `superseded_after_send` leaves the entry `confirmed` with `reported_at` still
+     * null — the exact two facts `canRevise` reads as "he may still change his mind" — so this
+     * record used to carry the "you can still correct this" card and a live button into the gate.
+     * Pressing it confirmed successfully, the report pass wrote the same terminal reason back, and
+     * the foreman went round again with nothing anywhere saying why.
+     */
+    const entry = await captureEntry(store);
+    archive.getEntry.mockResolvedValue({
+      status: 'ok',
+      missing: false,
+      entry: serverEntry({
+        id: entry.id,
+        status: 'confirmed',
+        reported_at: null,
+        failure_reason: 'superseded_after_send',
+      }),
+    });
+
+    const element = await render(entry.id);
+    await settled(element, 'Izveštaj je već otišao klijentu');
+
+    // No route to the gate from here, and the "still correctable" card is gone with it.
+    expect(element.querySelector('.detail__notice-action')).toBeNull();
+    expect(element.textContent).not.toContain('Ovaj unos još može da se ispravi');
+    // …and the record says what happened and what to do instead, rather than going quiet.
+    expect(element.textContent).toContain('izveštaj predat na slanje');
+    expect(element.textContent).toContain('nov unos');
+  });
+
+  it('keeps the door open on a confirmed entry carrying some other reason', async () => {
+    // The guard bites on one value. A diagnostic reason the server adds later must not seal an
+    // entry the foreman is still allowed to correct.
+    const entry = await captureEntry(store);
+    archive.getEntry.mockResolvedValue({
+      status: 'ok',
+      missing: false,
+      entry: serverEntry({
+        id: entry.id,
+        status: 'confirmed',
+        reported_at: null,
+        failure_reason: 'report_interrupted',
+      }),
+    });
+
+    const element = await render(entry.id);
+    await settled(element, 'Ovaj unos još može da se ispravi');
+
+    expect(element.querySelector('.detail__notice-action')).not.toBeNull();
+    expect(element.textContent).not.toContain('Izveštaj je već otišao klijentu');
+  });
+
   it('offers no gate on a reported entry, which never changes again', async () => {
     const entry = await captureEntry(store);
     archive.getEntry.mockResolvedValue({

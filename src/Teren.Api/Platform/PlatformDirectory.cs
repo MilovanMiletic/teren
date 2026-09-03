@@ -4,6 +4,7 @@ using Teren.Api.Endpoints;
 using Teren.Api.Jobs;
 using Teren.Core.Entities;
 using Teren.Core.Mail;
+using Teren.Core.Time;
 using Teren.Infrastructure.Persistence;
 
 namespace Teren.Api.Platform;
@@ -101,8 +102,8 @@ public sealed partial class PlatformDirectory(
             page.Select(c => new PlatformCompanyResponse(
                     c.Id,
                     c.Name,
-                    Utc(c.CreatedAt),
-                    UtcOrNull(c.SuspendedAt),
+                    UtcStamp.Of(c.CreatedAt),
+                    UtcStamp.OrNull(c.SuspendedAt),
                     c.UserCount,
                     c.ActiveUserCount))
                 .ToList(),
@@ -121,12 +122,12 @@ public sealed partial class PlatformDirectory(
         var company = new Company { Id = Guid.NewGuid(), Name = name.Trim(), CreatedAt = now };
 
         db.Companies.Add(company);
-        db.AdminAudits.Add(Audit(
+        db.AdminAudits.Add(AdminAudit.For(
             actorUserId, AdminAuditActions.CompanyCreated, "company", company.Id, company.Id, now));
 
         await db.SaveChangesAsync(ct);
 
-        return new PlatformCompanyResponse(company.Id, company.Name, Utc(now), null, 0, 0);
+        return new PlatformCompanyResponse(company.Id, company.Name, UtcStamp.Of(now), null, 0, 0);
     }
 
     /// <summary>
@@ -161,7 +162,7 @@ public sealed partial class PlatformDirectory(
         if (changing)
         {
             company.SuspendedAt = suspended ? now : null;
-            db.AdminAudits.Add(Audit(
+            db.AdminAudits.Add(AdminAudit.For(
                 actorUserId,
                 suspended ? AdminAuditActions.CompanySuspended : AdminAuditActions.CompanyResumed,
                 "company",
@@ -176,8 +177,12 @@ public sealed partial class PlatformDirectory(
             .CountAsync(u => u.CompanyId == company.Id && u.DisabledAt == null, ct);
 
         return new PlatformCompanyResponse(
-            company.Id, company.Name, Utc(company.CreatedAt), UtcOrNull(company.SuspendedAt),
-            userCount, activeCount);
+            company.Id,
+            company.Name,
+            UtcStamp.Of(company.CreatedAt),
+            UtcStamp.OrNull(company.SuspendedAt),
+            userCount,
+            activeCount);
     }
 
     // ---------------------------------------------------------------------------------- users
@@ -277,9 +282,9 @@ public sealed partial class PlatformDirectory(
                     u.DisplayName,
                     u.Email,
                     u.Language,
-                    Utc(u.CreatedAt),
-                    UtcOrNull(u.LastLoginAt),
-                    UtcOrNull(u.DisabledAt),
+                    UtcStamp.Of(u.CreatedAt),
+                    UtcStamp.OrNull(u.LastLoginAt),
+                    UtcStamp.OrNull(u.DisabledAt),
                     u.PasswordPending))
                 .ToList(),
             NextCursor(rows.Count > take, page.Count == 0 ? null : new Keyset(page[^1].CreatedAt, page[^1].Id)));
@@ -312,7 +317,7 @@ public sealed partial class PlatformDirectory(
         if (changing)
         {
             user.DisabledAt = disabled ? now : null;
-            db.AdminAudits.Add(Audit(
+            db.AdminAudits.Add(AdminAudit.For(
                 actorUserId,
                 disabled ? AdminAuditActions.UserDisabled : AdminAuditActions.UserEnabled,
                 "app_user",
@@ -485,7 +490,7 @@ public sealed partial class PlatformDirectory(
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
         db.Users.Add(user);
-        db.AdminAudits.Add(Audit(
+        db.AdminAudits.Add(AdminAudit.For(
             actorUserId, AdminAuditActions.AdminCreated, "app_user", user.Id, companyId, now));
 
         // **Nothing is minted here.** The invite goes out by email and only by email (founder,
@@ -495,7 +500,7 @@ public sealed partial class PlatformDirectory(
         {
             await db.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException ex) when (IsUniqueViolation(ex, "ux_app_user_email"))
+        catch (DbUpdateException ex) when (PostgresErrors.IsUniqueViolation(ex, "ux_app_user_email"))
         {
             // Two founders adding the same person at once. The database settled it; this reports
             // the loser as the ordinary conflict it is rather than as a fault.
@@ -524,7 +529,7 @@ public sealed partial class PlatformDirectory(
                     user.DisplayName,
                     user.Email,
                     user.Language,
-                    Utc(user.CreatedAt),
+                    UtcStamp.Of(user.CreatedAt),
                     null,
                     null,
                     true),
@@ -550,10 +555,6 @@ public sealed partial class PlatformDirectory(
 
         return invites.EnqueueInvite(userId, actorUserId);
     }
-
-    private static bool IsUniqueViolation(DbUpdateException ex, string constraintName) =>
-        ex.InnerException is Npgsql.PostgresException { SqlState: "23505" } pg
-        && string.Equals(pg.ConstraintName, constraintName, StringComparison.Ordinal);
 
     // ---------------------------------------------------------------------------------- audit
 
@@ -620,7 +621,7 @@ public sealed partial class PlatformDirectory(
                     a.SubjectId,
                     a.CompanyId,
                     a.Detail,
-                    Utc(a.CreatedAt)))
+                    UtcStamp.Of(a.CreatedAt)))
                 .ToList(),
             NextCursor(rows.Count > take, page.Count == 0 ? null : new Keyset(page[^1].CreatedAt, page[^1].Id)));
     }
@@ -645,38 +646,14 @@ public sealed partial class PlatformDirectory(
             user.DisplayName,
             user.Email,
             user.Language,
-            Utc(user.CreatedAt),
-            UtcOrNull(user.LastLoginAt),
-            UtcOrNull(user.DisabledAt),
+            UtcStamp.Of(user.CreatedAt),
+            UtcStamp.OrNull(user.LastLoginAt),
+            UtcStamp.OrNull(user.DisabledAt),
             user.PasswordHash is null);
     }
 
     private static string? NextCursor(bool hasMore, Keyset? last) =>
         hasMore && last is { } keyset ? keyset.Encode() : null;
-
-    private static AdminAudit Audit(
-        Guid actorUserId,
-        string action,
-        string subjectType,
-        Guid subjectId,
-        Guid? companyId,
-        DateTime at) =>
-        new()
-        {
-            Id = Guid.NewGuid(),
-            ActorUserId = actorUserId,
-            Action = action,
-            SubjectType = subjectType,
-            SubjectId = subjectId,
-            CompanyId = companyId,
-            CreatedAt = at,
-        };
-
-    private static DateTimeOffset Utc(DateTime value) =>
-        new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
-
-    private static DateTimeOffset? UtcOrNull(DateTime? value) =>
-        value is null ? null : Utc(value.Value);
 }
 
 /// <summary>Which accounts a caller wants to see. `Any` is the default and means no filter.</summary>

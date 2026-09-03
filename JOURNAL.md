@@ -12,6 +12,77 @@ Entry format:
 
 ---
 
+## 2026-09-03 — closing the reviews' open items
+
+Founder: *"Fix all the other stuff that you need and commit and push."* Everything three reviews had
+left as non-gating, taken as one increment, backend and frontend in parallel.
+
+**Frontend (done, 1697/1697, build 473.49 kB clean, +25 specs / +3 files)**
+
+- **The `superseded_after_send` loop is dead, and the brief that sent it there was wrong.**
+  `EntryContracts.cs:65` is `SupersedesEntryId` on **`EntryResponse`** — `POST /api/entries` never
+  accepted the field, and `System.Text.Json` drops an unmapped member in silence, so a "Napravi
+  ispravku" button would have written an entry that *claimed* to be a correction and linked to
+  nothing. The implementer stopped at the honest screen and said so; the backend field was
+  commissioned as a result. `core/api/failure-reason.ts` reads **the server's answer only** (a null
+  is silence, not an answer); the confirm gate draws no form for such a record and says what
+  happened; `entry-detail`'s "Ispravi" door shuts. *Still open, named:* the archive **list** row
+  cannot know — `EntryListItemResponse` carries no `failure_reason` — so the row still offers
+  "Ispravi" and the tap lands on the honest gate. One field on the list DTO removes the wasted tap.
+- **A 401 now leaves a door open**, on all seven screens that draw a reason card
+  (`ui/sign-in-again.ts`, rendered only when no admin session stands). The chrome rule is untouched.
+  *Plainly: this is the in-place case, not a reload* — after F5 the guard still sends him to Home,
+  and only the `localStorage` marker reaches that.
+- **Tapping *Otkaži* by reflex after *Stop* can no longer discard a take that is saving**, and the
+  guard lives **only** in the template so removing it goes red rather than being masked by a second
+  copy. It comes back the moment saving fails, which is the one state where abandoning is a choice.
+- **320 px overflowed on three screens, not two** — `/company` by 11 px, and the cause was one
+  shared rule, not seven. `.bar { flex-wrap: wrap }` and a global `.bar__controls { margin-left:
+  auto }` fix all of them; identical at 360 and up.
+- **A tap-target spec now reads every shipped stylesheet** — `.css` files *and* `styles:` template
+  literals — and fails on anything drawn under 44 px without an extended hit area or a written
+  exemption. It cleared two of the five reported controls as false positives (the pager already had
+  one; the 36 px "stop square" is a glyph inside a 128 px button) and found `.wave__bar`.
+- **`SwUpdate` handling exists**, gated on the recorder being idle — the only state consulted, and
+  deliberately: everything else is in Dexie before it is anywhere else, and a live `MediaRecorder` is
+  the one thing a reload destroys. *Measured defect fixed on the way:* centred at the foot of the
+  window the banner **covered Home's record button at 1280**; it anchors bottom-right from 1024.
+- Dead `.stats` rules deleted from `person-page.css`. Six mutation proofs, all restored sha256-identical.
+- *Two things worth carrying:* the implementer **broke the founder's `ng serve` for six minutes** with
+  backticks inside a `styles:` template literal — the exact trap `table-pager.ts` warns about — and
+  because the build failed, 4200 kept serving a **stale bundle**, so three Playwright runs measured
+  old CSS and made a fixed bug look unfixable. And the seven-copy admin CSS extraction was **not**
+  started, on the grounds that half of it is worse than none; the residual risk is that a screen
+  declaring `flex-wrap: nowrap` on `.bar` silently brings the 320 px overflow back, and nothing
+  guards that.
+
+**Backend (the implementer was cut off by the session limit mid-item; what it left is green)**
+
+Built and tested by the coordinator, not taken on trust: **1054 backend tests green** (from 1020) and
+`dotnet build -c Release` succeeds with the one known `CS9107`; the diff was read for stray mutations
+first — nothing of the shape CLAUDE.md records three times. Landed:
+
+- `/health/ready` has a rate-limit policy of its own; `/health` stays free.
+- `JobServerIdentity` narrows the readiness heartbeat to **this process's** Hangfire server, so a
+  crash-restart no longer reads ready off a dead server's row for two minutes.
+- `PostgresErrors`, a shared clock helper and one audit-row builder replace four, four and three
+  copies; the **two divergent `InviteStrings`** are now `WorkerInviteStrings` and
+  `AdminInviteStrings` with one locale-matching rule (`LanguageTag`) — that divergence was a bug
+  waiting, not tidying.
+- **A guard that walks log call sites** (`LogCallSites.cs`, `LogTemplateTests.cs`): every `{Property}`
+  in every structured template must be reachable into the log table, every call must pass a literal
+  template, and **the scan can prove it is able to fail** — which is the test that separates this from
+  the two registries that shipped complete and emitted nothing.
+- The allow-list name `Pending` narrowed; `deploy/README.md`'s quoted 503 body corrected.
+
+**Not done, and owed:** the M3 mutation proof on `SealDeliveredAsync`'s hash comparison, and
+**`supersedes_entry_id` on `CreateEntryRequest`** — the field exists on the *response* and on the
+entity, so ARCHITECTURE §6's documented answer to a superseded record ("a new entry with
+`supersedes_entry_id`") is still not something a phone can actually do. That is the next backend
+increment, and the frontend's honest screen is waiting on it.
+
+---
+
 ## 2026-09-02 (late) — `/platform` on a phone: the title under the buttons
 
 **Talked about**

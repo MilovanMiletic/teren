@@ -95,19 +95,16 @@ internal static class PasswordTokens
             ExpiresAt = expiresAt,
         });
 
-        db.AdminAudits.Add(new AdminAudit
-        {
-            Id = Guid.NewGuid(),
-            ActorUserId = actorUserId,
-            Action = AdminAuditActions.PasswordTokenIssued,
-            SubjectType = "app_user",
-            SubjectId = user.Id,
-            CompanyId = user.CompanyId,
-            Detail = $$"""
-                {"source": "{{source}}", "purpose": "{{PasswordTokenPurposeNames.ToWire(purpose)}}", "superseded": {{superseded}}}
-                """,
-            CreatedAt = now,
-        });
+        db.AdminAudits.Add(AdminAudit.For(
+            actorUserId,
+            AdminAuditActions.PasswordTokenIssued,
+            "app_user",
+            user.Id,
+            user.CompanyId,
+            now,
+            $$"""
+            {"source": "{{source}}", "purpose": "{{PasswordTokenPurposeNames.ToWire(purpose)}}", "superseded": {{superseded}}}
+            """));
 
         return new Issued(token, purpose, expiresAt, superseded);
     }

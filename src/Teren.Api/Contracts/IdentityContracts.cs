@@ -201,7 +201,7 @@ public sealed record ActivationCodeResponse(
 
 /// <summary>
 /// One worker's ready-made message, in <em>his</em> language, for the admin to paste into
-/// <em>his</em> chat. There is deliberately no bulk equivalent — see <c>InviteStrings</c>.
+/// <em>his</em> chat. There is deliberately no bulk equivalent — see <c>WorkerInviteStrings</c>.
 /// </summary>
 public sealed record ShareTextResponse(
     string Text, string Language, ActivationCodeResponse ActivationCode);

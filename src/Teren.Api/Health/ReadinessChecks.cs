@@ -128,7 +128,8 @@ public sealed class MigrationsReadyCheck(
                 // Named in the log because this is the one failure with an obvious fix, and the
                 // fix is a command: `dotnet Teren.Api.dll migrate`.
                 logger.LogError(
-                    "Readiness: {DbContextName} is {PendingCount} migration(s) behind ({Pending}). Run "
+                    "Readiness: {DbContextName} is {PendingCount} migration(s) behind "
+                    + "({PendingMigrations}). Run "
                     + "`migrate` — an API serving requests against an older schema fails per "
                     + "request with a bare Npgsql 42703 or 42P01.",
                     name, pending.Count, string.Join(", ", pending));
@@ -142,7 +143,7 @@ public sealed class MigrationsReadyCheck(
 }
 
 /// <summary>
-/// A Hangfire server is alive in this process.
+/// <b>This process's own</b> Hangfire server is alive.
 /// <para>
 /// <b>Registered only when <c>Hangfire:Enabled</c> is true</b>, because a host that switched the
 /// job server off did so on purpose — that is how the upload path stays runnable and testable
@@ -153,9 +154,20 @@ public sealed class MigrationsReadyCheck(
 /// every request still answers 200. That is the same class of lie as an un-migrated schema, which
 /// is why it belongs to readiness rather than to a dashboard nobody is looking at.
 /// </para>
+/// <para>
+/// <b>"This process's own" is the correction that makes the check mean anything.</b> The first cut
+/// counted <em>any</em> server row with a recent heartbeat. A server row outlives its process by up
+/// to Hangfire's five-minute server timeout, so a container that crash-restarted with a job server
+/// that failed to start would read the dead server's heartbeat as fresh and call itself ready. In
+/// a container the two are easy to confuse for one another: the API is pid 1 in its own namespace
+/// and the machine name is the container id, so the restarted process composes the same
+/// <c>machine:pid</c> that the corpse did — the trailing GUID Hangfire adds is the only thing that
+/// tells them apart, and <see cref="JobServerIdentity"/> is told it rather than guessing it.
+/// </para>
 /// </summary>
 public sealed class JobServerReadyCheck(
-    JobStorage storage, ILogger<JobServerReadyCheck> logger) : IHealthCheck
+    JobStorage storage, JobServerIdentity identity, ILogger<JobServerReadyCheck> logger)
+    : IHealthCheck
 {
     /// <summary>
     /// Hangfire's own heartbeat interval is 30 s and its server timeout 5 min. Two minutes is
@@ -166,21 +178,47 @@ public sealed class JobServerReadyCheck(
     public Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context, CancellationToken ct = default)
     {
+        var serverId = identity.ServerId;
+
+        if (serverId is null)
+        {
+            // The job server was configured on and never started: `AddHangfireServer` threw, or
+            // the hosted service has not reached its first process yet. Either way this host is
+            // not doing the work it is expected to do.
+            logger.LogError(
+                "Readiness: no Hangfire job server has started in this process. Nothing is being "
+                + "transcribed, extracted or reported while requests still answer 200.");
+
+            return Task.FromResult(HealthCheckResult.Unhealthy("no job server in this process"));
+        }
+
         try
         {
             var servers = storage.GetMonitoringApi().Servers();
-            var cutoff = DateTime.UtcNow - MaxHeartbeatAge;
 
-            var alive = servers.Count(
-                server => (server.Heartbeat ?? server.StartedAt) > cutoff);
+            var mine = servers.FirstOrDefault(
+                server => string.Equals(server.Name, serverId, StringComparison.Ordinal));
 
-            if (alive == 0)
+            if (mine is null)
+            {
+                // Announced once and no longer in the table: another server's watchdog removed it
+                // after the timeout, or the storage was cleared underneath the process.
+                logger.LogError(
+                    "Readiness: this process's Hangfire server {JobServerId} is no longer "
+                    + "registered ({ServerCount} other server(s) present).",
+                    serverId, servers.Count);
+
+                return Task.FromResult(
+                    HealthCheckResult.Unhealthy("this process's job server is not registered"));
+            }
+
+            if ((mine.Heartbeat ?? mine.StartedAt) <= DateTime.UtcNow - MaxHeartbeatAge)
             {
                 logger.LogError(
-                    "Readiness: no Hangfire server has beaten within {MaxAgeSeconds}s "
-                    + "({ServerCount} registered). Nothing is being transcribed, extracted or "
+                    "Readiness: this process's Hangfire server {JobServerId} has not beaten "
+                    + "within {MaxAgeSeconds}s. Nothing is being transcribed, extracted or "
                     + "reported while requests still answer 200.",
-                    (int)MaxHeartbeatAge.TotalSeconds, servers.Count);
+                    serverId, (int)MaxHeartbeatAge.TotalSeconds);
 
                 return Task.FromResult(HealthCheckResult.Unhealthy("no job server heartbeat"));
             }

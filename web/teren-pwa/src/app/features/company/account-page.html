@@ -83,6 +83,9 @@
             <span class="t-meta">{{ t(reason) }}</span>
             <span class="t-meta">{{ t('company.account.stale.body') }}</span>
           </div>
+          <!-- The sentence above says "sign in again"; this is the control to press.
+               It renders itself away unless the admin credential really is gone. -->
+          <app-sign-in-again />
         </div>
       }
 

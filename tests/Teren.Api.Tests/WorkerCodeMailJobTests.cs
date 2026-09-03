@@ -39,7 +39,7 @@ public sealed class WorkerCodeMailJobTests(TerenTestApp app) : ApiTestBase(app)
         mail.ShouldNotBeNull();
         mail!.ToAddress.ShouldBe("zoran@vodoinstal-petrovic.test");
         mail.ToName.ShouldBe("Zoran Jovanović");
-        mail.Subject.ShouldBe(InviteStrings.Serbian.MailSubject);
+        mail.Subject.ShouldBe(WorkerInviteStrings.Serbian.MailSubject);
 
         var codes = await LoadActivationCodesAsync(TestIds.WorkerA);
         codes.Count.ShouldBe(2);
@@ -185,9 +185,9 @@ public sealed class WorkerCodeMailJobTests(TerenTestApp app) : ApiTestBase(app)
         var mail = await App.RunWorkerCodeJobAsync(TestIds.WorkerA, Ct);
 
         mail.ShouldNotBeNull();
-        mail!.Subject.ShouldBe(InviteStrings.English.MailSubject);
-        mail.TextBody.ShouldContain(InviteStrings.English.CodeLabel);
-        mail.TextBody.ShouldNotContain(InviteStrings.Serbian.CodeLabel);
+        mail!.Subject.ShouldBe(WorkerInviteStrings.English.MailSubject);
+        mail.TextBody.ShouldContain(WorkerInviteStrings.English.CodeLabel);
+        mail.TextBody.ShouldNotContain(WorkerInviteStrings.Serbian.CodeLabel);
     }
 
     [Fact]

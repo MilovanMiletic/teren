@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text;
 using Teren.Core.Reporting;
+using Teren.Core.Text;
+using Teren.Core.Time;
 
 namespace Teren.Core.Identity;
 
@@ -27,7 +29,7 @@ namespace Teren.Core.Identity;
 /// as <c>ReportStrings</c> does.
 /// </para>
 /// </summary>
-public sealed record InviteStrings
+public sealed record WorkerInviteStrings
 {
     /// <summary>What an unrecognised <c>app_user.language</c> falls back to.</summary>
     public const string DefaultLanguage = ReportStrings.DefaultLanguage;
@@ -56,12 +58,8 @@ public sealed record InviteStrings
     /// single-use credential must state, or somebody keeps the message and tries it next month.</summary>
     public required string Validity { get; init; }
 
-    public static InviteStrings For(string? language) =>
-        (language ?? string.Empty).Trim().ToLowerInvariant() switch
-        {
-            "en" or "en-us" or "en-gb" => English,
-            _ => Serbian,
-        };
+    public static WorkerInviteStrings For(string? language) =>
+        LanguageTag.IsEnglish(language) ? English : Serbian;
 
     /// <summary>
     /// The message itself, ready to paste. Plain text with no markup: it is going into Viber or
@@ -87,7 +85,7 @@ public sealed record InviteStrings
         ArgumentNullException.ThrowIfNull(zone);
 
         var localExpiry = TimeZoneInfo.ConvertTime(
-            new DateTimeOffset(DateTime.SpecifyKind(expiresAt, DateTimeKind.Utc)), zone);
+            UtcStamp.Of(expiresAt), zone);
 
         var message = new StringBuilder();
         message.AppendLine(string.Format(CultureInfo.InvariantCulture, Greeting, displayName));
@@ -110,7 +108,7 @@ public sealed record InviteStrings
         return message.ToString();
     }
 
-    public static InviteStrings Serbian { get; } = new()
+    public static WorkerInviteStrings Serbian { get; } = new()
     {
         Language = "sr",
         MailSubject = "Kod za aktivaciju Teren aplikacije",
@@ -123,7 +121,7 @@ public sealed record InviteStrings
         Validity = "Kod važi do {0} i može da se iskoristi samo jednom.",
     };
 
-    public static InviteStrings English { get; } = new()
+    public static WorkerInviteStrings English { get; } = new()
     {
         Language = "en",
         MailSubject = "Your Teren activation code",

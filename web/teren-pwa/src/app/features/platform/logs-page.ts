@@ -20,6 +20,7 @@ import { Icon } from '../../ui/icon';
 import { InfoPopover } from '../../ui/info-popover';
 import { LanguageSwitcher } from '../../ui/language-switcher';
 import { SessionLink } from '../../ui/session-link';
+import { SignInAgain } from '../../ui/sign-in-again';
 import { TABLE_PAGE_SIZE, clampPage, pageCountOf, slicePage } from '../../ui/table-controls';
 import { TablePager } from '../../ui/table-pager';
 import { ViewportService } from '../../ui/viewport.service';
@@ -129,6 +130,7 @@ interface LogRow {
     LanguageSwitcher,
     NgTemplateOutlet,
     SessionLink,
+    SignInAgain,
     TablePager,
     TranslocoDirective,
   ],

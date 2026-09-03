@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
-using Npgsql;
 using Microsoft.Extensions.Options;
 using Teren.Api.Auth;
 using Teren.Api.Contracts;
@@ -8,6 +7,8 @@ using Teren.Api.Validation;
 using Teren.Core.Entities;
 using Teren.Core.Identity;
 using Teren.Core.Reporting;
+using Teren.Core.Text;
+using Teren.Core.Time;
 using Teren.Infrastructure.Persistence;
 
 namespace Teren.Api.Endpoints;
@@ -200,16 +201,13 @@ public static class WorkerEndpoints
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
             db.Users.Add(worker);
-            db.AdminAudits.Add(new AdminAudit
-            {
-                Id = Guid.NewGuid(),
-                ActorUserId = principal.UserId,
-                Action = AdminAuditActions.WorkerCreated,
-                SubjectType = "app_user",
-                SubjectId = worker.Id,
-                CompanyId = companyId,
-                CreatedAt = now,
-            });
+            db.AdminAudits.Add(AdminAudit.For(
+                principal.UserId,
+                AdminAuditActions.WorkerCreated,
+                "app_user",
+                worker.Id,
+                companyId,
+                now));
 
             try
             {
@@ -235,7 +233,7 @@ public static class WorkerEndpoints
                     new CreateWorkerResponse(Describe(worker, activeDevices: 0, lastSeenAt: null,
                         hasLiveCode: true), code));
             }
-            catch (DbUpdateException ex) when (IsUniqueViolation(ex, "ux_app_user_username"))
+            catch (DbUpdateException ex) when (PostgresErrors.IsUniqueViolation(ex, "ux_app_user_username"))
             {
                 await RewindAsync(db, transaction, ct);
 
@@ -257,7 +255,7 @@ public static class WorkerEndpoints
                     return ProposalLost(username);
                 }
             }
-            catch (DbUpdateException ex) when (IsUniqueViolation(ex, "ux_app_user_email"))
+            catch (DbUpdateException ex) when (PostgresErrors.IsUniqueViolation(ex, "ux_app_user_email"))
             {
                 await RewindAsync(db, transaction, ct);
                 return EmailTaken();
@@ -339,22 +337,19 @@ public static class WorkerEndpoints
                 : AdminAuditActions.WorkerEnabled;
         }
 
-        db.AdminAudits.Add(new AdminAudit
-        {
-            Id = Guid.NewGuid(),
-            ActorUserId = principal.UserId,
-            Action = action ?? AdminAuditActions.WorkerUpdated,
-            SubjectType = "app_user",
-            SubjectId = worker.Id,
-            CompanyId = companyId,
-            CreatedAt = now,
-        });
+        db.AdminAudits.Add(AdminAudit.For(
+            principal.UserId,
+            action ?? AdminAuditActions.WorkerUpdated,
+            "app_user",
+            worker.Id,
+            companyId,
+            now));
 
         try
         {
             await db.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException ex) when (IsUniqueViolation(ex, "ux_app_user_email"))
+        catch (DbUpdateException ex) when (PostgresErrors.IsUniqueViolation(ex, "ux_app_user_email"))
         {
             // ux_app_user_email is global and partial: the address may belong to another
             // company's admin, so there is nothing this handler could have read to see it coming.
@@ -443,7 +438,7 @@ public static class WorkerEndpoints
             return NoLiveCode(worker.Id);
         }
 
-        var strings = InviteStrings.For(worker.Language);
+        var strings = WorkerInviteStrings.For(worker.Language);
 
         var text = strings.WorkerActivationMessage(
             worker.DisplayName,
@@ -498,10 +493,6 @@ public static class WorkerEndpoints
         db.ChangeTracker.Clear();
     }
 
-    private static bool IsUniqueViolation(DbUpdateException ex, string constraintName) =>
-        ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } pg
-        && string.Equals(pg.ConstraintName, constraintName, StringComparison.Ordinal);
-
     private static async Task<(AppUser? Worker, IResult? Failure)> ResolveWorkerAsync(
         string id, HttpContext http, TerenIdentityDbContext db, CancellationToken ct)
     {
@@ -524,14 +515,13 @@ public static class WorkerEndpoints
     /// <summary>
     /// Only two languages exist in the product, and an unknown value silently becoming Serbian is
     /// how a foreman ends up with a screen he cannot read. Anything unrecognised falls back to the
-    /// default, which is what <see cref="InviteStrings.For"/> would do with it anyway.
+    /// default, which is what <see cref="WorkerInviteStrings.For"/> would do with it anyway — and
+    /// since 2026-09-02 it is literally the same rule rather than a fourth copy of it
+    /// (<see cref="LanguageTag"/>): this one used to accept <c>en</c> alone while the readers of
+    /// the column accepted <c>en-GB</c> too, so what was stored and what was understood could
+    /// disagree about the same word.
     /// </summary>
-    private static string LanguageOf(string? requested)
-    {
-        var language = (requested ?? string.Empty).Trim().ToLowerInvariant();
-
-        return language is "en" ? "en" : InviteStrings.DefaultLanguage;
-    }
+    private static string LanguageOf(string? requested) => LanguageTag.Of(requested);
 
     private static async Task<string> NextFreeUsernameAsync(
         TerenIdentityDbContext db, string seed, CancellationToken ct)
@@ -584,13 +574,9 @@ public static class WorkerEndpoints
             worker.DisplayName,
             worker.Email,
             worker.Language,
-            new DateTimeOffset(DateTime.SpecifyKind(worker.CreatedAt, DateTimeKind.Utc)),
-            worker.DisabledAt is null
-                ? null
-                : new DateTimeOffset(DateTime.SpecifyKind(worker.DisabledAt.Value, DateTimeKind.Utc)),
+            UtcStamp.Of(worker.CreatedAt),
+            UtcStamp.OrNull(worker.DisabledAt),
             activeDevices,
-            lastSeenAt is null
-                ? null
-                : new DateTimeOffset(DateTime.SpecifyKind(lastSeenAt.Value, DateTimeKind.Utc)),
+            UtcStamp.OrNull(lastSeenAt),
             hasLiveCode);
 }

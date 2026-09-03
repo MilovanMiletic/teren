@@ -21,6 +21,7 @@ import { LanguageSwitcher } from '../../ui/language-switcher';
 import { ModalSheet } from '../../ui/modal-sheet';
 import { SelectField } from '../../ui/select-field';
 import { SessionLink } from '../../ui/session-link';
+import { SignInAgain } from '../../ui/sign-in-again';
 import { SortDirection, TableControls } from '../../ui/table-controls';
 import { TablePager } from '../../ui/table-pager';
 import { ViewportService } from '../../ui/viewport.service';
@@ -120,6 +121,7 @@ const BANDS: PeopleGroupKey[] = ['staff', 'admins', 'workers'];
     ModalSheet,
     SelectField,
     SessionLink,
+    SignInAgain,
     TablePager,
     TranslocoDirective,
   ],

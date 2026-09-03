@@ -101,6 +101,25 @@
           {{ t('archive.revise.action') }}
         </button>
       </div>
+    } @else if (superseded()) {
+      <!--
+        **Last in the chain on purpose.** The rule lives in one place — the `!superseded()` on
+        `revisable()` in the component — and this branch is what a record falls through to once
+        that computed says no. Put the check here as well and there would be two copies of one
+        rule, either of which could rot while the other kept the screen looking right.
+
+        What it says is the thing that was missing: a record the server refused to seal is
+        `confirmed` with no `reported_at`, so the "you may still correct this" card used to sit
+        here offering a door into a gate that could only write the same failure back. No control,
+        because there is no control that helps.
+      -->
+      <div class="card detail__notice detail__notice--err" role="status">
+        <app-icon name="alert-triangle" [size]="20" class="detail__notice-icon" />
+        <div class="detail__notice-text">
+          <span class="detail__notice-title">{{ t('archive.superseded.title') }}</span>
+          <span class="t-meta">{{ t('archive.superseded.body') }}</span>
+        </div>
+      </div>
     }
 
     <!-- ---- The structured day ------------------------------------------------------------ -->

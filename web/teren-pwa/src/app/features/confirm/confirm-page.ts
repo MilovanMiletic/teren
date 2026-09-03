@@ -15,6 +15,7 @@ import { TranslocoDirective } from '@jsverse/transloco';
 import { switchMap } from 'rxjs';
 
 import { EntryResponse } from '../../core/api/api-types';
+import { supersededAfterSend } from '../../core/api/failure-reason';
 import { AppStatus } from '../../core/app-status.service';
 import { ARCHIVE_ENTRY_PARAM } from '../../core/archive/archive-route';
 import { ArchiveService, RemoteStatus } from '../../core/archive/archive.service';
@@ -79,7 +80,15 @@ export type ConfirmState =
   /** The server could not be asked. Read-only, and says which kind of missing this is. */
   | 'unreachable'
   /** The report has gone out. Immutable (PROJECT.md principle 2) — no form, no confirm button. */
-  | 'reported';
+  | 'reported'
+  /**
+   * The report went out and *then* this record was changed. Terminal.
+   *
+   * It looks exactly like an entry that may still be corrected — `confirmed`, `reported_at` null —
+   * and it is the opposite of one: confirming again writes the same reason back and changes
+   * nothing. See `core/api/failure-reason.ts`.
+   */
+  | 'superseded';
 
 /** How often the screen re-asks while the pipeline is still working (ARCHITECTURE §7). */
 const POLL_INTERVAL_MS = 3_000;
@@ -250,6 +259,12 @@ export class ConfirmPage {
     if (remote) {
       if (remote.reported_at) {
         return 'reported';
+      }
+      // Before the switch, because this entry's status *is* `confirmed` and the switch would send
+      // it to `ready` — a form over a record the server can no longer report, whose confirmation
+      // writes the same reason straight back. The loop the F-review found lives in that one line.
+      if (supersededAfterSend(remote)) {
+        return 'superseded';
       }
       switch (remote.status) {
         case 'awaiting_confirmation':

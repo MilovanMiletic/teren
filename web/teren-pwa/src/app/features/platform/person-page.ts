@@ -24,6 +24,7 @@ import { AppHeader } from '../../ui/app-header';
 import { Icon } from '../../ui/icon';
 import { LanguageSwitcher } from '../../ui/language-switcher';
 import { SessionLink } from '../../ui/session-link';
+import { SignInAgain } from '../../ui/sign-in-again';
 import { platformReasonFor } from './platform-reason';
 import { PersonChip, personChips } from './platform-people';
 
@@ -68,7 +69,15 @@ interface IssuedLink {
 @Component({
   selector: 'app-person-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AppHeader, DatePipe, Icon, LanguageSwitcher, SessionLink, TranslocoDirective],
+  imports: [
+    AppHeader,
+    DatePipe,
+    Icon,
+    LanguageSwitcher,
+    SessionLink,
+    SignInAgain,
+    TranslocoDirective,
+  ],
   templateUrl: './person-page.html',
   styleUrl: './person-page.css',
 })

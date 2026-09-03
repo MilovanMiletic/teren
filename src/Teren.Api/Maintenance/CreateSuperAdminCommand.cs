@@ -126,21 +126,18 @@ public static class CreateSuperAdminCommand
                 .ExecuteUpdateAsync(u => u.SetProperty(s => s.RevokedAt, now), ct);
         }
 
-        db.AdminAudits.Add(new AdminAudit
-        {
-            Id = Guid.NewGuid(),
-            // The account itself: a console bootstrap has no other actor, and saying so is more
-            // honest than inventing one.
-            ActorUserId = userId,
-            Action = existing is null
+        db.AdminAudits.Add(AdminAudit.For(
+            // The actor is the account itself: a console bootstrap has no other, and saying so is
+            // more honest than inventing one.
+            actorUserId: userId,
+            action: existing is null
                 ? AdminAuditActions.SuperAdminCreated
                 : AdminAuditActions.PasswordSet,
-            SubjectType = "app_user",
-            SubjectId = userId,
-            CompanyId = null,
-            Detail = """{"source": "console"}""",
-            CreatedAt = now,
-        });
+            subjectType: "app_user",
+            subjectId: userId,
+            companyId: null,
+            at: now,
+            detail: """{"source": "console"}"""));
 
         await db.SaveChangesAsync(ct);
 

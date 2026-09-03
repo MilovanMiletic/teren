@@ -1,3 +1,5 @@
+using Teren.Core.Text;
+
 namespace Teren.Core.Mail;
 
 /// <summary>
@@ -16,9 +18,9 @@ namespace Teren.Core.Mail;
 /// shared.
 /// </para>
 /// </summary>
-public sealed record InviteStrings
+public sealed record AdminInviteStrings
 {
-    public const string DefaultLanguage = "sr";
+    public const string DefaultLanguage = LanguageTag.Serbian;
 
     public required string Language { get; init; }
 
@@ -42,14 +44,21 @@ public sealed record InviteStrings
     /// <summary>For a person who did not expect this. Says to ignore it, never to click anything.</summary>
     public required string Unexpected { get; init; }
 
-    public static InviteStrings For(string? language) =>
-        string.Equals(language, "en", StringComparison.OrdinalIgnoreCase) ? English : Serbian;
+    /// <summary>
+    /// Resolves the recipient's language by the one rule the whole product uses
+    /// (<see cref="LanguageTag"/>). Until 2026-09-02 this method had a rule of its own — an exact
+    /// <c>OrdinalIgnoreCase</c> match on <c>"en"</c> — so an account stored as <c>en-US</c> got an
+    /// English report and an English activation message and a Serbian invitation to set his
+    /// password. Same fact, three call sites, two answers.
+    /// </summary>
+    public static AdminInviteStrings For(string? language) =>
+        LanguageTag.IsEnglish(language) ? English : Serbian;
 
     /// <summary>
     /// Serbian, and it is the default rather than the translation — the users are Serbian
     /// tradesmen and their bosses (CLAUDE.md). An unrecognised language lands here too.
     /// </summary>
-    public static readonly InviteStrings Serbian = new()
+    public static readonly AdminInviteStrings Serbian = new()
     {
         Language = "sr",
         Subject = "Otvoren vam je nalog u aplikaciji {0}",
@@ -63,7 +72,7 @@ public sealed record InviteStrings
         Unexpected = "Ako niste očekivali ovu poruku, slobodno je zanemarite.",
     };
 
-    public static readonly InviteStrings English = new()
+    public static readonly AdminInviteStrings English = new()
     {
         Language = "en",
         Subject = "An account has been opened for you in {0}",

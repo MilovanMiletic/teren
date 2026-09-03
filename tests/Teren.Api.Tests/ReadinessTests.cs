@@ -63,6 +63,19 @@ public sealed class ReadinessTests(TerenTestApp app) : ApiTestBase(app)
         body.ShouldContain("Unhealthy", Case.Sensitive);
         body.ShouldContain(ReadinessChecks.Migrations, Case.Sensitive);
 
+        // THE EXACT SHAPE deploy/README.md §8 tells an operator to expect, because a runbook that
+        // quotes a line the box does not print sends somebody looking for the wrong string. It
+        // used to quote `migrations: N migration(s) pending` and omit both the `Unhealthy` first
+        // line and the context name.
+        var lines = body.TrimEnd('\n').Split('\n');
+
+        lines[0].ShouldBe("Unhealthy", "the status is the first line and nothing else is on it");
+        lines.ShouldContain(
+            line => line.StartsWith($"{ReadinessChecks.Migrations}: {nameof(TerenDbContext)}: ",
+                        StringComparison.Ordinal)
+                    && line.EndsWith(" migration(s) pending", StringComparison.Ordinal),
+            "deploy/README.md §8 quotes this line verbatim");
+
         // And nothing else. The route is unauthenticated — the container calls it every fifteen
         // seconds, before anybody has signed in — so the schema, the migration names and any
         // exception text stay in the log.

@@ -26,6 +26,7 @@ import { InfoPopover } from '../../ui/info-popover';
 import { LanguageSwitcher } from '../../ui/language-switcher';
 import { ModalSheet } from '../../ui/modal-sheet';
 import { SessionLink } from '../../ui/session-link';
+import { SignInAgain } from '../../ui/sign-in-again';
 import { SortDirection, TableControls } from '../../ui/table-controls';
 import { TablePager } from '../../ui/table-pager';
 import { ViewportService } from '../../ui/viewport.service';
@@ -77,6 +78,7 @@ import { CUSTOMER_DEFAULT_DIRECTION, CustomerSortKey, sortCustomers } from './pl
     LanguageSwitcher,
     ModalSheet,
     SessionLink,
+    SignInAgain,
     TablePager,
     TranslocoDirective,
   ],

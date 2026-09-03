@@ -99,11 +99,23 @@
       <!--
         The one control in the app that throws captured audio away, so it names itself for the
         action log rather than arriving as `ui.button.btn`.
+
+        **Dead while the take is being saved**, which is the whole window in which a reflex tap can
+        cost a recording. He presses Stop; assembling and writing the blob takes a second or two;
+        his thumb is already travelling to the button under it — and this one called
+        `discardCapture` unconditionally, so the take he had just decided to keep was gone. The
+        recorder's argument for keeping cancel live during `stopping` is about a recorder that has
+        hung, and that is not the state a *saving* take is in: the audio is on disk, the screen is
+        working, and a second later it navigates away by itself. Disabled rather than made to
+        confirm, because a confirmation sheet on a 128 px stop button's own screen is one more thing
+        to read on the path this product measures in seconds. It comes straight back if the save
+        fails (`saveFailed`), which is the only case where abandoning is still a real choice.
       -->
       <button
         type="button"
         class="btn btn--tertiary btn--row actions__cancel"
         data-log="capture.record.discard"
+        [disabled]="saving()"
         (click)="cancel()"
       >
         {{ t('capture.record.cancel') }}

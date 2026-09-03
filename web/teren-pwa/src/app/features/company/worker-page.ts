@@ -28,6 +28,7 @@ import { InfoPopover } from '../../ui/info-popover';
 import { LanguageSwitcher } from '../../ui/language-switcher';
 import { ModalSheet } from '../../ui/modal-sheet';
 import { SessionLink } from '../../ui/session-link';
+import { SignInAgain } from '../../ui/sign-in-again';
 import { companyReasonFor } from './company-reason';
 import { StatusChip, workerChips } from './people';
 
@@ -128,6 +129,7 @@ type Copied = 'code' | 'message' | null;
     LanguageSwitcher,
     ModalSheet,
     SessionLink,
+    SignInAgain,
     TranslocoDirective,
   ],
   templateUrl: './worker-page.html',

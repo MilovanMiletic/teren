@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Teren.Api.Auth;
 using Teren.Api.Contracts;
 using Teren.Core.Entities;
+using Teren.Core.Time;
 using Teren.Infrastructure.Persistence;
 
 namespace Teren.Api.Endpoints;
@@ -100,16 +101,13 @@ public static class DeviceEndpoints
             device.RevokedAt = DateTime.UtcNow;
             device.RevokedByUserId = principal.UserId;
 
-            db.AdminAudits.Add(new AdminAudit
-            {
-                Id = Guid.NewGuid(),
-                ActorUserId = principal.UserId,
-                Action = AdminAuditActions.DeviceRevoked,
-                SubjectType = "device",
-                SubjectId = device.Id,
-                CompanyId = companyId,
-                CreatedAt = device.RevokedAt.Value,
-            });
+            db.AdminAudits.Add(AdminAudit.For(
+                principal.UserId,
+                AdminAuditActions.DeviceRevoked,
+                "device",
+                device.Id,
+                companyId,
+                device.RevokedAt.Value));
 
             await db.SaveChangesAsync(ct);
 
@@ -128,11 +126,7 @@ public static class DeviceEndpoints
         user.Id,
         user.DisplayName,
         user.Username ?? string.Empty,
-        new DateTimeOffset(DateTime.SpecifyKind(device.CreatedAt, DateTimeKind.Utc)),
-        device.LastSeenAt is null
-            ? null
-            : new DateTimeOffset(DateTime.SpecifyKind(device.LastSeenAt.Value, DateTimeKind.Utc)),
-        device.RevokedAt is null
-            ? null
-            : new DateTimeOffset(DateTime.SpecifyKind(device.RevokedAt.Value, DateTimeKind.Utc)));
+        UtcStamp.Of(device.CreatedAt),
+        UtcStamp.OrNull(device.LastSeenAt),
+        UtcStamp.OrNull(device.RevokedAt));
 }

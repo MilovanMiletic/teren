@@ -111,7 +111,7 @@ public sealed class AdminInviteJob(
 
         // His language, not the company's and not the project's: a report speaks the project's
         // language because the client reads it; an invite speaks the recipient's, because he does.
-        var strings = InviteStrings.For(user.Language);
+        var strings = AdminInviteStrings.For(user.Language);
         var product = "Teren";
         var hours = ((int)Lifetime.TotalHours).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
@@ -136,7 +136,7 @@ public sealed class AdminInviteJob(
 /// </summary>
 public static class InviteMailBody
 {
-    public static string Text(InviteStrings s, string companyName, string link, string hours) =>
+    public static string Text(AdminInviteStrings s, string companyName, string link, string hours) =>
         string.Join(
             "\n\n",
             s.Greeting,
@@ -145,7 +145,7 @@ public static class InviteMailBody
             string.Format(System.Globalization.CultureInfo.InvariantCulture, s.Expiry, hours),
             s.Unexpected);
 
-    public static string Html(InviteStrings s, string companyName, string link, string hours) =>
+    public static string Html(AdminInviteStrings s, string companyName, string link, string hours) =>
         $"""
         <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1a1a1a">
           <p>{Escape(s.Greeting)}</p>

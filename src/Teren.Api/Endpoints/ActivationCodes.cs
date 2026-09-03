@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using Teren.Api.Contracts;
 using Teren.Core.Entities;
 using Teren.Core.Identity;
+using Teren.Core.Time;
 using Teren.Infrastructure.Persistence;
 
 namespace Teren.Api.Endpoints;
@@ -69,7 +69,7 @@ internal static class ActivationCodes
                     db, worker, actorUserId, auditAction, lifetime, relayConfigured, ct);
             }
             catch (DbUpdateException ex)
-                when (attempt == 0 && IsUniqueViolation(ex, "ux_activation_code_live"))
+                when (attempt == 0 && PostgresErrors.IsUniqueViolation(ex, "ux_activation_code_live"))
             {
                 foreach (var entry in db.ChangeTracker.Entries()
                     .Where(e => e.State == EntityState.Added)
@@ -128,25 +128,13 @@ internal static class ActivationCodes
         };
 
         db.ActivationCodes.Add(row);
-        db.AdminAudits.Add(new AdminAudit
-        {
-            Id = Guid.NewGuid(),
-            ActorUserId = actorUserId,
-            Action = auditAction,
-            SubjectType = "app_user",
-            SubjectId = worker.Id,
-            CompanyId = worker.CompanyId,
-            CreatedAt = now,
-        });
+        db.AdminAudits.Add(AdminAudit.For(
+            actorUserId, auditAction, "app_user", worker.Id, worker.CompanyId, now));
 
         await db.SaveChangesAsync(ct);
 
         return Describe(row, worker.Email, relayConfigured);
     }
-
-    private static bool IsUniqueViolation(DbUpdateException ex, string constraintName) =>
-        ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } pg
-        && string.Equals(pg.ConstraintName, constraintName, StringComparison.Ordinal);
 
     /// <summary>The worker's live, unexpired code, or null. Read-only: looking at a code must
     /// never be what kills the code the man is about to type.</summary>
@@ -175,8 +163,8 @@ internal static class ActivationCodes
         ActivationCode row, string? workerEmail, bool relayConfigured) =>
         new(
             row.CodeDisplay ?? string.Empty,
-            new DateTimeOffset(DateTime.SpecifyKind(row.CreatedAt, DateTimeKind.Utc)),
-            new DateTimeOffset(DateTime.SpecifyKind(row.ExpiresAt, DateTimeKind.Utc)),
+            UtcStamp.Of(row.CreatedAt),
+            UtcStamp.Of(row.ExpiresAt),
             DeliveryOf(workerEmail, relayConfigured));
 
     /// <summary>

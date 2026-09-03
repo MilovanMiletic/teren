@@ -1,4 +1,5 @@
 using System.Globalization;
+using Teren.Core.Text;
 
 namespace Teren.Core.Reporting;
 
@@ -25,7 +26,7 @@ public sealed record ReportStrings
 {
     /// <summary>What an unrecognised <c>report_language</c> falls back to — the product's default
     /// and the language of the market it is sold in.</summary>
-    public const string DefaultLanguage = "sr";
+    public const string DefaultLanguage = LanguageTag.Serbian;
 
     public required string Language { get; init; }
 
@@ -123,11 +124,7 @@ public sealed record ReportStrings
     /// failing the report: a mistyped column must not stop a client's diary arriving.
     /// </summary>
     public static ReportStrings For(string? language) =>
-        (language ?? string.Empty).Trim().ToLowerInvariant() switch
-        {
-            "en" or "en-us" or "en-gb" => English,
-            _ => Serbian,
-        };
+        LanguageTag.IsEnglish(language) ? English : Serbian;
 
     public string FormatDate(DateOnly date) =>
         date.ToString(DatePattern, CultureInfo.InvariantCulture);

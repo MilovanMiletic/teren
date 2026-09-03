@@ -53,8 +53,11 @@ public static class LogProperties
     /// </summary>
     private static readonly HashSet<string> Allowed = new(StringComparer.Ordinal)
     {
-        // Identifiers. An id is not evidence; it is how you find the row.
-        "ActorUserId", "DeviceId", "MediaId", "ProjectId", "ReportId", "SubjectId", "UserId",
+        // Identifiers. An id is not evidence; it is how you find the row. `JobServerId` is
+        // Hangfire's own — machine name, process id and a GUID — and is composed by the library,
+        // never by a caller.
+        "ActorUserId", "DeviceId", "JobServerId", "MediaId", "ProjectId", "ReportId", "SubjectId",
+        "UserId",
 
         // Counts and sizes.
         "Attempt", "Bytes", "Count", "DeclaredBytes", "Deleted", "Enqueued", "FailedCount",
@@ -70,15 +73,17 @@ public static class LogProperties
         // Providers, transports and the machine's own configuration. `BrandLogoPath` is the one
         // filesystem path on this list and it is named after its one setting on purpose: a general
         // `Path` was how the caller's own URL reached this table (see below).
-        // `DbContextName` and `Pending` belong to the readiness checks and are named as narrowly
-        // as `BrandLogoPath` is, for the same reason: `DbContextName` can only ever be one of two
-        // `nameof` values, and `Pending` is a list of EF migration ids off the shipped assembly.
-        // Neither can be written from outside the process. A general `Context` was the first
-        // draft, and a name that general is the `Path` mistake with a new label.
+        // `DbContextName` and `PendingMigrations` belong to the readiness checks and are named as
+        // narrowly as `BrandLogoPath` is, for the same reason: `DbContextName` can only ever be
+        // one of two `nameof` values, and `PendingMigrations` is a list of EF migration ids read
+        // off the shipped assembly. Neither can be written from outside the process. A general
+        // `Context` was the first draft, and `Pending` shipped for a day — both are the `Path`
+        // mistake with a new label: what makes a name safe here is that it can only ever hold one
+        // kind of value, and a word that general cannot promise that of its next caller.
         "AppLabel", "BrandLogoPath", "Bucket", "CacheRead", "CodeLabel", "DbContextName",
         "Default", "DevelopmentEnvironment", "EnabledSetting", "Host", "Locale", "Model",
-        "Pending", "Port", "Provider", "Realm", "Security", "Transport", "UsernameLabel",
-        "VersionKey", "Wordmark", "Workspace",
+        "PendingMigrations", "Port", "Provider", "Realm", "Security", "Transport",
+        "UsernameLabel", "VersionKey", "Wordmark", "Workspace",
 
         // Outcomes, states and codes — the vocabulary the pipeline branches on.
         "CommandName", "ConfirmFlag", "DeleteGuardTrigger", "EntryDate", "FailureCode", "Language",

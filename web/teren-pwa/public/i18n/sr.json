@@ -8,6 +8,12 @@
         "body": "Pregledač ne dozvoljava lokalno čuvanje podataka. Snimanje je isključeno dok se to ne reši — ništa od ranije nije izgubljeno."
       }
     },
+    "update": {
+      "title": "Nova verzija je spremna",
+      "body": "Osvežite kada vam odgovara. Ništa se ne gubi — snimci i unosi ostaju na telefonu.",
+      "action": "Osveži",
+      "later": "Ne sada"
+    },
     "install": {
       "title": "Dodajte Teren na početni ekran",
       "body": "Otvara se kao aplikacija i radi i tamo gde nema signala.",
@@ -174,6 +180,10 @@
       "row": "Ispravi",
       "rowLabel": "Ispravi unos snimljen u {{time}}"
     },
+    "superseded": {
+      "title": "Izveštaj je već otišao klijentu",
+      "body": "Ovaj zapis je izmenjen pošto je izveštaj predat na slanje, pa ta izmena nije u njemu. Ovaj unos više ne može da se ispravi — ispravka se pravi kao nov unos za taj dan."
+    },
     "report": {
       "title": "Izveštaj poslat klijentu",
       "body": "Ovo je PDF koji je klijent dobio. Preuzmite ga da biste ga sačuvali ili prosledili.",
@@ -318,6 +328,10 @@
       "reported": {
         "title": "Ovaj unos je već poslat",
         "body": "Poslat unos se ne menja. Snimite novi unos sa ispravkom; on će se pozvati na ovaj."
+      },
+      "superseded": {
+        "title": "Izveštaj je već otišao klijentu",
+        "body": "Ovaj zapis je izmenjen pošto je izveštaj predat na slanje, pa ta izmena nije u njemu. Ponovna potvrda tu ništa ne menja — ispravka se pravi kao nov unos za taj dan."
       }
     },
     "field": {

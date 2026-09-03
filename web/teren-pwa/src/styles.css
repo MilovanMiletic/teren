@@ -286,9 +286,23 @@ button {
   }
 }
 
-/* The app bar: wordmark on the left, whatever the screen needs on the right. */
+/*
+ * The app bar: wordmark on the left, whatever the screen needs on the right.
+ *
+ * **It wraps, and that is not decoration.** The control cluster on the admin screens is the
+ * language switcher plus the session link — 248 px, and neither half can be narrower without
+ * dropping below the 44 px tap floor. At 320 px the column is 288 px wide, so wordmark and
+ * cluster together ran 7–11 px past the right edge and the whole page scrolled sideways. 320 is
+ * below the 390 artboard but it is a real Android on sale today, and a page that scrolls
+ * horizontally is the one layout failure that makes every screen feel broken.
+ *
+ * Wrapping costs nothing above it: at 360 and up the two sit on one line exactly as before,
+ * because a flex line only breaks when it must. `margin-left: auto` is what keeps the cluster
+ * against the right edge on the second line, where `justify-content` has nothing to distribute.
+ */
 .bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
@@ -301,6 +315,10 @@ button {
   font-weight: 700;
   letter-spacing: 2px;
   text-transform: uppercase;
+}
+
+.bar__controls {
+  margin-left: auto;
 }
 
 /*

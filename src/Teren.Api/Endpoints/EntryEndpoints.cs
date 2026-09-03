@@ -2,7 +2,6 @@ using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Net.Http.Headers;
-using Npgsql;
 using Teren.Api.Auth;
 using Teren.Api.Contracts;
 using Teren.Api.Validation;
@@ -10,6 +9,7 @@ using Teren.Core.Entities;
 using Teren.Core.Processing;
 using Teren.Core.Reporting;
 using Teren.Core.Storage;
+using Teren.Core.Time;
 using Teren.Infrastructure.Persistence;
 using Teren.Infrastructure.Storage;
 using Microsoft.Extensions.Options;
@@ -149,7 +149,7 @@ public static class EntryEndpoints
         {
             await db.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException ex) when (IsUniqueViolation(ex, "pk_entry"))
+        catch (DbUpdateException ex) when (PostgresErrors.IsUniqueViolation(ex, "pk_entry"))
         {
             // Two copies of the same request in flight at once — the phone's retry timer racing
             // its own first attempt. The primary key settled it; we just report the winner.
@@ -338,7 +338,7 @@ public static class EntryEndpoints
         {
             await db.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException ex) when (IsUniqueViolation(ex, "pk_media"))
+        catch (DbUpdateException ex) when (PostgresErrors.IsUniqueViolation(ex, "pk_media"))
         {
             db.ChangeTracker.Clear();
 
@@ -366,7 +366,7 @@ public static class EntryEndpoints
             return ApiProblems.Conflict(
                 "One of the declared media ids was created concurrently; re-request the URLs.");
         }
-        catch (DbUpdateException ex) when (IsUniqueViolation(ex, "ux_media_object_key"))
+        catch (DbUpdateException ex) when (PostgresErrors.IsUniqueViolation(ex, "ux_media_object_key"))
         {
             // The key carries the company id, so this constraint can only be hit by this
             // company's own concurrent insert — never by another tenant's row.
@@ -829,9 +829,9 @@ public static class EntryEndpoints
                 e.ProjectId,
                 e.EntryDate,
                 EntryStatusNames.ToWire(e.Status),
-                Utc(e.CreatedAt),
-                Utc(e.ReceivedAt),
-                Utc(e.ReportedAt),
+                UtcStamp.Of(e.CreatedAt),
+                UtcStamp.OrNull(e.ReceivedAt),
+                UtcStamp.OrNull(e.ReportedAt),
                 mediaByEntry[e.Id].Count(m => m.Kind == MediaKind.Photo),
                 mediaByEntry[e.Id].Any(m => m.Kind == MediaKind.Audio)))
             .ToList();
@@ -1227,10 +1227,10 @@ public static class EntryEndpoints
         entry.ProjectId,
         entry.EntryDate,
         EntryStatusNames.ToWire(entry.Status),
-        Utc(entry.CreatedAt),
-        Utc(entry.ReceivedAt),
-        Utc(entry.ConfirmedAt),
-        Utc(entry.ReportedAt),
+        UtcStamp.Of(entry.CreatedAt),
+        UtcStamp.OrNull(entry.ReceivedAt),
+        UtcStamp.OrNull(entry.ConfirmedAt),
+        UtcStamp.OrNull(entry.ReportedAt),
         entry.FailureReason,
         entry.RawTranscript,
         entry.Latitude,
@@ -1249,21 +1249,11 @@ public static class EntryEndpoints
             m.Sha256.TrimEnd(),
             m.ObjectKey,
             MediaUploadStatusNames.ToWire(m.UploadStatus),
-            Utc(m.CapturedAt),
-            Utc(m.CreatedAt))).ToList());
+            UtcStamp.OrNull(m.CapturedAt),
+            UtcStamp.Of(m.CreatedAt))).ToList());
 
     /// <summary>JSONB columns are opaque strings to the server; they go out as JSON, not as a
     /// quoted string, and are never reshaped on the way.</summary>
     private static JsonNode? ParseJson(string? json) =>
         string.IsNullOrWhiteSpace(json) ? null : JsonNode.Parse(json);
-
-    private static DateTimeOffset Utc(DateTime value) =>
-        new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
-
-    private static DateTimeOffset? Utc(DateTime? value) =>
-        value is null ? null : Utc(value.Value);
-
-    private static bool IsUniqueViolation(DbUpdateException ex, string constraintName) =>
-        ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } pg
-        && string.Equals(pg.ConstraintName, constraintName, StringComparison.Ordinal);
 }

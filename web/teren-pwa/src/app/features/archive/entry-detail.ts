@@ -15,6 +15,7 @@ import { TranslocoDirective } from '@jsverse/transloco';
 import { switchMap } from 'rxjs';
 
 import { EntryResponse } from '../../core/api/api-types';
+import { supersededAfterSend } from '../../core/api/failure-reason';
 import { ArchiveService, RemoteStatus } from '../../core/archive/archive.service';
 import {
   EntryStructure,
@@ -465,9 +466,29 @@ export class EntryDetail {
    * row (B6) and the only remedy afterwards is a whole new correction entry (C4, not built), so
    * the cheap fix is available exactly now — and, before this, only by typing the URL by hand.
    */
-  protected readonly revisable = computed(() =>
-    canRevise(this.serverStatus(), this.remote()?.reported_at ?? null),
+  protected readonly revisable = computed(
+    () => canRevise(this.serverStatus(), this.remote()?.reported_at ?? null) && !this.superseded(),
   );
+
+  /**
+   * The report went out, and then this record was changed. Terminal, and it wears the exact
+   * disguise {@link revisable} is looking for.
+   *
+   * `canRevise` asks two questions — is it `confirmed`, is `reported_at` still null — and a record
+   * the server refused to seal answers yes to both. So the door back into the gate stood open on
+   * the one entry the gate can do nothing for: he confirmed, the report pass wrote the same reason
+   * back, and nothing on any screen ever said why.
+   *
+   * **The `&&` above is the whole guard, in one place.** The template's own branch for this state
+   * is last in its chain, so it is what a record falls through to once `revisable()` says no — it
+   * does not re-check the condition. Two copies of one rule is how a screen keeps looking right
+   * while one of them rots. See `core/api/failure-reason.ts`.
+   *
+   * Read from the **server's** answer only. `serverStatus()` falls back to the local cache when
+   * the server could not be asked, and no such fallback exists for a failure reason — which is
+   * right: an unreachable server must leave this screen behaving exactly as it did before.
+   */
+  protected readonly superseded = computed(() => supersededAfterSend(this.remote()));
 
   protected readonly audioDurationMs = computed(
     () => this.audio()?.durationMs ?? this.local()?.audioDurationMs ?? 0,

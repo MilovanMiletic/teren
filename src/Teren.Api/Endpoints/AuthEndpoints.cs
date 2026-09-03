@@ -6,6 +6,7 @@ using Teren.Api.Jobs;
 using Teren.Api.Validation;
 using Teren.Core.Entities;
 using Teren.Core.Identity;
+using Teren.Core.Time;
 using Teren.Infrastructure.Persistence;
 
 namespace Teren.Api.Endpoints;
@@ -378,7 +379,7 @@ public static class AuthEndpoints
 
         return TypedResults.Ok(new LoginResponse(
             token,
-            new DateTimeOffset(DateTime.SpecifyKind(expiresAt, DateTimeKind.Utc)),
+            UtcStamp.Of(expiresAt),
             AppUserRoleNames.ToWire(user.Role),
             user.Id,
             user.DisplayName,
