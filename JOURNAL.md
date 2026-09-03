@@ -12,6 +12,114 @@ Entry format:
 
 ---
 
+## 2026-09-03 (night, later) — the review that earned its keep, and a spec of mine that did not
+
+Founder: *"Finish."* The review of `fc5737f` came back **accept-with-fixes** with two gating finds,
+and the demo-code decision landed. Both are in. **1878 PWA specs / 93 files, 1142 backend tests.**
+
+### The find that would have reached a client
+
+`capture-recording-page.ts` awaited `resolveTarget()` — on a Dexie miss a network call bounded only
+by `API_TIMEOUT_MS`, so up to **thirty seconds**. Throughout that wait the screen was up, Otkaži was
+enabled and the back gesture worked, and **nothing after the await re-checked whether the take still
+owned the screen.** So the lookup's answer opened the microphone on a component that no longer
+existed, with nothing on screen to stop it.
+
+The cost was not an orphaned recorder. The chunks land under a **correction** session, so the
+start-up sweep assembles them into a draft and `queueAbandonedDrafts` sends it after its grace
+period: *a correction of a client's day, carrying whatever the phone happened to hear, delivered to
+that client.* The ordinary path had the same shape over a millisecond-scale await; the correction
+gesture widened it to a round trip, on the one entry type that produces a **second** report.
+
+Fixed with a `beginGeneration` counter and a `stillMine(generation)` check after each await, bumped
+by `cancel()`, `leave()` and `ngOnDestroy`. Two checks, not one: the second discards the session
+`beginCapture` may already have written, because an empty correction session left on disk is exactly
+what the sweep turns into a draft of a day nobody recorded.
+
+### And then my own spec failed the test it was written to apply
+
+**Round one was vacuous.** The deferred lookup resolved with `entry: null`, which the `no-target`
+blocker refuses anyway — so both assertions passed with the guard removed. They were asserting an
+outcome the code reaches either way. Fixed by resolving **successfully**, on the target's own site:
+a successful answer is the only one that carries on to `getUserMedia`, so it is the only one that
+can prove the guard.
+
+**Round two was still green, and that one was informative rather than embarrassing.** Removing only
+the first check left the suite passing because the *second* check discards the session and never
+starts the recorder — defence in depth doing its job. The honest mutation is removing **the whole
+fix**, and with both gone the two specs go red and nothing else does. *So: when a fix has two
+layers, mutating one layer proves nothing about it; the mutation has to be the absence of the fix.*
+Restored byte-identical, `sha256 d27529499c45fefa`.
+
+Two rounds of the same pathology in one afternoon, on a spec I wrote **while quoting the pathology
+at other agents**. It is not a knowledge problem.
+
+### The compact pill bar, again
+
+`/platform/health` shipped four pills — 365 px of words against a 358 px column at 390 — so
+`Gradilište` sat on line one and `Dana` dropped to a second, which is the `flex-wrap` fallback
+showing on the exact device class the founder's one-row rule exists for. **DANA lost its pill**: the
+question a founder asks a phone is "is anything wrong", not "which site is busiest", and the column
+is still sortable from its own head at 1024 and up. The three that remain are the three the reviewer
+had already measured on one line at both 390 and 360.
+
+Also closed: the reachability spec accepted a **hidden** door — adding `hidden` to that button left
+all thirty specs green, and only deleting it failed. It asserts visibility now.
+
+### `DEM0-TEST` is Development-only
+
+Founder decision, implemented: the fixed code survives only where the environment is Development;
+anywhere else `seed` draws one from the same generator a real admin's code comes from, and prints
+it. Two things the implementer got right that the brief had wrong:
+
+- **A hole beyond the brief.** `DemoReset` hardcoded `publishDemoCode: true`, reasoning that the
+  guard only permits Development. It does not — `Demo__ResetEnabled=true` is a documented,
+  supported configuration for a deployed demo box, so the one command you would reach for to fix
+  the demo on `dev.teren.rs` would have put the repository's published credential straight back,
+  minutes after `seed` kept it off. Now a parameter, defaulting false, fed by the same function.
+- **It refused to print "this will not be shown again", and it was right.** My brief asserted codes
+  are stored as hashes; that is true only of *dead* ones. `ck_activation_code_display_cleared` keeps
+  the plaintext while a code is live — which is how `/company` shows one — so a re-run of `seed`
+  prints the same code and a "last chance" warning would be false on the screen whose job is telling
+  the truth.
+
+The supersede predicate differs by path, deliberately: the fixed path retires anything live that is
+not the fixed code; the random path retires only *expired* rows and leaves a live one alone —
+without that, every `seed` would rotate the code and kill the one written down off the last deploy.
+
+### A report PDF was destroyed on the founder's laptop, and the trap is worth more than the PDF
+
+Verifying `reset-demo` on a non-Development host, the implementer pointed it at a **throwaway
+database** — and `DemoReset`'s object purge is keyed on `company/{DemoSeeder.CompanyId}/`, a prefix
+**identical across databases**. So the scratch database isolated nothing: it emptied the shared
+bucket. One of the three objects was the PDF of the founder's `sent` report (entry …0012).
+
+Verified rather than relayed: the bucket is empty, the `report` row still names a `report.pdf` that
+no longer exists, **`media` has 0 rows so no photograph or voice note was lost**, and all three
+entries are seeded ids — nothing of the founder's own capture. The content is reproducible; the
+artefact whose `pdf_sha256` is on record is not, and no replacement was fabricated.
+
+***"Use a throwaway database" is a safe recipe for `seed` and an unsafe one for `reset-demo`.*** The
+command names the database it will touch and prints the object prefix, and the prefix is global. On
+`dev.teren.rs` the same demo company id will exist, so the same command against a scratch database
+would empty the real bucket.
+
+### Left open, with a correction to my own claim
+
+**My commit message for `fc5737f` said the correction "marks both ends". It does not.** The archive
+*list* marks both; the record screen — the one produced in a dispute — says nothing and offers a
+*second* correction. The reviewer caught the gap between the claim and the code. Not fixed here on
+purpose: `entry-detail` fetches only its own entry, so a reverse mark needs either the archive
+page's merged rows or a design call about what it may claim when a replacement was recorded on
+another phone. It is the next frontend item, not a thing to hand-roll at the end of a session.
+
+Also carried, all non-gating: no in-flight guard on `HealthPage.load()`; two "Prikazano" totals in
+one card; `capture.blocked.correction.body` blaming the network in all three refusal cases including
+the one where retrying can never help; and `health.reason.unrecognised` saying "this version of the
+app does not know" when the *server* is what did not recognise the code.
+
+---
+
 ## 2026-09-03 (night) — the last code items, and D4 closed against the wrong hole
 
 Founder: *"Finish all of this"* — the report's missing supersedes line, and the debts list. Two

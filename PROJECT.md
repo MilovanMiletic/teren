@@ -119,6 +119,35 @@ This product is **not**:
 
 ## 11. Decided
 
+- **The four decisions that were blocking B3a** (2026-09-03, founder):
+  1. **SMTP relay: Resend.** Free tier covers the dev environment; ~€20/month when volume needs it.
+     Revisit at C7 if deliverability disappoints — Postmark is the fallback with the stronger
+     transactional reputation. **Never direct from the VPS**: Hetzner blocks outbound port 25 and a
+     fresh IP has no sending reputation, and the report is the product's face. Resend must verify a
+     sending domain, so **SPF, DKIM and DMARC on `teren.rs` are part of the same sitting**.
+  2. **Domain: `teren.rs`, registered now.** `dev.teren.rs` is the dev environment — where everything
+     is tested before the first client — and the apex is pointed at production only when the app is
+     production-ready (C7). *This supersedes the 2026-08-29 note deferring registration to C7: a
+     subdomain requires the domain, so the registration itself cannot wait.* Origin stability is why
+     it is not a throwaway hostname: IndexedDB, the service-worker registration and the installed
+     home-screen app are all scoped to the origin, so moving it later wipes local state and makes
+     offline-queue testing meaningless.
+  3. **Form of address: `vi`.** Consistent with every string already written, and the same copy faces
+     owners and clients, not only foremen. Off the veto queue.
+  4. **`DEM0-TEST` is a Development-only credential.** On any deployed environment `seed` mints a
+     random activation code and prints it once. The original justification — "there is no admin screen
+     until F6" — expired when F6 shipped: a code can now be issued from `/company` in seconds, so the
+     distributor needs no memorable published one. A real credential to a demo company behind a public
+     URL is not the same thing as one on a laptop.
+
+- **The first production account is created through the database** (2026-09-03, founder): a
+  `super_admin` for the founder himself, via `create-super-admin`, which reads its password from
+  stdin and never from argv. Everything after that is the product's own onboarding — he creates the
+  customer's company and its `company_admin` from `/platform`, and the invite reaches that admin by
+  email. *Note the shape this implies and which the model already enforces: a super_admin has no
+  company (`ck_app_user_company_scope`), so the founder's own account can create customers and read
+  nothing of their diaries.*
+
 - **A correction names the document it replaces** (2026-09-03, delegated to Claude and taken). The
   PDF said nothing about the report it superseded, so a correction arrived at the client looking like
   an unrelated day — weak evidence in exactly the dispute a correction exists for, given the client

@@ -924,3 +924,168 @@ describe('CaptureRecordingPage recording a correction', () => {
     expect(session.supersedesEntryId).toBe('a-day-on-another-phone');
   });
 });
+
+/*
+ * ---- Leaving while the correction target is still being looked up (2026-09-03) ----------------
+ *
+ * Found by review of `fc5737f`. `begin()` awaits `resolveTarget()`, and on a Dexie miss that goes
+ * to `ArchiveService.getEntry` — bounded only by `API_TIMEOUT_MS`, so up to thirty seconds on a
+ * site connection. Throughout that wait the screen is on, Otkaži is enabled and the back gesture
+ * works, and nothing after the await used to re-check whether this take still owned the screen.
+ *
+ * The cost was not merely an orphaned recorder. The chunks land under a **correction** session, so
+ * the start-up sweep assembles them into a draft and `queueAbandonedDrafts` sends it after its
+ * grace period: a correction of a client's day, carrying whatever the phone happened to hear,
+ * delivered to that client.
+ *
+ * **These assertions settle on macrotasks and must.** A negative assertion that turns only
+ * microtasks proves nothing here — that is exactly how a whole file of "it did not navigate"
+ * specs was vacuous three days ago.
+ */
+describe('CaptureRecordingPage abandoned during the correction lookup', () => {
+  let db: TerenDb;
+  let fixture: ComponentFixture<CaptureRecordingPage>;
+  let recorder: FakeRecorder;
+  let release: () => void;
+
+  const CORRECTION_ID = 'a-day-recorded-on-another-phone';
+  /** The site the lookup names — not the one the foreman is standing on. */
+  const LOOKED_UP_SITE = DEMO_PROJECTS[1];
+
+  /** Two macrotask turns: enough for the resolved lookup to run its continuation to the end. */
+  const settle = async (): Promise<void> => {
+    for (let turn = 0; turn < 2; turn += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  };
+
+  async function configure(): Promise<void> {
+    localStorage.setItem(
+      SESSION_STORAGE_KEY,
+      JSON.stringify({
+        token: 'trn_d_a-real-device-token',
+        deviceId: '11111111-1111-1111-1111-111111111111',
+        userId: '22222222-2222-2222-2222-222222222222',
+        username: 'zoran.jovanovic',
+        displayName: 'Zoran Jovanović',
+        companyId: '33333333-3333-3333-3333-333333333333',
+        companyName: 'Gradnja d.o.o.',
+        activatedAt: '2026-08-30T08:00:00.000Z',
+      }),
+    );
+
+    db = new TerenDb(`teren-test-${crypto.randomUUID()}`);
+
+    // The lookup that hangs. Nothing resolves it until a spec decides to — and when it does, it
+    // **succeeds**, naming the target's own site.
+    //
+    // That detail is the whole spec. The first cut of this file released `entry: null`, which the
+    // `no-target` blocker refuses anyway, so both assertions passed with the guard removed: they
+    // were asserting an outcome the code reaches either way. A successful answer is the only one
+    // that would carry on to `getUserMedia`, so it is the only one that can prove the guard.
+    const pending = new Promise<RemoteEntry>((resolve) => {
+      release = () =>
+        resolve({
+          status: 'ok',
+          entry: {
+            id: CORRECTION_ID,
+            project_id: LOOKED_UP_SITE.id,
+            entry_date: '2026-08-20',
+            status: 'reported',
+            created_at: '2026-08-20T13:40:00.000Z',
+            received_at: '2026-08-20T13:41:00.000Z',
+            reported_at: '2026-08-20T14:06:00.000Z',
+          } as never,
+          missing: false,
+        });
+    });
+
+    TestBed.configureTestingModule({
+      imports: [
+        CaptureRecordingPage,
+        TranslocoTestingModule.forRoot({
+          langs: { sr, en },
+          translocoConfig: {
+            availableLangs: ['sr', 'en'],
+            defaultLang: 'sr',
+            reRenderOnLangChange: true,
+          },
+          preloadLangs: true,
+        }),
+      ],
+      providers: [
+        provideRouter(routes),
+        { provide: TEREN_DB, useValue: db },
+        { provide: GeolocationService, useValue: { currentFix: async () => null } },
+        {
+          provide: ArchiveService,
+          useValue: { getEntry: () => pending } as unknown as ArchiveService,
+        },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              queryParamMap: convertToParamMap({ [CORRECTION_PARAM]: CORRECTION_ID }),
+            },
+          },
+        },
+        {
+          provide: AudioRecorderService,
+          useFactory: () => new FakeRecorder(inject(EntryStore)),
+        },
+      ],
+    });
+
+    const projects = TestBed.inject(ProjectService);
+    await projects.load();
+    projects.select(DEMO_PROJECTS[0].id);
+
+    // Deliberately NOT seeded into Dexie: a miss is what sends the lookup to the network.
+    fixture = TestBed.createComponent(CaptureRecordingPage);
+    recorder = TestBed.inject(AudioRecorderService) as unknown as FakeRecorder;
+    await settle();
+    fixture.detectChanges();
+  }
+
+  afterEach(async () => {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    db.close();
+    await db.delete();
+  });
+
+  it('does not open the microphone when Otkaži was pressed while it was resolving', async () => {
+    await configure();
+    expect(recorder.startCalls, 'the lookup has not answered yet').toBe(0);
+
+    const element = fixture.nativeElement as HTMLElement;
+    const cancel = Array.from(element.querySelectorAll<HTMLButtonElement>('button')).find(
+      (button) => (button.textContent ?? '').includes('Otkaži'),
+    );
+    expect(cancel, 'Otkaži is on screen and enabled while the lookup runs').toBeTruthy();
+    expect(cancel?.disabled).toBe(false);
+    cancel?.click();
+    await settle();
+
+    release();
+    await settle();
+
+    expect(recorder.startCalls, 'the microphone must never open').toBe(0);
+    expect(await db.captures.count(), 'no session may be written').toBe(0);
+    expect(await db.chunks.count()).toBe(0);
+  });
+
+  it('does not open the microphone when the screen was destroyed while it was resolving', async () => {
+    await configure();
+
+    // The back gesture: the route changes and the component goes, with no Otkaži involved.
+    fixture.destroy();
+    await settle();
+
+    release();
+    await settle();
+
+    expect(recorder.startCalls, 'the microphone must never open').toBe(0);
+    expect(await db.captures.count(), 'no session may be written').toBe(0);
+    expect(await db.chunks.count()).toBe(0);
+  });
+});

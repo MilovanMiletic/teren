@@ -876,6 +876,16 @@ describe('HealthPage', () => {
         candidate.getAttribute('aria-label')?.includes(sr.platform.health.open),
       );
       expect(control, 'no way into the health screen from the platform screen').toBeTruthy();
+      // **A door nobody can see is not a door**, and this assertion is here because the first cut
+      // of this spec did not have it: adding `hidden` to that button left all thirty specs green,
+      // and only deleting it outright failed. `hidden` and `display: none` are the two ways a
+      // control stays in the DOM and out of reach; jsdom lays nothing out, so `offsetParent` is
+      // useless here and the property is what can be checked.
+      expect(control?.hidden, 'the door is in the DOM but hidden').toBe(false);
+      expect(
+        control?.getAttribute('style') ?? '',
+        'the door is in the DOM but styled away',
+      ).not.toContain('display: none');
 
       control?.click();
       expect(navigate).toHaveBeenCalledWith([healthUrl]);

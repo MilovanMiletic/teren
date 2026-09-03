@@ -79,7 +79,13 @@ public static class DemoResetCommand
             return decision.ExitCode;
         }
 
-        var result = await DemoReset.ResetAsync(db, objects, jobs, DeviceTokenOf(app));
+        // Same rule as `seed`, from the same function: the published code exists on a Development
+        // host and nowhere else. This command is reachable on a deployed box through
+        // Demo:ResetEnabled, which is exactly where hardcoding it would have put it back.
+        var useFixedDemoCode = DemoSeeder.UsesFixedActivationCode(app.Environment.EnvironmentName);
+
+        var result = await DemoReset.ResetAsync(
+            db, objects, jobs, DeviceTokenOf(app), useFixedDemoCode);
 
         Console.WriteLine("Removed:");
         WriteRows(result.Removed, result.ReportedEntriesRemoved);
@@ -105,6 +111,23 @@ public static class DemoResetCommand
         {
             DemoSeeder.Project1Id, DemoSeeder.Project2Id, DemoSeeder.Project3Id,
         }));
+        Console.WriteLine(
+            "  activation  " + (result.ActivationCode is { } code
+                ? $"username {DemoSeeder.WorkerUsername}, code {code}"
+                : $"username {DemoSeeder.WorkerUsername}, and the live code's plaintext is not "
+                  + "stored — issue him a new one from /company"));
+
+        if (!useFixedDemoCode && result.ActivationCode is not null)
+        {
+            // A reset deletes every activation code the demo company had, so this one was drawn
+            // seconds ago and exists in this scrollback and in the database. Nowhere else — but
+            // it is still readable (`seed` prints it, /company shows it), which is why this says
+            // "note it" rather than "this is your only chance".
+            Console.WriteLine(
+                "              That code was drawn for this host, not taken from the repository. "
+                + "Note it: nothing outside this database holds a copy.");
+        }
+
         Console.WriteLine();
         Console.WriteLine(result.GuardArmed
             ? "Immutability guard trg_entry_guard_delete: ARMED (read back from pg_trigger)."

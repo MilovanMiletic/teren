@@ -35,7 +35,7 @@ public sealed class DemoResetIdentityTests(TerenTestApp app)
     public async Task The_demo_users_codes_sessions_and_phone_all_go_and_come_back()
     {
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, useFixedDemoCode: true, Ct);
         await GivenDemoIdentityJunkAsync(db);
 
         var result = await DemoReset.ResetAsync(db, deviceToken: DemoDeviceToken, ct: Ct);
@@ -52,8 +52,9 @@ public sealed class DemoResetIdentityTests(TerenTestApp app)
         // Back to a demo that can actually be given: two people and one working phone.
         result.FinalState.AppUsers.ShouldBe(2);
         result.FinalState.Devices.ShouldBe(1);
-        // Exactly one: the fixed demo code, without which a fresh phone cannot get past the
-        // welcome screen and the reset would hand back an undemonstrable demo.
+        // Exactly one live code — drawn here, since this call does not ask for the published one
+        // — without which a fresh phone cannot get past the welcome screen and the reset would
+        // hand back an undemonstrable demo.
         result.FinalState.ActivationCodes.ShouldBe(1);
         result.FinalState.AdminSessions.ShouldBe(0);
     }
@@ -64,7 +65,7 @@ public sealed class DemoResetIdentityTests(TerenTestApp app)
         // The failure this guards against is the quiet one: a reset that restores every row and
         // leaves the distributor holding a phone that 401s in front of a customer.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, useFixedDemoCode: true, Ct);
 
         await DemoReset.ResetAsync(db, deviceToken: DemoDeviceToken, ct: Ct);
 
@@ -79,7 +80,7 @@ public sealed class DemoResetIdentityTests(TerenTestApp app)
     public async Task Another_companys_people_and_phones_are_untouched()
     {
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, useFixedDemoCode: true, Ct);
         await GivenAnotherCompanyWithPeopleAsync(db);
 
         var result = await DemoReset.ResetAsync(db, deviceToken: DemoDeviceToken, ct: Ct);
@@ -102,7 +103,7 @@ public sealed class DemoResetIdentityTests(TerenTestApp app)
         // (ck_app_user_company_scope). He belongs to no tenant and must therefore be no tenant's
         // business, this command's included.
         await using var db = await app.CreateScratchDatabaseAsync();
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, useFixedDemoCode: true, Ct);
         await GivenSuperAdminAsync(db);
 
         await DemoReset.ResetAsync(db, deviceToken: DemoDeviceToken, ct: Ct);
@@ -135,7 +136,7 @@ public sealed class DemoResetIdentityTests(TerenTestApp app)
         await using var interceptor = new DeleteSuperAdminMidTransaction(SuperAdminId);
         await using var db = await app.CreateScratchDatabaseAsync(null, interceptor);
 
-        await DemoSeeder.SeedAsync(db, DemoDeviceToken, publishDemoCode: true, Ct);
+        await DemoSeeder.SeedAsync(db, DemoDeviceToken, useFixedDemoCode: true, Ct);
         await GivenSuperAdminAsync(db);
         db.ChangeTracker.Clear();
 

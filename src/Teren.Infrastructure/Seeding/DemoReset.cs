@@ -37,7 +37,9 @@ public sealed record DemoResetPlan(
     int PendingJobs,
     string? JobsUnavailable);
 
-/// <summary>What a reset actually did. Every number here is reported to the terminal.</summary>
+/// <summary>What a reset actually did. Every number here is reported to the terminal — and so is
+/// <see cref="ActivationCode"/>, which on a non-Development host is the only copy of the code the
+/// re-seeded demo can be joined with.</summary>
 public sealed record DemoResetResult(
     DemoRowCounts Removed,
     int ReportedEntriesRemoved,
@@ -47,7 +49,8 @@ public sealed record DemoResetResult(
     string? ObjectsUnavailable,
     int JobsRemoved,
     string? JobsUnavailable,
-    bool GuardArmed);
+    bool GuardArmed,
+    string? ActivationCode);
 
 /// <summary>
 /// Undoing a demo: everything belonging to the demo company goes, and the seed goes back.
@@ -154,11 +157,25 @@ public static class DemoReset
     /// <param name="jobs">Purges pending background jobs. Null means "not wired".</param>
     /// <param name="deviceToken">The demo device's bearer token, re-provisioned with the seed.
     /// Empty means the reset leaves the demo with no phone — legitimate, and what D7 will do.</param>
+    /// <param name="useFixedDemoCode">
+    /// Whether the re-seed mints the repo-published activation code
+    /// (<see cref="DemoSeeder.DemoActivationCode"/>) or draws a random one.
+    /// <para>
+    /// <b>A parameter, not <c>true</c>, and that was a real hole.</b> This command is refused
+    /// outside Development <em>unless</em> <c>Demo:ResetEnabled</c> says otherwise — which is a
+    /// documented, supported configuration for a deployed demo box. Hardcoding the published code
+    /// here meant the one command a founder reaches for to fix a demo on that box would put the
+    /// repository's credential straight back. Defaults to false for the same reason
+    /// <see cref="DemoSeeder.SeedAsync"/> does; only <see cref="DemoSeeder.UsesFixedActivationCode"/>
+    /// says yes.
+    /// </para>
+    /// </param>
     public static async Task<DemoResetResult> ResetAsync(
         DbContext db,
         IDemoObjectPurge? objects = null,
         IDemoJobPurge? jobs = null,
         string? deviceToken = null,
+        bool useFixedDemoCode = false,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(db);
@@ -174,7 +191,7 @@ public static class DemoReset
 
         var strategy = db.Database.CreateExecutionStrategy();
 
-        var (removed, reseeded) = await strategy.ExecuteAsync(async () =>
+        var (removed, seeded) = await strategy.ExecuteAsync(async () =>
         {
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
@@ -256,10 +273,11 @@ public static class DemoReset
             // Inside the same transaction: a failure here restores the demo that was there
             // before, rather than leaving the founder with no demo at all.
             db.ChangeTracker.Clear();
-            // `reset-demo` is refused outside Development (or an explicit Demo:ResetEnabled), so
-            // this host is one where the published demo code is harmless — and a reset that left
-            // the demo unjoinable would defeat the point of the command.
-            var inserted = await DemoSeeder.SeedAsync(db, deviceToken, publishDemoCode: true, ct);
+            // A reset that left the demo unjoinable would defeat the point of the command, so a
+            // code is always minted — but WHICH code is the caller's call, because
+            // Demo:ResetEnabled makes this command runnable on a host where the published one is
+            // a way in rather than a convenience.
+            var seed = await DemoSeeder.SeedAsync(db, deviceToken, useFixedDemoCode, ct);
 
             await transaction.CommitAsync(ct);
 
@@ -267,7 +285,7 @@ public static class DemoReset
                 new DemoRowCounts(
                     companies, projects, entries, media, reports,
                     appUsers, devices, activationCodes, passwordTokens, adminSessions, adminAudits),
-                inserted);
+                seed);
         });
 
         // Only now that the rows are gone for good. See the type comment: committing first is
@@ -298,13 +316,14 @@ public static class DemoReset
         return new DemoResetResult(
             removed,
             reportedRemoved,
-            reseeded,
+            seeded.RowsWritten,
             finalState,
             objectsRemoved,
             objectsUnavailable,
             jobsRemoved,
             jobsUnavailable,
-            await IsDeleteGuardArmedAsync(db, ct));
+            await IsDeleteGuardArmedAsync(db, ct),
+            seeded.ActivationCodeDisplay);
     }
 
     /// <summary>

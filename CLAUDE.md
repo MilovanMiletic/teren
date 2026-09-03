@@ -211,6 +211,33 @@ before being presented as done; gating fixes go back to the implementer and are 
   the row is filed under the credential `discard()` removes in the next synchronous statement, so the
   next flush deletes it. "Why did this phone stop" is not answerable from the log stream without a
   change to `ActionLogService`.
+- **`reset-demo`'s object purge prefix is GLOBAL, so a throwaway database isolates nothing
+  (2026-09-03) — and it cost a report PDF.** `DemoReset` purges `company/{DemoSeeder.CompanyId}/`,
+  which is byte-identical across databases. An agent verifying the deployed path pointed the command
+  at a scratch database, and it emptied the **shared** bucket: three objects, one of them the PDF of
+  the founder's `sent` report (entry …0012). Verified afterwards — `media` has 0 rows so **no
+  photograph or voice note was lost**, all three entries are seeded ids, and the `report` row still
+  names a `report.pdf` that no longer exists. The content is reproducible; the artefact whose
+  `pdf_sha256` is on record is not. ***"Use a throwaway database" is safe for `seed` and unsafe for
+  `reset-demo`*** — run the dry run first, which prints the object count, and remember that on
+  `dev.teren.rs` the same demo company id will exist.
+- **A fix with two layers cannot be mutation-proven one layer at a time (2026-09-03).** The
+  correction-lookup guard checks `stillMine(generation)` twice — after the network await, and again
+  after `beginCapture` (that second one discards the session, because an empty correction session on
+  disk is what the rescue sweep turns into a draft of a day nobody recorded). Removing **only** the
+  first left the whole suite green, because the second still stopped the recorder. The honest
+  mutation is the **absence of the fix**; with both gone, two specs go red and nothing else does.
+  *And the round before that was worse: the deferred lookup resolved with `entry: null`, which the
+  `no-target` blocker refuses anyway, so the specs passed with the guard removed — they asserted an
+  outcome the code reaches either way. A deferred-dependency spec must resolve **successfully**, or
+  it proves nothing.* Both rounds were mine, written while quoting this pathology at other agents.
+- **The microphone could open after the man had left the screen (2026-09-03, review of `fc5737f`).**
+  `begin()` awaited the correction-target lookup — up to `API_TIMEOUT_MS`, thirty seconds — while
+  Otkaži stayed enabled and the back gesture worked, and nothing after the await re-checked
+  ownership. The chunks would land under a **correction** session, the sweep would assemble them and
+  `queueAbandonedDrafts` would send it: a correction of a client's day, carrying ambient audio,
+  delivered to that client. Fixed with `beginGeneration` + `stillMine()`, bumped by `cancel()`,
+  `leave()` and `ngOnDestroy`. *Any new `await` in `begin()` needs the same check after it.*
 - **A negative assertion that settles on microtasks proves nothing (2026-09-03).** The first
   mutation of F14's device-gated check left **the whole suite green**: the spec's `settle()` turned
   only `Promise.resolve()`, and a router navigation does not finish inside a microtask chain, so every
@@ -376,20 +403,27 @@ before being presented as done; gating fixes go back to the implementer and are 
   the record**, sending `described_verbatim: true` with the transcript in `notes`; the report then
   renders the day as prose, marked as his words rather than extracted data. `extracted` stays null
   and `corrected` records approval-as-is, so the eval triple can still tell approval from typing.
-- **Next, in order.** **Every code item on the M0/identity list is now built and green** — the
-  correction gesture (`/entry/:id` → a new entry carrying `supersedes_entry_id`, project inherited
-  from the original and never chosen), `failure_reason` on the archive row, **`/platform/health`
-  (F7's last screen, so F7 is complete)**, the report's supersedes band, and D4's closure.
-  **Two of those increments have NOT been reviewed** — the report/D4 backend pair and the
-  correction/health frontend pair — because both implementers were killed when a session ended, and
-  the work was verified by execution and by reading the diff instead. **Run their reviewers first.**
-  Then the four never-reviewed older increments: **D6, D8, F10, and F13's four founder-screenshot
-  rounds.** Then **B3a for real**: a VPS, a domain, a stable **https** origin — the purchase that
-  unblocks the whole real-device debt and both unmet clauses of M0's definition.
-  *One decision taken but NOT yet implemented: `DEM0-TEST` should stay the fixed demo code only in
-  Development, with `seed` minting a random one on any deployed environment and printing it. Its
-  original justification — "there is no admin screen until F6" — expired when F6 shipped, and a
-  published credential to a company behind a public URL is not the same thing as one on a laptop.*
+- **Next, in order.** **All M0/identity code items are built and green**, and `/platform/health`
+  completed F7. `DEM0-TEST` is Development-only. The `fc5737f` frontend review is **closed**
+  (accept-with-fixes; both gating items fixed and mutation-proven — the microphone-after-leaving
+  guard and the compact pill bar at 360).
+  **What is left is review debt and one named UI gap:**
+  1. **The backend pair of `3716283` has never been reviewed** — the report's supersedes band, D4's
+     `AdminAccessNoticeJob`, the credential guard. Its implementer was killed before reporting, so
+     there are no mutation proofs on it.
+  2. **The `DEM0-TEST` increment has not been reviewed** either (it is green at 1142 and its
+     implementer *did* report, with proofs).
+  3. **Never reviewed at all: D6, D8, F10, and F13's four founder-screenshot rounds.**
+  4. **A replaced day's record screen does not say it was replaced** and offers a *second*
+     correction — the archive list marks both ends, the evidence screen does not. **My commit
+     message for `fc5737f` claimed otherwise; that claim was wrong.** Needs the archive page's
+     merged rows or a design call about what the screen may claim when the replacement was recorded
+     on another phone. Non-gating, and the next frontend item.
+  5. Four non-gating review items: no in-flight guard on `HealthPage.load()`; two "Prikazano"
+     totals in one card; `capture.blocked.correction.body` blames the network in all three refusal
+     cases including the one where retrying can never help; `health.reason.unrecognised` says "this
+     version of the app does not know" when the **server** is what did not recognise the code.
+  **Then B3a**, which is now a 12-step checklist in `deploy/README.md` §2 with every decision made.
 - **A correction now names the document it replaces (2026-09-03).** The decision was delegated and
   taken: the report names the superseded record by **work date and site, never a GUID** (PROJECT.md
   §11 ruling 1), in the project's language and time zone, with **two variants** — one for a superseded
@@ -399,6 +433,11 @@ before being presented as done; gating fixes go back to the implementer and are 
 - **Demo seed is now three sites** (`d3a0c1f0-5b8e-4f1a-9c62-` + `000000000002/3/4`), and those ids
   are a **contract** with `web/.../core/projects/project-source.ts`: if they drift, every
   `POST /api/entries` 404s and captured entries can never leave the phone. See ARCHITECTURE §6.
+- **`DEM0-TEST` is Development-only as of 2026-09-03 (founder).** On any deployed environment `seed`
+  mints a random activation code and prints it once; the fixed code survives only where
+  `ASPNETCORE_ENVIRONMENT=Development`. Its original justification expired when F6 shipped — a code
+  can be issued from `/company` in seconds. **The paragraph below is the history and still describes
+  the local behaviour**; read it with that change applied.
 - **The demo activation code is a contract too, for the same reason.** Since F4's `canMatch` gate, a
   fresh install has no session and lands on `/welcome`, so the demo needs a code that exists before
   anyone can issue one — there is no admin screen until F6. `DemoSeeder` mints `zoran.jovanovic` a
@@ -551,14 +590,14 @@ before being presented as done; gating fixes go back to the implementer and are 
   Linux shell.** `action-wiring.spec.ts` built its file map with `relative()`, which answers with
   backslashes here, so both hand-written checks failed at their first entry. `shortPath` normalises
   `sep` now. *If a spec fails only on one OS, suspect the path separator before the code.*
-- **Suites: 1876 PWA specs** (93 files) and **1135 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
+- **Suites: 1878 PWA specs** (93 files) and **1142 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
   + Testcontainers over real Postgres, ~66 s; PdfPig in tests only, so report assertions read text
   back out of the rendered PDF). `dotnet test` needs Docker running.
   *The figures here were stale before 2026-08-30 (403/447 recorded against an actual 436/476) —
   both were re-measured off the tree, not carried forward.*
-- **Check at session start:** the tree is green — **1876 PWA specs (93 files) and 1135 backend tests,
-  both re-verified by execution 2026-09-03**, `ng build` with zero warning lines. The stash is empty
-  again (it was popped and finished). `dotnet build` succeeds
+- **Check at session start:** the tree is green — **1878 PWA specs (93 files) and 1142 backend tests,
+  both re-verified by execution 2026-09-03**, `ng build` with zero warning lines. The stash is empty.
+  `dotnet build` succeeds
   with **one** warning: `CS9107` in `DemoIdentitySeedTests.cs:400`. **It is pre-existing** — confirmed by
   building a worktree at `a42adaf` — so the long-standing "0 warnings" claim in this file was simply
   wrong. Do not go hunting for it in your own diff.
@@ -686,10 +725,10 @@ before being presented as done; gating fixes go back to the implementer and are 
   canonical-name mapping in the Claude extraction call (ARCHITECTURE §9.2), which is now
   **load-bearing**, plus the mandatory confirmation screen.
 - **Founder-veto queue:** "Gotovo" as queue moment; recording-as-route; zero-chunk = no entry;
-  noiseSuppression on; Tailwind dropped for token CSS (§5 mismatch); ti vs vi; "Prijavi se"
-  visibility pre-M2; recent-entry titles; **which SMTP relay** (transport decided, relay not —
-  needed by B6; do not send direct from the VPS: port 25 blocks and IP reputation, and the report
-  is the product's face).
+  noiseSuppression on; Tailwind dropped for token CSS (§5 mismatch); "Prijavi se" visibility pre-M2;
+  recent-entry titles. **Cleared 2026-09-03: `ti` vs `vi` → `vi`** (consistent with every string
+  already written, and the same copy faces owners and clients), and **the SMTP relay → Resend**
+  (free tier for dev, ~€20/month later; Postmark the fallback; never direct from the VPS).
 - **Verified toolchain (re-read off the machine 2026-08-29):** .NET 10.0.300, Angular CLI 22.1.6,
   Node 24.19.0, npm 11.17.0, Docker 29.4.3, Compose v5.1.3. No local `psql`. Node was 22.12.0 —
   below Angular CLI 22 minimum, so the PWA could not build or test at all — and was installed this

@@ -29,6 +29,12 @@ they are content, not chrome, and they are what he actually says.
 > The code is single use. Joining a second phone needs a fresh one, and a `seed` or a `reset-demo`
 > mints it — the same `DEM0-TEST` every time. Joining a new phone also retires the old one: one
 > phone records as Zoran at a time, by design.
+>
+> **`DEM0-TEST` is a Development-only credential as of 2026-09-03.** This script assumes a demo run
+> from a laptop, where it still holds. On a deployed box — `dev.teren.rs` — `seed` **draws a random
+> code and prints it**, because the fixed one is published in this repository and that company will
+> sit behind a public URL. If you are demoing from the dev box, either read the code off the deploy
+> output or issue a fresh one from `/company`, which takes seconds now that F6 exists.
 
 ---
 

@@ -26,22 +26,62 @@ Honesty first, because a deployment guide that overstates itself is worse than n
 | Bucket CORS at a managed provider | **NOT proven** — MinIO does not implement the bucket CORS API at all (see §6) |
 | Anything at all about a phone | **NOT proven** — that is what this environment exists to make possible, not something it demonstrates |
 
-There is no VPS and no domain: `teren.rs` is deliberately deferred to C7. Everything below the
-"ship" step in `deploy.sh` is written but has never run.
+There is no VPS and no domain yet. **The decisions are made** (2026-09-03): `teren.rs` registered
+now, `dev.teren.rs` as the dev environment, Resend as the relay. Everything below the "ship" step in
+`deploy.sh` is written and has never run.
 
 ---
 
-## 2. What the founder has to buy, in order
+## 2. Day one, in order — the whole sitting on one screen
+
+Every decision below is already made (PROJECT.md §11). This is the sequence; the sections after it
+are the detail.
+
+```
+ 1. Register teren.rs                                   → §3 row 1
+ 2. Hetzner CX22, Nuremberg or Falkenstein              → §3 row 2
+ 3. A record: dev.teren.rs → the VPS IP, then WAIT      → §3 row 3   (ACME fails if it is early)
+ 4. Hetzner Object Storage, same region, one bucket     → §3 row 4
+ 5. Resend: verify teren.rs, add SPF + DKIM + DMARC     → §3 row 5, deploy/.env.example
+ 6. Azure Speech key, Anthropic key                     → §3 rows 6-7
+ 7. cp deploy/.env.example deploy/.env and fill it in    → §5
+      TEREN_DOMAIN=dev.teren.rs   TEREN_DEVICE_TOKEN=   (empty, deliberately)
+ 8. deploy/deploy.sh                                     → §4
+ 9. Apply the bucket CORS rules                          → §7      (managed storage is not MinIO)
+10. Your own super_admin account, ON THE HOST (the image has no SDK, so not `dotnet run`):
+      ssh $TEREN_SSH_HOST
+      cd /opt/teren && docker compose run --rm api \
+        create-super-admin --email you@teren.rs --name "Your Name"
+      ...then type the password when it asks. It is read from stdin, never argv, so it
+      never reaches `ps`, a shell history, or the Hangfire job store.
+11. Sign in at https://dev.teren.rs/login, create the customer's company and its admin
+      from /platform — the invite reaches him by email, which is what Resend is for
+12. Three GitHub secrets, then push a trivial commit and read the Actions notice → §4
+```
+
+**The first phone test is the point of all of it**, and it is the first thing that has never run:
+install the PWA on a real phone from `https://dev.teren.rs`, record a real 30-second entry with two
+photos, and watch it reach a report. Everything about a phone is unproven until then (§1).
+
+**Two things that will look like faults and are not.** The demo activation code is **random on a
+deployed box** as of 2026-09-03 — `seed` prints it once and it cannot be recovered, because codes are
+stored as hashes; issue a fresh one from `/company` if you lose it. And if entries reach `received`
+but never `received_at`, that is **bucket CORS**, step 9 — not the upload code. Browser-to-storage is
+verified only against local MinIO defaults.
+
+---
+
+## 3. What the founder has to buy, in order
 
 Do these in this order. Each step is blocked by the one before it.
 
 | # | What | Where | Cost | Why it must be this |
 |---|---|---|---|---|
-| 1 | **A domain name** | any registrar | ~€10–15/year (`.rs` ~€20) | Not optional and not deferrable. Caddy proves ownership over ACME to get a certificate, and ACME cannot issue for an IP address. And it must be **https**: the upload path computes SHA-256 with `crypto.subtle`, which is *undefined* outside a secure context and fails by not existing rather than by throwing (ARCHITECTURE §13). A staging subdomain of a domain bought now (`staging.example.rs`) is enough; `teren.rs` itself can wait for C7 |
+| 1 | **`teren.rs`** (decided 2026-09-03) | any `.rs` registrar | ~€20/year | Not optional and not deferrable. Caddy proves ownership over ACME to get a certificate, and ACME cannot issue for an IP address. And it must be **https**: the upload path computes SHA-256 with `crypto.subtle`, which is *undefined* outside a secure context and fails by not existing rather than by throwing (ARCHITECTURE §13). **The dev environment is `dev.teren.rs`** and the apex is pointed at production only at C7 — but the *registration* cannot wait, because a subdomain requires the domain, and Resend has to verify the sending domain before a single report goes out |
 | 2 | **A VPS** | Hetzner CX22 (2 vCPU, 4 GB RAM, 40 GB disk) | ~€4.5/month | 4 GB is the number that matters: Postgres, the API with Hangfire, and Caddy on one box. 2 GB would work until a report renders. Take the Nuremberg or Falkenstein location — closest to Serbia of Hetzner's EU sites |
 | 3 | **A DNS record** | the registrar, or Hetzner DNS (free) | €0 | One `A` record pointing the hostname at the VPS IP. Do it before the first deploy and let it propagate, or ACME fails and Caddy backs off |
 | 4 | **Object storage** | Hetzner Object Storage | ~€5/month incl. 1 TB | Managed, S3-compatible, same region as the VPS. Self-hosting MinIO on the same box is possible (§6) but puts the raw evidence on the same disk as everything else, which defeats the point of having it |
-| 5 | **An SMTP relay** | Resend, Postmark, or similar | free tier → ~€15/month | Still an open founder decision (PROJECT.md veto queue). **Never send directly from the VPS**: Hetzner blocks outbound port 25 by default and a fresh VPS IP has no sending reputation, so the report that *is* the product lands in spam. Until this is chosen, run staging with the `mailpit` service (§5) — reports are captured and readable, and nothing is silently lost |
+| 5 | **Resend** (decided 2026-09-03) | resend.com | free tier → ~€20/month | Verify `teren.rs` as a sending domain and add the SPF, DKIM and DMARC records it gives you — in the same sitting as the purchase, because an unverified domain sends nothing. **Never send directly from the VPS**: Hetzner blocks outbound port 25 by default and a fresh VPS IP has no sending reputation, so the report that *is* the product lands in spam. Until this is chosen, run staging with the `mailpit` service (§5) — reports are captured and readable, and nothing is silently lost |
 | 6 | **Azure AI Speech** | Azure | pay-as-you-go, pennies per hour of audio | Already decided (`docs/stt-evaluation.md`). Without the key, entries park in `needs_review` with their evidence intact |
 | 7 | **An Anthropic API key** | console.anthropic.com | pay-as-you-go | Without it, entries keep their transcript and park in `needs_review` |
 
@@ -54,7 +94,7 @@ transactional email lands in spam, after sending from a VPS.
 
 ---
 
-## 3. First deploy
+## 4. First deploy
 
 ```bash
 cp deploy/.env.example deploy/.env       # then fill it in — see §4
@@ -148,7 +188,7 @@ deploy/deploy.sh --target local --down            # stop it
 
 ---
 
-## 4. Configuration and secrets
+## 5. Configuration and secrets
 
 Everything real arrives as an environment variable. `deploy/.env.example` lists every key with no
 value; `deploy/.env` is gitignored (`.gitignore` covers `.env` and `.env.*`, excepting
@@ -199,7 +239,7 @@ loopback. There is no third state where it is public.
 
 ---
 
-## 5. Should Mailpit run on staging?
+## 6. Should Mailpit run on staging?
 
 **Yes, until a relay is chosen — and never in production.**
 
@@ -228,7 +268,7 @@ Swapping in a real relay later is `TEREN_SMTP_*` and nothing else.
 
 ---
 
-## 6. Object storage CORS
+## 7. Object storage CORS
 
 The phone uploads media **directly** to object storage with a presigned PUT — the bytes never pass
 through the API (ARCHITECTURE §2, §8). That is a cross-origin request, so the browser preflights it
@@ -265,7 +305,7 @@ without it.
 
 ---
 
-## 7. Backups
+## 8. Backups
 
 ```bash
 deploy/backup/install-cron.sh                       # nightly, 03:00 local
@@ -299,7 +339,7 @@ and left the database with no application tables at all).
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 **Uploads fail and it looks like CORS.** Check `Storage__PublicEndpoint` before anything else (§4),
 then the bucket's CORS (§6). Both present as a preflight failure in the browser console.

@@ -443,23 +443,36 @@ if (args.Contains("migrate") || args.Contains("seed"))
 
         // The fixed, repo-published demo code is minted **only on a development host**. It is a
         // real credential to the demo company that anyone who can read the repository already
-        // holds; on a laptop that costs nothing, and behind a public URL it is a way in.
-        var publishDemoCode = app.Environment.IsDevelopment();
+        // holds; on a laptop that costs nothing, and behind a public URL it is a way in. Every
+        // other host gets a randomly drawn one, indistinguishable from a code an admin issues.
+        var useFixedDemoCode = DemoSeeder.UsesFixedActivationCode(app.Environment.EnvironmentName);
 
-        var inserted = await DemoSeeder.SeedAsync(db, deviceToken, publishDemoCode);
-        Console.WriteLine(inserted == 0
+        var seeded = await DemoSeeder.SeedAsync(db, deviceToken, useFixedDemoCode);
+        Console.WriteLine(seeded.RowsWritten == 0
             ? "Demo data already present and usable; nothing written."
-            : $"Demo data seeded: {inserted} row(s) written.");
+            : $"Demo data seeded: {seeded.RowsWritten} row(s) written.");
 
         // Printed on every seed, not only when a row was written: this is the one credential a
-        // fresh phone needs to get past the welcome screen, and there is no admin screen to read
-        // it from until F6.
-        Console.WriteLine(publishDemoCode
-            ? $"Demo activation: username {DemoSeeder.WorkerUsername}, "
-              + $"code {DemoSeeder.DemoActivationCodeDisplay}."
-            : $"Demo activation: username {DemoSeeder.WorkerUsername}, and NO code — the "
-              + "published one is minted on development hosts only. Issue him a real code from "
-              + "/company.");
+        // fresh phone needs to get past the welcome screen.
+        Console.WriteLine(seeded.ActivationCodeDisplay is { } demoCode
+            ? $"Demo activation: username {DemoSeeder.WorkerUsername}, code {demoCode}."
+            : $"Demo activation: username {DemoSeeder.WorkerUsername}, and the live code's "
+              + "plaintext is not stored — issue him a new one from /company.");
+
+        if (!useFixedDemoCode && seeded.ActivationCodeDisplay is not null)
+        {
+            // The whole reason this branch prints anything at all. On a laptop the code is
+            // written down in docs/demo-script.md; here it exists only in this database.
+            //
+            // Deliberately NOT "you will never see this again": a live code keeps its plaintext
+            // in activation_code.code_display, so `seed` and /company can both read it back. A
+            // warning that overstates the loss is a warning an operator learns to disbelieve.
+            Console.WriteLine(
+                "            That code was drawn for this host, not taken from the repository, "
+                + "and nothing outside this database holds a copy — note it now, or read it back "
+                + "from /company (`invite-admin` is how you get in). If it has been spent joining "
+                + "a phone, the next `seed` mints and prints another.");
+        }
     }
 
     return;

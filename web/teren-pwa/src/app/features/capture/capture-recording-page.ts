@@ -189,6 +189,26 @@ export class CaptureRecordingPage implements OnDestroy {
    * one can tell that it no longer owns this component and write nothing.
    */
   private salvageGeneration = 0;
+  /**
+   * Bumped by every {@link begin}, and by every path that gives up the screen.
+   *
+   * **This exists because `begin()` awaits, and one of its awaits is a network round trip.** A
+   * correction has to find out which site the corrected day belongs to, and on a Dexie miss that
+   * goes to `ArchiveService.getEntry` — bounded only by `API_TIMEOUT_MS`, so thirty seconds on a
+   * bad connection. Throughout that wait the screen is on, Otkaži is enabled and the back gesture
+   * works; without this check the lookup's answer would then open the microphone on a component
+   * that no longer exists, with nothing left on screen to stop it.
+   *
+   * What made it worse than an orphaned recorder: the chunks land under a *correction* session, so
+   * `EntryStore.rescue` assembles them into a draft and `queueAbandonedDrafts` sends it after its
+   * grace period — a correction of a client's day, carrying whatever the phone happened to hear,
+   * delivered to that client. Found by review of `fc5737f`.
+   *
+   * A counter and not a boolean, so a second `begin()` also invalidates the first one's pending
+   * awaits rather than both racing to own `entryId`.
+   */
+  private beginGeneration = 0;
+  private destroyed = false;
 
   constructor() {
     // The recorder can lose the microphone at any moment — an incoming call, the OS reclaiming
@@ -215,6 +235,11 @@ export class CaptureRecordingPage implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    // Before anything else: any await still in flight inside `begin()` has lost its claim on this
+    // screen. See `beginGeneration`.
+    this.destroyed = true;
+    this.beginGeneration += 1;
+
     // Leaving mid-recording — the back gesture, a route change, the app shell tearing down — must
     // keep the take. The chunks are already in the store, so this releases the microphone and
     // assembles them; if the page dies before that finishes, the start-up sweep does it instead.
@@ -237,6 +262,7 @@ export class CaptureRecordingPage implements OnDestroy {
     // assembling must not write over its state — least of all null its entry id, which would
     // leave the new recording with a stop button that does nothing.
     this.salvageGeneration += 1;
+    const generation = (this.beginGeneration += 1);
     this.tooShort.set(false);
     this.saveFailed.set(false);
     this.salvagedEntryId.set(null);
@@ -244,6 +270,12 @@ export class CaptureRecordingPage implements OnDestroy {
     this.recorder.reset();
 
     if (this.correctionId !== null && !(await this.resolveTarget(this.correctionId))) {
+      return;
+    }
+    // The correction lookup above can take a network round trip, and Otkaži and the back gesture
+    // both work while it runs. If either happened, this take no longer owns the screen and the
+    // microphone must not open.
+    if (!this.stillMine(generation)) {
       return;
     }
 
@@ -282,6 +314,16 @@ export class CaptureRecordingPage implements OnDestroy {
       this.actions.record(ACTIONS.captureRecordStart, {
         outcome: 'fail',
         detail: { reason: 'storage' },
+      });
+      return;
+    }
+
+    // `beginCapture` awaits Dexie, which is milliseconds rather than a round trip — but the same
+    // rule applies, and an empty session left behind would be assembled by the start-up sweep into
+    // a draft of a day nobody recorded. So it is discarded rather than merely abandoned.
+    if (!this.stillMine(generation)) {
+      await this.entries.discardCapture(entryId).catch(() => {
+        // Nothing on screen to tell, and nothing was recorded under it.
       });
       return;
     }
@@ -409,6 +451,7 @@ export class CaptureRecordingPage implements OnDestroy {
    */
   protected async cancel(): Promise<void> {
     this.leaving = true;
+    this.beginGeneration += 1;
     this.recorder.cancel();
     const entryId = this.entryId;
     this.entryId = null;
@@ -420,6 +463,7 @@ export class CaptureRecordingPage implements OnDestroy {
 
   protected async leave(): Promise<void> {
     this.leaving = true;
+    this.beginGeneration += 1;
     this.recorder.reset();
     await this.router.navigate(['/'], { replaceUrl: true });
   }
@@ -494,6 +538,17 @@ export class CaptureRecordingPage implements OnDestroy {
    * no path from here to `beginCapture` with a site this method did not resolve, so a correction
    * can never be filed against the selected site by accident.
    */
+  /**
+   * Whether the take that started at this generation still owns the screen.
+   *
+   * Three ways it can stop owning it, and all three are things a man does with his thumb: Otkaži,
+   * the back gesture (which destroys the component), or starting another take. See
+   * {@link beginGeneration}.
+   */
+  private stillMine(generation: number): boolean {
+    return generation === this.beginGeneration && !this.leaving && !this.destroyed;
+  }
+
   private async resolveTarget(correctionId: string): Promise<boolean> {
     this.targetUnknown.set(false);
     this.resolving.set(true);

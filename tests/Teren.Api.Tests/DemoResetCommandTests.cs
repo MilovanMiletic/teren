@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using Teren.Infrastructure.Tenancy;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Teren.Api.Maintenance;
 using Teren.Api.Tests.Infrastructure;
@@ -91,7 +92,7 @@ public sealed class DemoResetCommandTests(TerenTestApp app)
         // The ordinary case, so the fix above cannot have been bought by breaking it.
         await using var scratch = await app.CreateScratchDatabaseAsync();
         var connectionString = scratch.Database.GetConnectionString()!;
-        await DemoSeeder.SeedAsync(scratch, TerenTestApp.DeviceToken, publishDemoCode: true, Ct);
+        await DemoSeeder.SeedAsync(scratch, TerenTestApp.DeviceToken, useFixedDemoCode: true, Ct);
 
         var exitCode = await RunAsync(
             connectionString,
@@ -102,7 +103,63 @@ public sealed class DemoResetCommandTests(TerenTestApp app)
         (await CountAsync(scratch, "SELECT count(*)::int AS \"Value\" FROM device")).ShouldBe(1);
     }
 
+    [Fact]
+    public async Task A_Development_reset_puts_the_published_code_back()
+    {
+        // The laptop case, unchanged by the 2026-09-03 decision and pinned so it stays that way:
+        // `reset-demo` is what the founder reaches for when a demo has been given, and what comes
+        // out of it has to be the code docs/demo-script.md and the demo film both name.
+        await using var scratch = await app.CreateScratchDatabaseAsync();
+        var connectionString = scratch.Database.GetConnectionString()!;
+
+        var exitCode = await RunAsync(
+            connectionString,
+            "Development",
+            [DemoResetGuard.CommandName, DemoResetGuard.ConfirmFlag]);
+
+        exitCode.ShouldBe(0);
+        (await LiveCodeDisplayAsync(scratch)).ShouldBe(DemoSeeder.DemoActivationCodeDisplay);
+    }
+
+    [Fact]
+    public async Task A_reset_enabled_non_Development_host_does_not_get_the_published_code()
+    {
+        // **The hole this closed.** `reset-demo` is refused outside Development *unless*
+        // Demo:ResetEnabled says otherwise — a documented, supported configuration for a deployed
+        // demo box. The re-seed used to ask for the published code unconditionally, so the one
+        // command a founder reaches for to fix the demo on that box would have put the
+        // repository's credential straight back, minutes after `seed` had kept it off.
+        await using var scratch = await app.CreateScratchDatabaseAsync();
+        var connectionString = scratch.Database.GetConnectionString()!;
+
+        var exitCode = await RunAsync(
+            connectionString,
+            "Demo",
+            [DemoResetGuard.CommandName, DemoResetGuard.ConfirmFlag],
+            resetEnabled: true);
+
+        exitCode.ShouldBe(0);
+
+        var live = await LiveCodeDisplayAsync(scratch);
+
+        // A code, and not that one: a reset that left the demo unjoinable would defeat the point
+        // of the command just as thoroughly.
+        live.ShouldNotBeNull();
+        live.ShouldNotBe(DemoSeeder.DemoActivationCodeDisplay);
+        Teren.Core.Identity.ActivationCodeFormat.TryParse(live, out _).ShouldBeTrue();
+    }
+
     // ---------------------------------------------------------------- harness
+
+    private static async Task<string?> LiveCodeDisplayAsync(DbContext db) =>
+        (await db.Database.SqlQueryRaw<string?>(
+            """
+            SELECT code_display AS "Value" FROM activation_code
+             WHERE user_id = {0} AND consumed_at IS NULL AND superseded_at IS NULL
+               AND expires_at > now()
+            """,
+            DemoSeeder.WorkerId).ToListAsync(Ct))
+        .SingleOrDefault();
 
     /// <summary>
     /// Builds the smallest host the command needs — both DbContexts, wired exactly as Program.cs
@@ -117,12 +174,21 @@ public sealed class DemoResetCommandTests(TerenTestApp app)
     /// </para>
     /// </summary>
     private static async Task<int> RunAsync(
-        string connectionString, string environment, string[] args)
+        string connectionString, string environment, string[] args, bool resetEnabled = false)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
             EnvironmentName = environment,
         });
+
+        // The setting that makes this command runnable on a host that is not Development. It is
+        // the whole reason the demo code's Development gate has to be read from the environment
+        // here rather than assumed from "the guard let me through".
+        builder.Configuration.AddInMemoryCollection(
+            new Dictionary<string, string?>
+            {
+                [DemoResetGuard.EnabledSetting] = resetEnabled ? "true" : "false",
+            });
 
         builder.Services.AddScoped<Teren.Core.Tenancy.TenantContext>();
 

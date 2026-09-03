@@ -335,9 +335,18 @@
           </div>
 
           <!--
-            Below 1024 the same four controls the column heads carry, as pills: one tap on the word
+            Below 1024, **three** of the four column controls travel as pills: one tap on the word
             sorts, one on the funnel filters. The filter matches the words the row shows, so typing
             "greške" into STANJE is how a founder on a phone asks for only the sites with a problem.
+
+            **DANA is deliberately not here, and the reason is a founder rule with a measurement
+            behind it.** The compact pill bar is one row and does not scroll (CLAUDE.md,
+            2026-09-02); four pills came to 365 px of words against a 358 px column at 390 — so
+            `Gradilište` sat on the first line and `Dana` dropped to a second, which is the
+            `flex-wrap` fallback showing on exactly the device class the rule exists for. Three fit
+            at 360 with room to spare. DANA lost its pill rather than another because the question
+            a founder asks a phone is "is anything wrong", not "which site is busiest" — and the
+            column is still sortable from its own head at 1024 and up, where the table lives.
           -->
           @if (!viewport.expanded()) {
             <div class="column-bar" role="group" [attr.aria-label]="t('health.sites.caption')">
@@ -370,16 +379,6 @@
                 (toggled)="sortBy('site')"
                 (sorted)="setSort('site', $event)"
                 (filterChanged)="setFilter('site', $event)"
-              />
-              <app-column-menu
-                variant="pill"
-                kind="number"
-                [label]="t('health.sites.days')"
-                [sort]="controls.directionFor('days')"
-                [filter]="controls.filterFor('days')"
-                (toggled)="sortBy('days')"
-                (sorted)="setSort('days', $event)"
-                (filterChanged)="setFilter('days', $event)"
               />
             </div>
           }

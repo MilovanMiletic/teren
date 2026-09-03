@@ -439,7 +439,7 @@ public sealed class ActivationTests(TerenTestApp app) : ApiTestBase(app)
         // agree and only the endpoint judges all three.
         await using (var db = App.CreateDbContext(companyId: null))
         {
-            await DemoSeeder.SeedAsync(db, deviceToken: null, publishDemoCode: true, ct: Ct);
+            await DemoSeeder.SeedAsync(db, deviceToken: null, useFixedDemoCode: true, ct: Ct);
         }
 
         var response = await Activate(
@@ -456,7 +456,7 @@ public sealed class ActivationTests(TerenTestApp app) : ApiTestBase(app)
         // still refuse the second phone, or the demo code is a permanent password.
         await using (var db = App.CreateDbContext(companyId: null))
         {
-            await DemoSeeder.SeedAsync(db, deviceToken: null, publishDemoCode: true, ct: Ct);
+            await DemoSeeder.SeedAsync(db, deviceToken: null, useFixedDemoCode: true, ct: Ct);
         }
 
         (await Activate(DemoSeeder.WorkerUsername, DemoSeeder.DemoActivationCodeDisplay))
@@ -464,6 +464,36 @@ public sealed class ActivationTests(TerenTestApp app) : ApiTestBase(app)
 
         (await Activate(DemoSeeder.WorkerUsername, DemoSeeder.DemoActivationCodeDisplay))
             .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task A_deployed_host_draws_a_code_that_still_joins_a_phone()
+    {
+        // The other half of the 2026-09-03 decision, and the half that is easy to get wrong in a
+        // way no shape assertion catches. "Not DEM0-TEST" is worthless on its own — a demo whose
+        // code is eight characters nobody can redeem is a demo that cannot be given at all. So it
+        // is asserted the same way the published one is: through the real endpoint, which is the
+        // only judge of the folding, the hash and the expiry at once.
+        string? drawn;
+
+        await using (var db = App.CreateDbContext(companyId: null))
+        {
+            drawn = (await DemoSeeder.SeedAsync(db, deviceToken: null, ct: Ct))
+                .ActivationCodeDisplay;
+        }
+
+        drawn.ShouldNotBeNull();
+        drawn.ShouldNotBe(DemoSeeder.DemoActivationCodeDisplay);
+
+        // Not merely absent from the print-out: the credential in the repository does not open
+        // this host. This is the assertion the whole increment exists for.
+        (await Activate(DemoSeeder.WorkerUsername, DemoSeeder.DemoActivationCodeDisplay))
+            .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+
+        var response = await Activate(DemoSeeder.WorkerUsername, drawn);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.TextAsync());
+        (await response.JsonAsync()).GetGuid("user_id").ShouldBe(DemoSeeder.WorkerId);
     }
 
     // ------------------------------------------------------------ helpers

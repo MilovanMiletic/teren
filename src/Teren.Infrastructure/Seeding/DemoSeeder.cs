@@ -6,6 +6,27 @@ using Teren.Core.Reporting;
 namespace Teren.Infrastructure.Seeding;
 
 /// <summary>
+/// What a seed did, plus the one thing it produces that cannot be looked up afterwards.
+/// <para>
+/// <b><see cref="ActivationCodeDisplay"/> is why this is a record and not an <c>int</c>.</b> On a
+/// host that mints a random demo code, the plaintext exists in this value and in the
+/// <c>code_display</c> column and nowhere else — not in the repository, not in a document, not in
+/// anybody's head. A caller that drops it has given away a demo nobody can join.
+/// </para>
+/// </summary>
+/// <param name="RowsWritten">
+/// Rows written, which is deliberately not "rows inserted": the count includes the withdrawal
+/// stamps a re-seed cleared on rows that already existed. Zero means a re-seed found the demo
+/// already present and usable.
+/// </param>
+/// <param name="ActivationCodeDisplay">
+/// The code the demo worker can be joined with right now, in the dashed form a man reads and
+/// types — the one this run minted, or the live one it found and left alone. Null only if a live
+/// code exists whose plaintext was already cleared, which no writer in the product produces.
+/// </param>
+public sealed record DemoSeedResult(int RowsWritten, string? ActivationCodeDisplay);
+
+/// <summary>
 /// Seeds the demo company, its three sites and the entries the distributor demos from his
 /// phone. This is a sales asset, not test data: everything must look like a real Serbian
 /// plumbing/heating contractor's book of work.
@@ -47,11 +68,19 @@ public static class DemoSeeder
     public const string DemoDeviceName = "Zoranov telefon";
 
     /// <summary>
-    /// The demo worker's activation code, in canonical (folded) form — the 8 characters that get
-    /// hashed. <b>This value is a contract</b>, in the same class as the three demo project ids:
-    /// it is written down in CLAUDE.md and in <c>docs/demo-script.md</c>, and the distributor
-    /// types it once to join a fresh phone. Change it and the written-down code stops working
-    /// with nothing anywhere saying why.
+    /// The demo worker's activation code <b>on a Development host</b>, in canonical (folded) form
+    /// — the 8 characters that get hashed. <b>This value is a contract</b>, in the same class as
+    /// the three demo project ids: it is written down in CLAUDE.md and in
+    /// <c>docs/demo-script.md</c>, <c>tools/demo-video/config.mjs</c> drives the demo film with
+    /// it, and the distributor types it once to join a fresh phone. Change it and the
+    /// written-down code stops working with nothing anywhere saying why.
+    /// <para>
+    /// <b>It exists only where the environment is Development</b> (founder decision, 2026-09-03).
+    /// A code published in a public repository is a real credential to the demo company, and the
+    /// justification for publishing one — "a fresh install lands on <c>/welcome</c> and there is
+    /// no admin screen to issue a code from until F6" — expired when F6 shipped. Everywhere else
+    /// <see cref="SeedAsync"/> draws a random one; see <see cref="UsesFixedActivationCode"/>.
+    /// </para>
     /// <para>
     /// Valid Crockford base32 and obviously demo material. It is shown as <c>DEM0-TEST</c>; a man
     /// who reads that as <c>DEMO-TEST</c> and types the letter O is also let in, because
@@ -80,27 +109,57 @@ public static class DemoSeeder
     /// </summary>
     private static readonly TimeSpan DemoActivationCodeLifetime = TimeSpan.FromDays(3650);
 
-    /// <param name="publishDemoCode">
-    /// Whether to mint the fixed, **repo-published** demo activation code.
+    /// <summary>
+    /// Whether this host mints the fixed, repo-published <see cref="DemoActivationCode"/> or draws
+    /// a random one — decided from the environment name and nothing else.
+    /// <para>
+    /// <b>One function because two commands seed.</b> <c>seed</c> is the obvious one;
+    /// <c>reset-demo</c> re-seeds too, and it is <em>explicitly</em> runnable on a non-Development
+    /// host via <c>Demo:ResetEnabled</c> (see <see cref="DemoResetGuard"/>). This condition
+    /// written out twice is a condition that will be right once, and the way it would be wrong is
+    /// the published credential quietly coming back on the box it was removed from.
+    /// </para>
+    /// </summary>
+    public static bool UsesFixedActivationCode(string? environmentName) =>
+        string.Equals(
+            environmentName,
+            DemoResetGuard.DevelopmentEnvironment,
+            StringComparison.OrdinalIgnoreCase);
+
+    /// <param name="useFixedDemoCode">
+    /// Whether the demo worker's code is the fixed, <b>repo-published</b>
+    /// <see cref="DemoActivationCode"/>, or one freshly drawn from
+    /// <see cref="ActivationCodeFormat.Generate"/> — the same generator, the same alphabet, the
+    /// same blocklist and the same storage as a code an admin issues from <c>/company</c>. There
+    /// is deliberately no second code path: how the eight characters are chosen is the only
+    /// difference between the two.
     ///
+    /// <para>
+    /// <b>Either way a code is minted.</b> "Mint nothing" was never a safe third option — a demo
+    /// worker with no live code is a demo that stops at the welcome screen and reports success
+    /// while it does — it was only the least-bad way to keep the published one off a public box
+    /// before there was a random one to put there instead.
+    /// </para>
     /// <para>
     /// <b>Defaults to false, and the default is the point.</b> <see cref="DemoActivationCode"/> is
     /// written down in this file and in <c>docs/demo-script.md</c>, so it is a real credential to
     /// the demo company that anyone who can read the repository already holds. On a laptop that
-    /// costs nothing. **The moment this company is behind a public URL, it is a way in** — and
-    /// redeeming it revokes the demo phone until the next seed.
-    /// </para>
-    /// <para>
-    /// So the caller has to ask for it, and only the development host does. Forgetting to pass it
-    /// leaves the demo worker with no code — visible immediately, and fixed by issuing one from
-    /// <c>/company</c>. Defaulting the other way would leave the credential live on a staging box
-    /// nobody remembered to think about, which is the failure that cannot be noticed.
+    /// costs nothing; the moment that company is behind a public URL it is a way in. So the caller
+    /// has to ask for it, and only a Development host does
+    /// (<see cref="UsesFixedActivationCode"/>). Forgetting to pass it costs a printout, not a
+    /// credential.
     /// </para>
     /// </param>
-    public static async Task<int> SeedAsync(
+    /// <returns>
+    /// Rows written, and the code the demo worker can now be joined with. <b>On the random path
+    /// that string is the only copy outside the database</b>, so a caller that does not print it
+    /// has thrown it away — <c>code_display</c> is readable from <c>/company</c>, but reaching
+    /// <c>/company</c> on the demo company needs an admin password the seed does not create.
+    /// </returns>
+    public static async Task<DemoSeedResult> SeedAsync(
         DbContext db,
         string? deviceToken = null,
-        bool publishDemoCode = false,
+        bool useFixedDemoCode = false,
         CancellationToken ct = default)
     {
         var inserted = 0;
@@ -434,9 +493,9 @@ public static class DemoSeeder
         //     success. Raw SQL on this connection is the idiom DemoReset already uses throughout.
         //   * app_user.company_id and device.company_id reference the company row above, which
         //     until the SaveChanges on the line before this one exists only in the change tracker.
-        inserted += await SeedIdentityAsync(db, deviceToken, publishDemoCode, now, ct);
+        var identity = await SeedIdentityAsync(db, deviceToken, useFixedDemoCode, now, ct);
 
-        return inserted;
+        return new DemoSeedResult(inserted + identity.Inserted, identity.ActivationCodeDisplay);
     }
 
     /// <summary>
@@ -461,8 +520,12 @@ public static class DemoSeeder
     /// overwritten; a row the founder edited by hand stays edited.
     /// </para>
     /// </summary>
-    private static async Task<int> SeedIdentityAsync(
-        DbContext db, string? deviceToken, bool publishDemoCode, DateTime now, CancellationToken ct)
+    private static async Task<(int Inserted, string? ActivationCodeDisplay)> SeedIdentityAsync(
+        DbContext db,
+        string? deviceToken,
+        bool useFixedDemoCode,
+        DateTime now,
+        CancellationToken ct)
     {
         var inserted = 0;
 
@@ -509,19 +572,18 @@ public static class DemoSeeder
             ct);
 
         // The demo cannot be given without this. F4's canMatch gate sends a browser with no
-        // session to /welcome, and there is no admin screen to issue a code from until F6 — so a
-        // seeded demo with no live code is a demo that stops at the welcome screen.
-        if (publishDemoCode)
-        {
-            inserted += await SeedDemoActivationCodeAsync(db, now, ct);
-        }
+        // session to /welcome, so a seeded demo with no live code is a demo that stops at the
+        // welcome screen. Unconditional: only the VALUE depends on the host.
+        var (codeRows, codeDisplay) = await SeedDemoActivationCodeAsync(
+            db, useFixedDemoCode, now, ct);
+        inserted += codeRows;
 
         if (string.IsNullOrWhiteSpace(deviceToken))
         {
             // A legitimate configuration, not a failure: it is the D7 end state, where the PWA
             // stops carrying a baked-in token and the demo device is retired. Program.cs says so
             // once at start-up; the seed simply provisions no phone.
-            return inserted;
+            return (inserted, codeDisplay);
         }
 
         // The one deliberate exception to "existing rows are never updated". Everything else the
@@ -556,17 +618,27 @@ public static class DemoSeeder
              CredentialTokens.Hash(deviceToken), now],
             ct);
 
-        return inserted;
+        return (inserted, codeDisplay);
     }
 
     /// <summary>
-    /// The demo worker's one live activation code, with the fixed <see cref="DemoActivationCode"/>
-    /// value the demo script tells the distributor to type.
+    /// The demo worker's one live activation code: the fixed <see cref="DemoActivationCode"/> the
+    /// demo script tells the distributor to type, or a freshly drawn one everywhere else.
     /// <para>
     /// <b>Re-minted, in the same spirit as the three withdrawal stamps above.</b> A consumed,
     /// superseded or expired code leaves the demo unjoinable while <c>seed</c> reports success —
     /// the same silent one-way door that revoking the demo phone used to be. Consuming the code
     /// is not an accident either: it is what the demo script now asks the distributor to do once.
+    /// </para>
+    /// <para>
+    /// <b>The two paths differ in exactly one place: what counts as a live code worth keeping.</b>
+    /// On the fixed path anything live that is not the fixed code is retired, because the whole
+    /// point is that the written-down code comes back. On the random path a live, unexpired code
+    /// is <em>left alone</em> — whether an earlier seed or an admin issued it — because the code
+    /// this run happened to draw is worth nothing and rotating on every seed would invalidate the
+    /// one an operator wrote down. That is also what keeps a second <c>seed</c> a no-op on a
+    /// deployed box, and it is why the display value has to be read back when nothing was minted:
+    /// the string this call generated is then not in the database at all.
     /// </para>
     /// <para>
     /// <b>The discipline here is <c>ActivationCodes.IssueAsync</c>'s, deliberately duplicated
@@ -580,13 +652,19 @@ public static class DemoSeeder
     /// plaintext, so the supersede nulls <c>code_display</c> in the same statement.
     /// </para>
     /// </summary>
-    private static async Task<int> SeedDemoActivationCodeAsync(
-        DbContext db, DateTime now, CancellationToken ct)
+    private static async Task<(int Rows, string? Display)> SeedDemoActivationCodeAsync(
+        DbContext db, bool useFixedDemoCode, DateTime now, CancellationToken ct)
     {
-        var hash = CredentialTokens.Hash(DemoActivationCode);
+        var code = useFixedDemoCode ? DemoActivationCode : ActivationCodeFormat.Generate();
+        var display = ActivationCodeFormat.Format(code);
+        var hash = CredentialTokens.Hash(code);
 
-        // In the steady state — the demo code live and unexpired — this matches nothing, which is
-        // what keeps a second `seed` a no-op.
+        // In the steady state — a live, unexpired code already there — this matches nothing, which
+        // is what keeps a second `seed` a no-op.
+        //
+        // The hash half of the predicate is gated on {3} rather than left to compare unequal: on
+        // the random path a fresh draw never matches, so leaving it in would retire the live code
+        // and mint a new one on every single seed.
         var superseded = await db.Database.ExecuteSqlRawAsync(
             """
             UPDATE activation_code
@@ -594,9 +672,9 @@ public static class DemoSeeder
              WHERE user_id = {0}
                AND consumed_at IS NULL
                AND superseded_at IS NULL
-               AND NOT (code_hash = {2} AND expires_at > {1})
+               AND (expires_at <= {1} OR ({3} AND code_hash <> {2}))
             """,
-            [WorkerId, now, hash],
+            [WorkerId, now, hash, useFixedDemoCode],
             ct);
 
         // The NOT EXISTS is what makes a re-seed idempotent; the ON CONFLICT is the database
@@ -620,10 +698,30 @@ public static class DemoSeeder
             """,
             [
                 Guid.NewGuid(), CompanyId, WorkerId, CompanyAdminId, hash,
-                DemoActivationCodeDisplay, now, now.Add(DemoActivationCodeLifetime),
+                display, now, now.Add(DemoActivationCodeLifetime),
             ],
             ct);
 
-        return superseded + minted;
+        if (minted > 0)
+        {
+            return (superseded + minted, display);
+        }
+
+        // Nothing was minted, so a live unexpired code was already there and `display` names a
+        // string that exists nowhere. Read back what the worker can actually be joined with —
+        // otherwise `seed` would print a code that does not work, which is worse than printing
+        // none. Null is possible in principle (ck_activation_code_display_cleared only forces the
+        // plaintext of a DEAD code to be gone) and is reported as null rather than guessed at.
+        var live = await db.Database.SqlQueryRaw<string?>(
+            """
+            SELECT code_display AS "Value" FROM activation_code
+             WHERE user_id = {0}
+               AND consumed_at IS NULL
+               AND superseded_at IS NULL
+               AND expires_at > {1}
+            """,
+            WorkerId, now).ToListAsync(ct);
+
+        return (superseded, live.Count == 1 ? live[0] : null);
     }
 }
