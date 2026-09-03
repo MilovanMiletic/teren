@@ -74,6 +74,12 @@
           entry, this stops the whole queue, and no amount of confirming will move anything while
           the server is refusing this phone.
 
+          **A fallback since 2026-09-03, not the mechanism.** By founder decision a refused phone
+          signs itself out and the sentence he reads is on `/welcome`. What is left for this row is
+          one case: `unauthenticated` rows an older build wrote, carried across an upgrade.
+          `home-page.ts` has the full note, including the two cases this comment first claimed and
+          that cannot actually happen.
+
           It is a notice and a way forward, never a gate — the record button above is untouched and
           he can go on capturing the day. That is the point: the phone is the source of truth until
           the server confirms receipt (PROJECT.md principle 3), so being refused is a reason to

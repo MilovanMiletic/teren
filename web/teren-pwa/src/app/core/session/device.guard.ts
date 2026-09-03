@@ -28,12 +28,27 @@ import { SessionService } from './session.service';
  * `async` — to ask `/api/me` whether the credential is still good, say — should read
  * `device.guard.spec.ts`, which fails on the shape of the return value for exactly that reason.
  *
- * ## What is deliberately *not* checked here
+ * ## What is deliberately *not* checked here, and what changed on 2026-09-03
  *
- * **Revocation.** A revoked device keeps its session and keeps reaching the record button. A
- * foreman whose admin fat-fingered a revoke at four in the afternoon must still capture the day;
- * the evidence sits in the outbox and moves the moment he is given a new code. Revocation
- * surfaces as a notice on Home and the pending screen (F8), never as a locked door.
+ * **Revocation, still.** This guard reads one `localStorage` row and asks the server nothing — an
+ * `async` guard on this path is hazard H3, and it would put a network round trip in front of the
+ * record button.
+ *
+ * What it used to mean, and no longer does, is that *nothing* shut the door. This comment said "a
+ * revoked device keeps its session and keeps reaching the record button... revocation surfaces as
+ * a notice on Home and the pending screen (F8), never as a locked door", on the reasoning that a
+ * foreman whose admin fat-fingered a revoke at four in the afternoon must still capture the day.
+ * **The founder reversed that on 2026-09-03** — he revoked a worker's phone from
+ * `/company/worker/:workerId`, watched the phone carry on as if nothing had happened, was offered
+ * the milder policies with that reasoning stated, and chose a full sign-out. It is a decision, not
+ * drift.
+ *
+ * So the door *is* shut now, and this guard is still not the thing that shuts it. A refusal is a
+ * fact only the server holds; it reaches the phone as a 401 on the next contact, and
+ * `core/session/device-refusal.service.ts` acts on it by discarding the credential. One frame
+ * later this guard answers "no session" and behaves exactly as it always has. **Nothing local is
+ * deleted** — PROJECT.md principle 3 is untouched, the unsent day waits on the phone, and
+ * re-activating as the same worker sets it moving again.
  */
 
 /**
@@ -120,9 +135,13 @@ export const requiresNoAdminSession: CanMatchFn = (): true | UrlTree => {
  * — must never be shown a sign-in screen for a sign-in he does not have and cannot perform. He is
  * sent on to wherever the link said he was going, or to the record button.
  *
- * `/activate` is deliberately **not** guarded by this: it is the re-activation door, and the
- * phone that needs it most is one that already holds a session the server has revoked. `/login`
- * is no longer guarded by it either — see {@link requiresNoAdminSession} for the day that cost.
+ * `/activate` is deliberately **not** guarded by this: it is the re-activation door, and it has to
+ * open for a phone that still holds a session. Until 2026-09-03 the phone that needed it most was
+ * one holding a session the server had already revoked; since the sign-out decision that phone
+ * arrives here with no session at all and would be admitted anyway. The rule stands for the case
+ * that remains — a working phone being handed to another worker, and a man who taps the pending
+ * screen's "Unesi novi kod" before the next 401 has landed. `/login` is no longer guarded by this
+ * either — see {@link requiresNoAdminSession} for the day that cost.
  *
  * **This now guards exactly one route.** Keep it that way, or read that comment first: the
  * question it asks is about a *phone*, and only Welcome is a screen about a phone.

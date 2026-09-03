@@ -528,6 +528,10 @@
       "signIn": "Sign in",
       "joinWithCode": "Join a site with a code",
       "codeHint": "You get the join code from the owner of the company.",
+      "refused": {
+        "title": "The server is not accepting this phone",
+        "body": "This phone has been signed out. Nothing was deleted — recordings and entries that have not been sent are waiting on the phone. Enter a new code and sending carries on."
+      },
       "aside": {
         "worker": {
           "title": "On site",
@@ -830,7 +834,7 @@
       "unconfirmed": "The server did not answer, so it is not known whether the phone was withdrawn. Refresh before trying again.",
       "confirm": {
         "title": "Withdraw {{phone}} — {{name}}?",
-        "body": "From its next contact the server refuses that phone. He keeps recording and nothing on the phone is deleted, but what he has recorded stops being sent until he joins again with a new code.",
+        "body": "From its next contact the server refuses that phone, so the phone signs itself out and the record button goes with it. Nothing on the phone is deleted — everything he has recorded waits there and is sent once he joins again with a new code.",
         "action": "Withdraw the phone"
       },
       "failed": "The phones could not be read."
@@ -924,7 +928,7 @@
       },
       "about": {
         "title": "What suspending does",
-        "body": "A suspended customer’s phones and sign-ins stop working on their next request — no waiting, no cache. His foremen can still record; nothing they captured gets through until you resume him."
+        "body": "A suspended customer’s phones and sign-ins stop working on their next request — no waiting, no cache. The phones sign themselves out, so his foremen stop recording; nothing on a phone is deleted, but after you resume him every phone has to join again with a new code."
       },
       "add": {
         "open": "Add a customer",
@@ -939,8 +943,8 @@
         }
       },
       "confirm": {
-        "suspend": "Suspend {{name}}? Every phone and sign-in of theirs stops working on the next request. His foremen keep recording, but nothing reaches the server until you resume him.",
-        "resume": "Resume {{name}}? His phones and sign-ins start working again, and whatever his foremen recorded meanwhile will be sent."
+        "suspend": "Suspend {{name}}? Every phone and sign-in of theirs stops working on the next request. The phones sign themselves out and his foremen stop recording; nothing on a phone is deleted, but after you resume him every phone has to join again with a new code.",
+        "resume": "Resume {{name}}? Sign-ins work again straight away. Phones that signed themselves out meanwhile have to join again with a new code — only then is what they recorded sent."
       },
       "action": {
         "failed": "That did not go through"

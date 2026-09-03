@@ -96,10 +96,15 @@ export const routes: Routes = [
      * His own account (F5): name, username, company, phone, language.
      *
      * Gated like every other screen inside the app, and **before** the wildcard. It is not an
-     * auth screen — a man with no credential has no profile to read — but neither is it a locked
-     * door: the guard asks only whether this phone holds a session, never whether the server
-     * still accepts it (decision 8), so a revoked device opens this screen and reads the sentence
-     * that says the server would not confirm it.
+     * auth screen — a man with no credential has no profile to read. The guard asks only whether
+     * this phone holds a session, never whether the server still accepts it (hazard H3: a guard
+     * that awaits the network hangs when the network does).
+     *
+     * This used to add "so a revoked device opens this screen and reads the sentence that says the
+     * server would not confirm it" (decision 8). **Founder decision, 2026-09-03**: a refused phone
+     * signs itself out, so the first 401 this screen's own `/api/me` call receives takes him to
+     * `/welcome` instead. The guard is unchanged; what changed is that there is now a session to
+     * lose.
      */
     path: 'profile',
     canMatch: [requiresDevice],
@@ -121,9 +126,15 @@ export const routes: Routes = [
   {
     /*
      * The re-activation door, and **the one route with no guard at all** (F4). It has to keep
-     * working while a session exists, because the phone that needs it most is one whose
-     * credential the server has already revoked: `requiresNoDevice` here would lock a revoked
-     * foreman out of the only screen that can let him back in.
+     * working while a session exists.
+     *
+     * Until 2026-09-03 the reason was that the phone needing it most held a session the server had
+     * already revoked, and `requiresNoDevice` here would have locked a revoked foreman out of the
+     * only screen that could let him back in. Since the sign-out decision that phone arrives with
+     * no session at all — but the rule stands for the cases that remain: a working phone handed to
+     * another worker, and the man who taps the pending screen's "Unesi novi kod" before the next
+     * 401 has landed. A guard that has to be reasoned about on every policy change is a guard
+     * worth not having on this door.
      */
     path: 'activate',
     loadComponent: () => import('./features/auth/activate-page').then((m) => m.ActivatePage),

@@ -8,6 +8,7 @@ import {
 import { Injectable, inject } from '@angular/core';
 import { filter, firstValueFrom, tap, timeout } from 'rxjs';
 
+import { DeviceRefusalService } from '../session/device-refusal.service';
 import { API_CONFIG } from './api-config';
 import { UploadFailure } from './api-failure';
 import {
@@ -38,6 +39,22 @@ import {
  * straight to object storage with a presigned URL and, crucially, **no bearer token**: a
  * presigned request carries its signature in the query string, and an `Authorization` header
  * alongside it is how S3 is told to reject the request.
+ *
+ * ## The one thing it tells anybody, and why that is still "decides nothing"
+ *
+ * Every call that carries this phone's bearer runs through {@link TerenApiClient.bearing}, which
+ * hands a **401 and nothing else** to `DeviceRefusalService` and rethrows the error unchanged. It
+ * reports a fact — *this bearer was refused* — and draws no conclusion from it: whether that ends
+ * the session, whether the man leaves the screen he is standing on, and what happens while the
+ * microphone is live are all decisions, and all of them live in that service (founder decision,
+ * 2026-09-03). Nothing about any other status, any other failure kind or any retry is decided
+ * here, exactly as before.
+ *
+ * **`putObject` is outside that group and must stay outside it.** It carries no bearer, it talks
+ * to object storage, and an S3 refusal — most often a presigned URL past its fifteen-minute TTL —
+ * says nothing whatsoever about this phone's credential. `bearer-refusal.spec.ts` scans this file
+ * and fails both ways round: a bearer-carrying method that skips the wrapper, and `putObject`
+ * acquiring either the wrapper or an auth header.
  */
 /**
  * How long a small JSON call may hang before it is abandoned.
@@ -75,6 +92,11 @@ const REPORT_STALL_MS = 60_000;
 export class TerenApiClient {
   private readonly http = inject(HttpClient);
   private readonly config = inject(API_CONFIG);
+  /**
+   * Told when a bearer is refused, and told nothing else. See the file comment: this client
+   * reports the fact and that service owns the policy.
+   */
+  private readonly refusals = inject(DeviceRefusalService);
 
   /**
    * Whether this build can talk to a server at all.
@@ -204,15 +226,17 @@ export class TerenApiClient {
       },
     );
 
-    const response = await firstValueFrom(
-      this.http.request<Blob>(request).pipe(
-        timeout({ first: API_TIMEOUT_MS, each: REPORT_STALL_MS }),
-        tap((event) => {
-          if (event.type === HttpEventType.DownloadProgress) {
-            onProgress?.(event.total ? event.loaded / event.total : null);
-          }
-        }),
-        filter((event): event is HttpResponse<Blob> => event.type === HttpEventType.Response),
+    const response = await this.bearing(this.config.deviceToken, () =>
+      firstValueFrom(
+        this.http.request<Blob>(request).pipe(
+          timeout({ first: API_TIMEOUT_MS, each: REPORT_STALL_MS }),
+          tap((event) => {
+            if (event.type === HttpEventType.DownloadProgress) {
+              onProgress?.(event.total ? event.loaded / event.total : null);
+            }
+          }),
+          filter((event): event is HttpResponse<Blob> => event.type === HttpEventType.Response),
+        ),
       ),
     );
 
@@ -255,10 +279,12 @@ export class TerenApiClient {
       { headers: this.authHeaders(), responseType: 'blob' as const },
     );
 
-    const response = await firstValueFrom(
-      this.http.request<Blob>(request).pipe(
-        timeout({ first: API_TIMEOUT_MS, each: REPORT_STALL_MS }),
-        filter((event): event is HttpResponse<Blob> => event.type === HttpEventType.Response),
+    const response = await this.bearing(this.config.deviceToken, () =>
+      firstValueFrom(
+        this.http.request<Blob>(request).pipe(
+          timeout({ first: API_TIMEOUT_MS, each: REPORT_STALL_MS }),
+          filter((event): event is HttpResponse<Blob> => event.type === HttpEventType.Response),
+        ),
       ),
     );
 
@@ -305,19 +331,60 @@ export class TerenApiClient {
   }
 
   private async get<T>(path: string): Promise<T> {
-    return firstValueFrom(
-      this.http
-        .get<T>(this.url(path), { headers: this.authHeaders() })
-        .pipe(timeout(API_TIMEOUT_MS)),
+    return this.bearing(this.config.deviceToken, () =>
+      firstValueFrom(
+        this.http
+          .get<T>(this.url(path), { headers: this.authHeaders() })
+          .pipe(timeout(API_TIMEOUT_MS)),
+      ),
     );
   }
 
   private async post<T>(path: string, body: unknown): Promise<T> {
-    return firstValueFrom(
-      this.http
-        .post<T>(this.url(path), body, { headers: this.authHeaders() })
-        .pipe(timeout(API_TIMEOUT_MS)),
+    return this.bearing(this.config.deviceToken, () =>
+      firstValueFrom(
+        this.http
+          .post<T>(this.url(path), body, { headers: this.authHeaders() })
+          .pipe(timeout(API_TIMEOUT_MS)),
+      ),
     );
+  }
+
+  /**
+   * Run one bearer-carrying call and, on a **401 only**, say so before rethrowing.
+   *
+   * ## What it does and does not do
+   *
+   * The error leaves here byte-identical — same instance, same status, same body — so every
+   * caller's classification, retry policy and screen copy are untouched. `DeviceRefusalService`
+   * decides what a refusal *means*; this is the seam that lets it hear about one at all, and it is
+   * the only place in the client that talks to anything but HTTP.
+   *
+   * ## Why the bearer is captured before the call and passed along
+   *
+   * A request can outlive the credential it was sent with — the attempt starts, the foreman is
+   * signed out, he types a fresh code, and only then does the old attempt's 401 arrive. Reported
+   * without saying which token it was about, that answer would sign him out again seconds after
+   * he had just fixed it. `config.deviceToken` is a live getter, so the value has to be taken
+   * *here*, before the await; the service compares it with the session's own and ignores a
+   * refusal that describes a credential this phone has already replaced.
+   *
+   * ## Why every bearer-carrying method routes through this and not through an interceptor
+   *
+   * `core/api/api-config.ts` gives three reasons, and its second one is fatal here as well: in
+   * production `baseUrl` is `''`, so an interceptor matching on a URL prefix would match the
+   * presigned PUT to object storage too — and an S3 refusal says nothing about this phone's
+   * credential. There are exactly four bearer-carrying funnels ({@link get}, {@link post},
+   * {@link downloadReport}, {@link fetchMedia}); `bearer-refusal.spec.ts` scans this file and
+   * fails if a fifth appears without this wrapper, or if {@link putObject} ever acquires it.
+   */
+  private async bearing<T>(bearer: string, call: () => Promise<T>): Promise<T> {
+    try {
+      return await call();
+    } catch (error) {
+      this.refusals.report(error, bearer);
+      throw error;
+    }
   }
 
   private url(path: string): string {

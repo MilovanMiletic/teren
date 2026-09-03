@@ -58,14 +58,19 @@ const REASON_KEYS: Record<Exclude<ProfileStatus, 'ok'>, string> = {
  *
  * ## What it deliberately does not have
  *
- * **A sign-out.** PROJECT.md principle 3: nothing is ever deleted locally, and a day of unsent
- * evidence outranks a wrong name on a screen. The plan's answer to "this is not me" is
+ * **A sign-out control.** PROJECT.md principle 3: nothing is ever deleted locally, and a day of
+ * unsent evidence outranks a wrong name on a screen. The answer to "this is not me" is
  * re-activation through `/activate` — which replaces the credential and touches no evidence — so
- * that is the affordance this screen offers.
+ * that is the affordance this screen offers. **A phone the *server* refuses does now sign itself
+ * out** (founder decision, 2026-09-03), and that is a different thing entirely: nobody presses it,
+ * and it still deletes nothing.
  *
- * **A revocation check.** Decision 8: a revoked device keeps reaching the record button. If the
- * server refuses this credential, that surfaces here as a sentence, never as a locked door, and
- * the guard on this route stays a pure boolean over one signal read.
+ * **A revocation check.** This screen never asks whether the credential is still good, and the
+ * guard on this route stays a pure boolean over one signal read (hazard H3). What it does is make
+ * the ordinary calls any screen makes — and the first of those to be answered 401 is what triggers
+ * the sign-out, one layer down in `TerenApiClient`. The comment here used to end "a revoked device
+ * keeps reaching the record button... never as a locked door"; that was decision 8 and the founder
+ * reversed it on 2026-09-03.
  */
 @Component({
   selector: 'app-profile-page',

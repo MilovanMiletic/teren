@@ -27,13 +27,19 @@ import {
  * authoritatively and is not allowed to, for the reason hazard H3 gives — a guard that awaits the
  * network is a guard that hangs when the network does.
  *
- * ## Signing out is real here, and only here
+ * ## Signing out removes one `localStorage` row, and the worker's twin now does the same
  *
- * There is no worker sign-out (PROJECT.md principle 3: a day of unsent evidence outranks a wrong
- * name on a screen). This is the opposite case in every respect — a password-backed credential,
- * often on a shared office tablet, guarding no local evidence at all — so {@link signOut} exists
- * and removes exactly one `localStorage` row. **It must never touch Dexie**, and there is nothing
- * in this file that could.
+ * This file used to say a sign-out was real "here, and only here", because there was no worker
+ * sign-out at all (PROJECT.md principle 3: a day of unsent evidence outranks a wrong name on a
+ * screen). **That changed by founder decision on 2026-09-03**: a phone whose credential the server
+ * refuses discards it through `SessionService.discard`, which is this method's twin and carries the
+ * identical guarantee.
+ *
+ * What has not changed is the asymmetry that matters. This is a password-backed credential, often
+ * on a shared office tablet, guarding no local evidence at all, and a person chooses to end it;
+ * over there the *server* ends it and the phone is full of evidence. Either way {@link signOut}
+ * removes exactly one `localStorage` row. **It must never touch Dexie**, and there is nothing in
+ * this file that could.
  */
 @Injectable({ providedIn: 'root' })
 export class AdminSessionService {

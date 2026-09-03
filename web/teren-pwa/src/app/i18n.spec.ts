@@ -403,11 +403,65 @@ describe('translation dictionaries', () => {
    * site.
    */
   it('says what revoking a phone costs, in both languages', () => {
-    expect(sr.company.phones.confirm.body).toMatch(/prestaje da se šalje/i);
+    /*
+     * **This spec asserted the opposite until 2026-09-03, and the copy it was pinning had become
+     * a lie.** Both sentences promised the admin that a withdrawn phone "keeps recording" (*"On i
+     * dalje snima"*), which was true of the old policy — a revoked phone kept its session and the
+     * record button, and the refusal surfaced as a notice (plan §10.3, F8). By founder decision of
+     * 2026-09-03 the phone signs itself out instead, so the man does **not** keep recording, and a
+     * confirmation dialog that says he does is the product misinforming the one person deciding
+     * whether to press it.
+     *
+     * The half that did not change is the half that matters most: **nothing on the phone is
+     * deleted.** PROJECT.md principle 3 is untouched — a sign-out clears one `localStorage` row —
+     * and that promise is pinned here in both languages, positively, alongside the claim that is
+     * now forbidden.
+     */
+    expect(sr.company.phones.confirm.body).toMatch(/odjavljuje/i);
     expect(sr.company.phones.confirm.body).toMatch(/ne briše/i);
+    expect(sr.company.phones.confirm.body).toMatch(/novim kodom/i);
+    expect(sr.company.phones.confirm.body, 'he no longer keeps recording').not.toMatch(
+      /i dalje snima/i,
+    );
 
-    expect(en.company.phones.confirm.body).toMatch(/stops being sent/i);
+    expect(en.company.phones.confirm.body).toMatch(/signs itself out/i);
     expect(en.company.phones.confirm.body).toMatch(/nothing on the phone is deleted/i);
+    expect(en.company.phones.confirm.body).toMatch(/new code/i);
+    expect(en.company.phones.confirm.body, 'he no longer keeps recording').not.toMatch(
+      /keeps recording/i,
+    );
+  });
+
+  /**
+   * The same lie, in the two places on the platform surface that told it (2026-09-03).
+   *
+   * Suspending a company produces the identical 401 on every one of its foremen's phones — the
+   * server joins `company.suspended_at` on each request — so those phones now sign themselves out
+   * too. Two consequences the founder has to be told before he presses it: they stop recording,
+   * and **resuming the company is not enough**, because each phone has to be joined again with a
+   * new code. The old copy promised the opposite of both.
+   */
+  it('says what suspending a customer costs, and that resuming does not undo it by itself', () => {
+    for (const sentence of [
+      sr.platform.companies.about.body,
+      sr.platform.companies.confirm.suspend,
+    ]) {
+      expect(sentence).toMatch(/odjavljuju/i);
+      expect(sentence).toMatch(/novim kodom/i);
+      expect(sentence, 'his foremen no longer keep recording').not.toMatch(/i dalje/i);
+    }
+    expect(sr.platform.companies.confirm.resume).toMatch(/novim kodom/i);
+
+    for (const sentence of [
+      en.platform.companies.about.body,
+      en.platform.companies.confirm.suspend,
+    ]) {
+      expect(sentence).toMatch(/sign themselves out/i);
+      expect(sentence).toMatch(/new code/i);
+      expect(sentence, 'his foremen no longer keep recording').not.toMatch(/can still record/i);
+      expect(sentence, 'his foremen no longer keep recording').not.toMatch(/keep recording/i);
+    }
+    expect(en.platform.companies.confirm.resume).toMatch(/new code/i);
   });
 
   /**

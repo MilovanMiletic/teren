@@ -138,6 +138,23 @@ export class PendingPage {
    * **Derived, never stored.** There is no "revoked" flag on the phone and there must not be: the
    * server is the only thing that knows, revocation reaches this device as a 401 on next contact
    * (plan §7), and a local flag would be a second source of truth that goes stale in a basement.
+   *
+   * ## A fallback since 2026-09-03, and worth knowing which cases still reach it
+   *
+   * This eight-attempt bar was the *only* revocation surface in the product, and it needed a queued
+   * entry to exist at all — with an empty outbox a revoked phone said nothing, ever. **By founder
+   * decision a refused phone now signs itself out on the first 401**
+   * (`core/session/device-refusal.service.ts`) and the sentence he reads is on `/welcome`.
+   *
+   * **One case still lands here**: rows an older build wrote — `failed` with `unauthenticated`,
+   * past the bar, carried across an upgrade. `EntryStore.releaseBlockedByAuth` works on `blocked`
+   * rows and leaves those alone, so they survive a re-activation and stay until the loop's next
+   * attempt clears them; without this row they would be a queue that never moves with nothing on
+   * screen saying why.
+   *
+   * Nothing else does. A refusal during a recording does not deliver a man here — the deferred
+   * navigation fires as soon as the recorder is idle, and this screen is device-gated by then —
+   * and a live session cannot reach eight failures any more, because the first 401 stops the loop.
    */
   protected needsReactivation(item: PendingEntry): boolean {
     return this.isStalled(item) && item.outbox?.failureKind === 'unauthenticated';

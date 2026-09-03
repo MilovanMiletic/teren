@@ -138,11 +138,20 @@
 
               @if (needsReactivation(item)) {
                 <!--
-                  Not a retry. This phone's credential is being refused, the loop is already
-                  trying every ten minutes and will keep trying, and another press changes
-                  nothing — so the button says the thing that would actually help. It is never a
-                  locked door: he is still standing on his own queue with every entry intact, and
-                  he can walk away from the code screen and keep recording (plan §10.3).
+                  Not a retry. This phone's credential was refused, and another press changes
+                  nothing — so the button says the thing that would actually help.
+
+                  The old wording here promised "the loop is already trying every ten minutes and
+                  will keep trying". **That is false since 2026-09-03**: a refused phone discards
+                  its credential, `usable()` turns false, and the loop then attempts nothing at all
+                  rather than retrying at the ceiling. Nothing is lost by that — the rows are
+                  untouched and a new code moves them — but a screen must not describe work that
+                  is not happening.
+
+                  **A fallback** (`pending-page.ts`, `needsReactivation`): the one case that
+                  reaches this row is `unauthenticated` rows an older build wrote. He is still
+                  standing on his own queue with every entry intact — nothing local is ever
+                  deleted — and this is a way forward rather than a wall.
                 -->
                 <button
                   type="button"

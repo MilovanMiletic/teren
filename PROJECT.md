@@ -119,6 +119,26 @@ This product is **not**:
 
 ## 11. Decided
 
+- **A phone the server refuses signs itself out** (2026-09-03, founder). He removed a worker's phone
+  from the office screen, went back to that phone, and found it working exactly as before — Home, the
+  archive, the site list, the record button. **This reverses `plans/profile-and-identity.md` §10.3's
+  "never a locked door"**, which was put to him again with its reasoning and declined. Three rulings:
+  1. **A refused credential ends the session.** A 401 on any call this phone makes clears the stored
+     session and puts the man on `/welcome` with one sentence and the code field. A **403 does not** —
+     a role refusal is not a dead credential, and throwing the credential away would turn a wrong
+     screen into a lost session. The screen names no cause: a revoked phone, a removed worker and a
+     suspended company are deliberately one indistinguishable answer.
+  2. **Nothing local is deleted, ever.** Principle 3 is untouched. The sign-out removes one
+     `localStorage` row — the same guarantee the admin sign-out already carries — so the day's
+     recordings, chunks and outbox rows stay on the phone and resume the moment he re-activates as the
+     same worker. A recording in progress is not interrupted either: the credential goes at once, the
+     screen change waits for the microphone.
+  3. **The cost is accepted and named.** A mis-revoke, an accidental disable or a suspended company
+     now leaves a foreman on a site unable to record until somebody sends him a code — precisely the
+     case the old decision existed to prevent. The founder's reasoning: an owner who cannot see that
+     "remove this phone" worked will not trust anything else the product says, and a mis-tap costs a
+     code rather than evidence.
+
 - **The report is a client's document, not a system record** (2026-08-29, founder). Five rulings,
   all pointing the same way — what an investor reads should carry evidence, not plumbing:
   1. **The record id comes off entirely.** A GUID means nothing to an investor. Accepted

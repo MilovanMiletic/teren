@@ -132,6 +132,9 @@ const RECORDED: readonly { file: string; member: keyof typeof ACTIONS }[] = [
   { file: 'features/auth/login-page.ts', member: 'sessionLogin' },
   { file: 'features/auth/activate-page.ts', member: 'sessionActivate' },
   { file: 'ui/session-link.ts', member: 'sessionLogout' },
+  // Not a control at all — the server refused this phone and the app acted on it (2026-09-03).
+  // There is no element to hang a `data-log` on, which is the whole reason it is recorded by hand.
+  { file: 'core/session/device-refusal.service.ts', member: 'sessionDeviceRefused' },
 ];
 
 /**

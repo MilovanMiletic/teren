@@ -88,11 +88,17 @@ export class UploadService {
     // A credential change is the second thing that can make a stuck queue movable, and — unlike a
     // network that comes back — nothing else in the app notices it.
     //
-    // A phone whose device was revoked accumulates rows failing with `unauthenticated`; a phone
-    // that was never activated may carry rows an older build wrote to `blocked`. Both are fixed by
-    // the same event: the foreman types a code. When that happens the auth-blocked rows are
-    // released and a pass runs, so a morning's entries start moving with **no per-entry tap** —
-    // which is the whole difference between a queue that heals and a chore.
+    // A phone whose device was refused holds rows that failed with `unauthenticated`; a phone that
+    // was never activated may carry rows an older build wrote to `blocked`. Both are fixed by the
+    // same event: the foreman types a code. When that happens the auth-blocked rows are released
+    // and a pass runs, so a morning's entries start moving with **no per-entry tap** — which is
+    // the whole difference between a queue that heals and a chore.
+    //
+    // Since 2026-09-03 there are usually *fewer* such rows than there used to be, and that is the
+    // sign-out decision working rather than something missing: a refused phone discards its
+    // credential on the first 401 (`core/session/device-refusal.service.ts`), `usable()` turns
+    // false, and this loop then attempts nothing at all instead of failing every queued row in
+    // turn. The rows themselves are untouched either way, which is what this effect is for.
     //
     // `seen` is captured before the effect so start-up does not count as a change. That guard is
     // not cosmetic: the loop is documented never to pick a `blocked` item up on its own, and an

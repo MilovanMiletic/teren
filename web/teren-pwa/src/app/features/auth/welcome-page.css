@@ -25,6 +25,30 @@
   text-align: center;
 }
 
+/*
+ * The sign-out explanation (2026-09-03), above the two ways in.
+ *
+ * `.notice` paints a tint and deliberately carries no radius of its own — it is written to sit
+ * inside a `.card`, which supplies one — and this screen's panel is not a card below 1024. So the
+ * radius is given here rather than by borrowing `.card`, which would also bring a shadow and a
+ * white ground the tint is meant to replace.
+ *
+ * One rule for all three device classes, and it needs no breakpoint of its own: compact and medium
+ * inherit the column's own width (the panel caps at 480 from 768 up), and at 1024 the panel becomes
+ * a padded card, so the same block sits inset inside it with the card's own air around it.
+ *
+ * **Measured in Chromium against the production bundle, not reasoned about** — 390, 768, 834, 1280
+ * and 1920. The notice is exactly the panel's width below 1024 (358 at 390, 480 at 768 and 834)
+ * and inset inside the card above it (376 in a 440 panel at 1280 and 1920); `document.scrollWidth`
+ * equals `innerWidth` at every one of them, so nothing here introduces a horizontal scroll; and the
+ * primary button starts 16 px under it at every width. The text wraps rather than pushing anything
+ * wide because `.notice__text` is already `min-width: 0` inside a flex row.
+ */
+.welcome__refused {
+  border-radius: var(--radius-card);
+  margin-bottom: var(--space-1);
+}
+
 @media (min-width: 768px) {
   .welcome__mark {
     /* Medium has room for a larger motif; it is proportioned, not a stretched phone. */

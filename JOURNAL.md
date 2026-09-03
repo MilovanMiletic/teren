@@ -12,6 +12,103 @@ Entry format:
 
 ---
 
+## 2026-09-03 (later) — a revoked phone signs itself out
+
+Founder: *"If i remove the phones of a worker as a company_admin, and before that worker was logged in
+on some device, i stayed logged in even though i am removed. That needs to be fixed."*
+
+**The backend was never wrong.** `DbCredentialAuthenticator` has no cache and joins `device.revoked_at`,
+`app_user.disabled_at` and `company.suspended_at` on every request, so a revoked phone is refused on
+first contact — that is the whole revocation model and it works. **The phone learned it every twenty
+seconds and threw it away.** `EntryStatusRefresher` polls `GET /api/entries` from Home, gets
+`unauthorized`, and is documented as "best effort, and silent about it". The route gate reads one
+`localStorage` row and deliberately asks the server nothing. And the only revocation notice in the
+product was **derived from the outbox** — a row `failed` past `STALLED_AFTER_ATTEMPTS = 8`, some ten
+minutes of backoff — so **on a phone with an empty outbox, which is the ordinary case, nothing ever
+appeared at all.** The same silence covered two other admin actions that produce the identical 401:
+removing a worker (`disabled: true`) and suspending a company.
+
+**This was a founder decision before it was a fix**, and it reverses one. Plan §10.3 and F8 said
+"never a locked door", on the reasoning that an admin's mis-tap at four in the afternoon must not cost
+a foreman the day's capture. He was shown that reasoning and three policies — shut-but-the-mic-works,
+full sign-out, loud-notice-only — and chose **full sign-out**. Recorded in PROJECT.md §11 (top) and
+written into plan §10.3 with the old paragraph kept visible as superseded. The cost is named there:
+a mis-revoke, an accidental disable or a suspended company now leaves a foreman unable to record until
+somebody sends him a code. His reasoning: an owner who cannot see that "remove this phone" worked will
+not trust anything else the product says, and the mis-tap costs a code rather than evidence.
+
+**Built** (implementer, then reviewer accept-with-fixes, gating item closed and re-proven): detection
+at one seam — `TerenApiClient.bearing()` wraps the four funnels that carry `authHeaders()` and hands a
+**401 and nothing else** to `DeviceRefusalService`, rethrowing unchanged. Not an interceptor
+(`api-config.ts` documents three reasons, one of them fatal: `baseUrl` is `''` in production, so a
+prefix match matches object storage too) and **`putObject` stays outside it** — no bearer, S3,
+presigned. `SessionService.discard()` removes one `localStorage` row and, like
+`AdminSessionService.signOut`, **cannot reach Dexie**: a source guard forbids a store handle in the
+three files and a row-count spec covers entries, media, outbox, chunks, captures and drafts. The
+unsent day waits on the phone and moves again when he re-activates as the same worker.
+
+Three things in that service are load-bearing, and each is mutation-proven:
+
+- **Navigation only off a device-gated screen**, decided by whether the deepest route's `canMatch`
+  contains `requiresDevice` **by function reference** (the `route-table.ts` trick — the build renames
+  classes and functions). The founder's browser is the demo phone *and* the office console: revoking a
+  phone from `/company` must leave the admin on the screen he pressed the button on.
+- **The navigation defers while the microphone is live** (`starting|recording|stopping`, the same gate
+  and the same reasoning as `app-update.service.ts`). The credential goes at once; the take reaches
+  Dexie first. Traced by the reviewer through `capture-recording-page.ts`: stop → idle → the effect
+  navigates → `ngOnDestroy` does not double-finish → `finishCapture` completes on its own promise.
+- **401 only.** Removing that test turns **ten** specs red (403, 500, 503, status 0, 404, 409, 429).
+
+**The implementer added one thing beyond the brief and it was the right call.** `config.deviceToken`
+is a live getter, so an attempt already in flight that 401s *after* a re-activation would have signed
+the man out seconds after he fixed it. The bearer is captured before the await and a refusal naming a
+credential the session no longer holds is ignored. It cannot be defeated by an idempotent
+re-activation, because activation always mints a new device token.
+
+**Four strings were lying and are now true.** The revoke dialog promised the admin *"On i dalje snima"*
+— he no longer does. And three on `/platform/companies`: suspending a company signs its foremen's
+phones out too, and **resuming is not enough — every phone has to join again with a new code**, which
+the old copy said the opposite of.
+
+### The two findings worth carrying out of this increment
+
+**A negative assertion that settles on microtasks proves nothing, and a green suite is how you find
+out.** The implementer's first run of the "does not navigate off an admin screen" mutation left the
+whole suite **green**: its `settle()` turned only `Promise.resolve()`, and a router navigation does not
+finish inside a microtask chain. Every "it did not navigate" in that file was vacuous. `settle()`
+awaits macrotasks now, and the reviewer re-proved the vacuity deliberately — gated check removed *and*
+`settle()` downgraded → all 33 pass. **Same family as `ee37f04`'s route rename and F12's 26 unemittable
+slugs: the spec asserted the shape of the future, not the behaviour of the present.**
+
+**A caveat that is shown once is not shown.** The first cut read the `/welcome` marker at field init
+and cleared it in the constructor, so the sentence survived exactly one paint — the implementer's own
+browser run recorded `after a reload: notice still there: 0`. A foreman signed out mid-shift whose OS
+drops the tab reopens to the plain first-run screen: record button gone, **no explanation**, which is
+the complaint that started this increment reproduced one reload later. The marker is durable now and
+`ActivationService` is its only clearer, because it describes a **condition**, not a handoff — and it
+names no cause, so it cannot go stale. *`ArrivalHandoff.take()` was the precedent cited for take-once;
+it is a handoff between two screens inside one navigation, and that is not what this is.*
+
+**Known gap, written down rather than papered over:** the `session.device.refused` log line is
+**undeliverable from a foreman's phone**. The row is filed under the credential `discard()` removes in
+the next synchronous statement, so no flush can interleave and the next one `bulkDelete`s it. It
+arrives only from a browser that also holds an admin session on an admin-guarded URL — the founder's
+own machine, which is where the stream is read. Answering "why did this phone stop" from the log needs
+a change in `ActionLogService`, not in that file, and it was not in this increment.
+
+**Verified by execution, by me and not on trust:** `1740` specs in 89 files (from 1697), `ng build`
+with zero warning lines, and every hunk of the 30 modified + 4 new files accounted for — eleven of them
+comment-only, verified by filtering non-comment diff lines to zero. Nothing else is in the tree. One
+intermediate run went red on an unrelated `logs-page` spec at load average **18**; it passed at 4.6,
+which is the documented load-flakiness and not a regression.
+
+**Real-device debt this adds:** the deferral under a real `MediaRecorder` (a screen lock or a call
+mid-take while the credential is dead — specs drive a stubbed signal), and the founder's own
+dual-session browser, where revoking from `/company/worker/:workerId` should leave him on `/company`
+while the device row disappears.
+
+---
+
 ## 2026-09-03 — closing the reviews' open items
 
 Founder: *"Fix all the other stuff that you need and commit and push."* Everything three reviews had

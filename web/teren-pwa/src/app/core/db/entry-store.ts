@@ -569,6 +569,14 @@ export class EntryStore {
    * a device is revoked; it reaches this phone as a 401 on next contact (plan §7). A local
    * "revoked" boolean would be a second source of truth that goes stale in a basement, and would
    * still be saying so after the admin had put it right.
+   *
+   * **A fallback since 2026-09-03.** By founder decision a refused phone signs itself out on the
+   * first 401 (`core/session/device-refusal.service.ts`), so this count is no longer how a foreman
+   * learns of a revocation — the sentence he reads is on `/welcome`. What is left for it is rows an
+   * older build wrote, carried across an upgrade: {@link releaseBlockedByAuth} works on `blocked`
+   * rows and leaves these `failed` ones alone, so they outlive a re-activation until the loop's
+   * next attempt clears them. `features/pending/pending-page.ts` carries the full note. The query
+   * is unchanged and still correct.
    */
   watchReactivationCount(): Observable<number> {
     return from(

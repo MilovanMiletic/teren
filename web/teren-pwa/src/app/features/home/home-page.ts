@@ -188,8 +188,26 @@ export class HomePage {
    *
    * The one stuck-ness a foreman can fix himself, and the one the sync row's words are wrong
    * about: "not getting through" invites him to wait, and waiting is exactly what will not work.
-   * A revoked phone still records, still queues and still opens every screen — the door is never
-   * locked (plan §10.3) — so this is a notice and a way forward, never a gate.
+   *
+   * ## Since 2026-09-03 this is a fallback rather than the mechanism
+   *
+   * It used to be the whole of it: a revoked phone kept its session, kept the record button and
+   * learned about the refusal here (plan §10.3, "never a locked door"). **By founder decision of
+   * 2026-09-03 a refused phone signs itself out**, so the ordinary way a foreman finds out is now
+   * the sentence on `/welcome` — reached on the first 401, with an empty outbox, in a second rather
+   * than after eight failed attempts and half an hour of backoff.
+   *
+   * **One residual case keeps the row, and it is narrower than it first looks.** Rows an older
+   * build wrote: `failed` with `unauthenticated` past the eight-attempt bar, carried across an
+   * upgrade. `releaseBlockedByAuth` does not touch them (it works on `blocked` rows), so they
+   * survive a re-activation and sit here until the loop's next attempt clears them.
+   *
+   * Nothing else reaches it any more, and the first draft of this comment claimed two cases that
+   * cannot happen. A refusal during a recording does **not** land a man on Home — the deferred
+   * navigation fires the moment the recorder is idle and Home is device-gated by then — and a live
+   * session can no longer climb to eight failures, because the first 401 stops the loop dead.
+   *
+   * It is a notice and a way forward, never a gate — the record button above it is untouched.
    */
   protected readonly reactivationCount = toSignal(this.entries.watchReactivationCount(), {
     initialValue: 0,

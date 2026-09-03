@@ -86,6 +86,37 @@ export function persistSession(session: Session): void {
   }
 }
 
+/**
+ * Forget the credential. **One `localStorage` row, and nothing else in the world.**
+ *
+ * ## Why this exists at all, since it did not until 2026-09-03
+ *
+ * **Founder decision, 2026-09-03: a phone whose credential the server refuses signs itself out.**
+ * It reverses `plans/profile-and-identity.md` §10.3 and F8's "never a locked door", which said a
+ * revoked phone keeps its session and keeps reaching the record button. The founder revoked a
+ * worker's phone from `/company/worker/:workerId`, watched the phone carry on as if nothing had
+ * happened, was offered three policies — notice only, a notice plus a blocked upload loop, or a
+ * full sign-out — and chose the full sign-out with the old reasoning (an admin's mis-tap must not
+ * cost a foreman the day's capture) put to him explicitly. This is not drift.
+ *
+ * ## What it does not touch, which is the half of the decision that did not change
+ *
+ * PROJECT.md principle 3 is untouched: **the phone is still the source of truth until the server
+ * confirms.** This removes a credential, never evidence. Not one entry, not one outbox row, not
+ * one audio chunk, not one draft — the unsent day stays exactly where it is and resumes the moment
+ * the same worker re-activates (`EntryStore.releaseBlockedByAuth`, called by
+ * `ActivationService.activate`). There is nothing in this file that could reach Dexie, exactly as
+ * there is nothing in `clearAdminSession()` (`admin-session.ts`) that could, and
+ * `core/session/device-refusal.service.spec.ts` pins the row counts across a sign-out.
+ */
+export function clearSession(): void {
+  try {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch {
+    // Private mode; there was nothing persisted to remove.
+  }
+}
+
 /** Every field, or nothing. See the file comment for why a half-session is the worst outcome. */
 function narrow(value: unknown): Session | null {
   if (!value || typeof value !== 'object') {

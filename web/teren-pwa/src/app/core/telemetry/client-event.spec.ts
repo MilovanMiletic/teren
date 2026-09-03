@@ -42,6 +42,9 @@ const VOCABULARY = [
   'app.offline',
   'app.online',
   'app.error',
+  // 2026-09-03: the server refused this phone's credential and the phone signed itself out. The
+  // only event in the vocabulary that nobody pressed.
+  'session.device.refused',
 ];
 
 describe('the client-event contract, applied on the phone', () => {

@@ -707,12 +707,16 @@ describe('CompaniesPage', () => {
     it('explains what a suspension does, on a tap', async () => {
       await render();
 
-      expect(text()).not.toContain('Poslovođe i dalje mogu da snimaju');
+      // 2026-09-03: the sentence itself changed with the sign-out policy — a suspended customer's
+      // phones now sign themselves out, so his foremen stop recording and each phone has to be
+      // joined again with a new code afterwards. What this spec is about is unchanged: the
+      // explanation is behind a tap and is not on the screen until he asks for it.
+      expect(text()).not.toContain('Telefoni se sami odjavljuju');
 
       await press('Šta radi suspenzija');
 
       expect(element.querySelector('.pop')?.textContent).toContain(
-        'Poslovođe i dalje mogu da snimaju',
+        'Telefoni se sami odjavljuju',
       );
     });
   });

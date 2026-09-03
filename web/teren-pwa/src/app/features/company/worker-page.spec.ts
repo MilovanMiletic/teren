@@ -763,10 +763,14 @@ describe('WorkerPage', () => {
 
       await press('Opozovi');
 
+      // Three things, and the first one changed on 2026-09-03: the phone signs itself out, so he
+      // stops recording. This screen is where an admin decides whether to do that, and it told him
+      // the opposite until the founder reversed the policy — see `i18n.spec.ts` for the full note.
       const warning = element.querySelector('.confirm')?.textContent ?? '';
-      expect(warning).toMatch(/prestaje da se šalje/i);
+      expect(warning).toMatch(/sam odjavljuje/i);
       expect(warning).toMatch(/ništa se sa telefona ne briše/i);
       expect(warning).toMatch(/novim kodom/i);
+      expect(warning, 'he no longer keeps recording').not.toMatch(/i dalje snima/i);
     });
 
     it('withdraws the phone and shows it withdrawn', async () => {

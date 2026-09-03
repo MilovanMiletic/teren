@@ -665,11 +665,36 @@ repo can activate a phone as `zoran.jovanovic` there, which revokes the demo dev
 `seed`. Acceptable while the demo company holds nothing but sample rows and the only deployment is
 local; **revisit it at B3a**, when that company lives behind a public URL.
 
-**Revocation is not a gate.** A revoked device keeps its session and keeps reaching the record button.
-A foreman whose admin fat-fingered a revoke at 4pm must still capture the day. It surfaces as a notice
-and an "Unesi novi kod" button on the pending row — never a locked door. "Revoked" is *derived*: an
-outbox row with `failureKind === 'unauthenticated'` past `STALLED_AFTER_ATTEMPTS`. One 401 is a blip;
-eight is a verdict.
+**Revocation is a sign-out** (founder decision, 2026-09-03 — this paragraph said the opposite until
+then, and the reversal is his, not a drift). When the server refuses this phone's credential the app
+clears the device session, and the man lands on `/welcome`: no record button, no archive, no company
+data, one sentence and the code field. **Dexie is never touched**, so the unsent day stays on the phone
+and starts moving again the moment he re-activates as the same worker (`releaseBlockedByAuth`).
+
+What this paragraph used to say, and the cost the founder accepted with his eyes open: a revoked device
+kept its session and kept reaching the record button, because a foreman whose admin fat-fingered a
+revoke at 4pm must still capture the day, and the withdrawal surfaced only as a notice and an "Unesi
+novi kod" button. The reasoning was sound; the *observed* behaviour was not. "Revoked" was **derived**
+from an outbox row with `failureKind === 'unauthenticated'` past `STALLED_AFTER_ATTEMPTS` — one 401 is
+a blip, eight is a verdict — which needed eight failed uploads and some ten minutes of backoff to say
+anything at all, and **on a phone with an empty outbox, which is the ordinary case, it never said
+anything ever**. The founder removed his own demo phone, watched it carry on, and read the control as
+broken. An owner who cannot see that "remove this phone" worked will not believe anything else this
+product tells him, and that outranks the 4pm mis-tap — which costs one code, and costs nothing at all
+in evidence, because nothing local is deleted.
+
+Three consequences worth writing down:
+
+- **The 401 carries no reason, and the copy must not invent one.** A revoked device, a removed worker
+  (`disabled_at`) and a suspended company are one indistinguishable answer on purpose (§7). The screen
+  says the server no longer accepts this phone, and stops there.
+- **A live recording is never interrupted.** The session is cleared at once; the *navigation* waits for
+  the microphone to go idle, so the take reaches Dexie first. Everything else this app holds is already
+  on disk before it is anywhere else — a live `MediaRecorder` is the single exception, which is why it
+  is the only state consulted, exactly as `core/update/app-update.service.ts` consults it.
+- **Only a device-gated screen is navigated away from.** The founder's browser is the demo phone and
+  the office console at the same time; revoking a phone from `/company` must not throw the admin off
+  the screen he pressed the button on.
 
 **The activation screen carries two fields — username and code — and a second path.** Below the
 primary action sits *"Novi telefon? Pošalji mi kod"*: he types only his username, and a fresh code is

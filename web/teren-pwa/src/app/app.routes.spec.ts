@@ -202,13 +202,20 @@ function navigationTargets(): { targets: NavigationTarget[]; unresolvable: strin
  * offers no sign-in (`session-link.ts`), so after a 401 there was no reachable route to `/login`
  * on screen at all.
  *
+ * **46 → 47 (2026-09-03)**: `core/session/device-refusal.service.ts` sends a phone whose
+ * credential the server has refused to `/welcome`. A bump of one, and it is not a screen — it is
+ * the app performing a navigation nobody asked for, which is exactly the kind that has to resolve
+ * against the real table: it fires on a foreman's phone in the field, on a screen he was already
+ * standing on, and a mistyped path would land him on Home through the wildcard with the record
+ * button still there and no explanation anywhere.
+ *
  * Worth recording what this count could not catch, since it was green throughout. All forty
  * navigations resolved, `/platform` among them — but its *only* navigation was the one
  * `login-page.ts` performs on a successful sign-in, and on the founder's own browser `/login` was
  * itself unreachable (`requiresNoAdminSession`). A route table cannot see that: reachability is a
  * property of the guards, not of the paths. `device.guard.spec.ts` pins it where it lives.
  */
-const NAVIGATION_COUNT = 46;
+const NAVIGATION_COUNT = 47;
 
 /**
  * The query parameters a navigation may put on the URL, by the name of the constant that holds

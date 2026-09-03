@@ -137,8 +137,15 @@ function text(value: unknown): string | null {
  * whether the server is down.
  *
  * 401 and 403 are one answer here. The upload path splits them because only it has to decide
- * whether retrying can help; this screen says "the server did not accept this phone" either way,
- * and — per decision 8 — says it without locking anything: a revoked device keeps recording.
+ * whether retrying can help; this screen says "the server did not accept this phone" either way.
+ *
+ * **Since 2026-09-03 the 401 half is mostly unreachable, and that is by founder decision rather
+ * than by accident.** This comment said the screen reports a refusal "without locking anything: a
+ * revoked device keeps recording" (decision 8). A refused phone now signs itself out
+ * (`core/session/device-refusal.service.ts`) and `/profile` is device-gated, so a 401 here takes
+ * him to `/welcome` before the sentence can be read. The mapping stays exactly as it is: the 403
+ * path is unaffected and must not sign anybody out, and a sentence that is correct and rarely
+ * reached is worth more than a screen that renders a blank card in the case nobody predicted.
  */
 function toProfileStatus(error: unknown): ProfileStatus {
   switch (classifyApiError(error).kind) {

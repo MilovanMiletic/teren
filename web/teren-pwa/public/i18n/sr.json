@@ -528,6 +528,10 @@
       "signIn": "Prijavi se",
       "joinWithCode": "Pridruži se gradilištu kodom",
       "codeHint": "Kod za pridruživanje dobijate od vlasnika firme.",
+      "refused": {
+        "title": "Server ne prihvata ovaj telefon",
+        "body": "Ovaj telefon je odjavljen. Ništa nije izbrisano — snimci i unosi koji nisu poslati čekaju na telefonu. Unesite novi kod i slanje se nastavlja."
+      },
       "aside": {
         "worker": {
           "title": "Na gradilištu",
@@ -830,7 +834,7 @@
       "unconfirmed": "Server nije odgovorio, pa se ne zna da li je telefon opozvan. Osvežite pre nego što pokušate ponovo.",
       "confirm": {
         "title": "Opozvati {{phone}} — {{name}}?",
-        "body": "Od sledećeg javljanja server odbija taj telefon. On i dalje snima i ništa se sa telefona ne briše, ali ono što je snimio prestaje da se šalje dok se ponovo ne pridruži novim kodom.",
+        "body": "Od sledećeg javljanja server odbija taj telefon, pa se telefon sam odjavljuje i dugme za snimanje nestaje. Ništa se sa telefona ne briše — sve što je snimio čeka tamo i šalje se kada se ponovo pridruži novim kodom.",
         "action": "Opozovi telefon"
       },
       "failed": "Telefoni nisu mogli da se pročitaju."
@@ -924,7 +928,7 @@
       },
       "about": {
         "title": "Šta radi suspenzija",
-        "body": "Telefoni i prijave suspendovane firme prestaju da rade već na sledećem zahtevu — bez čekanja. Poslovođe i dalje mogu da snimaju; ništa snimljeno ne stiže do servera dok je ne vratite."
+        "body": "Telefoni i prijave suspendovane firme prestaju da rade već na sledećem zahtevu — bez čekanja. Telefoni se sami odjavljuju, pa poslovođe prestaju da snimaju; ništa se sa telefona ne briše, ali posle vraćanja svaki telefon mora ponovo da se pridruži novim kodom."
       },
       "add": {
         "open": "Dodaj firmu",
@@ -939,8 +943,8 @@
         }
       },
       "confirm": {
-        "suspend": "Suspendovati {{name}}? Svi njihovi telefoni i prijave prestaju da rade na sledećem zahtevu. Poslovođe i dalje snimaju, ali ništa ne stiže do servera dok je ne vratite.",
-        "resume": "Vratiti {{name}}? Telefoni i prijave ponovo rade, a sve što su poslovođe u međuvremenu snimile biće poslato."
+        "suspend": "Suspendovati {{name}}? Svi njihovi telefoni i prijave prestaju da rade na sledećem zahtevu. Telefoni se sami odjavljuju i poslovođe prestaju da snimaju; ništa se sa telefona ne briše, ali posle vraćanja svaki telefon mora ponovo da se pridruži novim kodom.",
+        "resume": "Vratiti {{name}}? Prijave ponovo rade odmah. Telefoni koji su se u međuvremenu odjavili moraju ponovo da se pridruže novim kodom — tek tada se šalje ono što su snimili."
       },
       "action": {
         "failed": "Radnja nije prošla"

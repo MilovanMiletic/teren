@@ -142,6 +142,50 @@ before being presented as done; gating fixes go back to the implementer and are 
   **F10** (`/company/profile`, 2026-09-02, unreviewed). **F3's rejection is discharged.**
   **D5 and the log viewer are done (2026-09-02).** What is left of the identity work is F7's
   **health page**, and nothing now blocks it.
+- **A phone the server refuses now signs itself out (F14, 2026-09-03) — and this REVERSES a decision
+  this file used to state as an invariant.** Plan §10.3 and F8 said revocation is "never a locked
+  door"; the founder revoked a worker's phone, watched it carry on exactly as before, was shown that
+  reasoning with two milder options, and chose **full sign-out**. PROJECT.md §11 (top entry) and the
+  amended plan §10.3 are authoritative; the old paragraph is kept there as superseded. **The backend
+  was never at fault** — the authenticator has no cache and refuses a revoked device, a disabled
+  worker and a suspended company on first contact. The phone learned it every 20 s from
+  `EntryStatusRefresher` and **discarded it in silence**, and the one notice that existed was derived
+  from an outbox row failed **eight** times, so **an empty outbox meant the phone never said anything
+  at all, ever**. Detection is `TerenApiClient.bearing()` over the four `authHeaders()` funnels — 401
+  only, `putObject` excluded, **not an interceptor** (`api-config.ts` gives three reasons, one fatal:
+  `baseUrl` is `''` in production, so a prefix match matches object storage). `SessionService.discard()`
+  removes one `localStorage` row and **cannot reach Dexie** — a source guard forbids a store handle in
+  those three files. *The cost is accepted and written down: a mis-revoke, an accidental disable or a
+  suspended company now stops a foreman recording until somebody sends him a code.*
+  *Three things there are load-bearing and mutation-proven: the navigation fires **only** off a screen
+  whose `canMatch` holds `requiresDevice` **by function reference** (the founder's browser is the demo
+  phone and the office console at once — revoking from `/company` must not throw him off it); the
+  navigation, never the discard, **defers while the microphone is live**; and the 401-only test, whose
+  removal turns ten specs red. The bearer is also captured **before** the await, because
+  `config.deviceToken` is a live getter and an in-flight 401 landing after a re-activation would sign
+  the man out seconds after he fixed it.*
+  ***F8's Home and pending notices are now a fallback, not the mechanism*** — the sentence a
+  signed-out foreman reads is on `/welcome`, and the only rows that can still reach that surface are
+  ones an older build left in the queue.
+  **Known gap, deliberate:** `session.device.refused` is **undeliverable from a foreman's phone** —
+  the row is filed under the credential `discard()` removes in the next synchronous statement, so the
+  next flush deletes it. "Why did this phone stop" is not answerable from the log stream without a
+  change to `ActionLogService`.
+- **A negative assertion that settles on microtasks proves nothing (2026-09-03).** The first
+  mutation of F14's device-gated check left **the whole suite green**: the spec's `settle()` turned
+  only `Promise.resolve()`, and a router navigation does not finish inside a microtask chain, so every
+  "it did not navigate" in that file was vacuous. `settle()` awaits macrotasks now and the reviewer
+  re-proved the vacuity on purpose. **Third instance of the `ee37f04` family** — a spec asserting the
+  shape of the future rather than the behaviour of the present, after the half-finished route rename
+  and F12's 26 unemittable slugs. *Ask of any "it did not happen" spec: could the thing have happened
+  yet, at the moment you asserted it had not?*
+- **A caveat shown once is not shown (2026-09-03).** F14's `/welcome` sentence was read at field init
+  and cleared in the constructor, so it survived one paint — and a foreman signed out mid-shift whose
+  OS drops the tab reopened to the plain first-run screen with the record button gone and **no
+  explanation**, which is the complaint that started the increment, one reload later. The marker is
+  durable now and `ActivationService` is its only clearer, because it describes a **condition** and
+  not a handoff. *`ArrivalHandoff.take()` was cited as the precedent for take-once; it is a handoff
+  between two screens inside one navigation, which is a different thing.*
 - **D4's rejection is open and it is a founder decision, not a code fix.** The authenticated
   invite/reset hatch lets Teren staff mint a working set-password link for a company admin, take his
   account, and read his diaries — exactly what plan decision 2 says is impossible. It predates D4
@@ -280,10 +324,14 @@ before being presented as done; gating fixes go back to the implementer and are 
   the record**, sending `described_verbatim: true` with the transcript in `notes`; the report then
   renders the day as prose, marked as his words rather than extracted data. `extracted` stays null
   and `corrected` records approval-as-is, so the eval triple can still tell approval from typing.
-- **Next, in order: D5** (`app_log` + the sink, allow-list, exception scrubbing, retention, the
-  source-scanning redaction test), then **F7's remaining two screens** — the health page and the log
-  viewer — which wait on it. **Then B3a for real**: a VPS, a domain, a stable **https** origin. That
-  purchase is what unblocks the whole real-device debt and both unmet clauses of M0's definition.
+- **Next, in order** (D5 and the log viewer shipped 2026-09-02; this bullet named them as "next" for
+  a day after they existed): **`supersedes_entry_id` on `CreateEntryRequest`** — the field is on the
+  *response* and on the entity, so ARCHITECTURE §6's documented answer to a superseded record is
+  still not something a phone can do, and the frontend's honest dead-end screen is waiting on it —
+  plus `failure_reason` on `EntryListItemResponse`, which removes a wasted tap in the archive list.
+  Then **F7's last screen, the health page**, which nothing blocks. **Then B3a for real**: a VPS, a
+  domain, a stable **https** origin. That purchase is what unblocks the whole real-device debt and
+  both unmet clauses of M0's definition.
 - **Demo seed is now three sites** (`d3a0c1f0-5b8e-4f1a-9c62-` + `000000000002/3/4`), and those ids
   are a **contract** with `web/.../core/projects/project-source.ts`: if they drift, every
   `POST /api/entries` 404s and captured entries can never leave the phone. See ARCHITECTURE §6.
@@ -439,13 +487,14 @@ before being presented as done; gating fixes go back to the implementer and are 
   Linux shell.** `action-wiring.spec.ts` built its file map with `relative()`, which answers with
   backslashes here, so both hand-written checks failed at their first entry. `shortPath` normalises
   `sep` now. *If a spec fails only on one OS, suspect the path separator before the code.*
-- **Suites: 1575 PWA specs** (81 files) and **991 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
+- **Suites: 1740 PWA specs** (89 files) and **1054 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
   + Testcontainers over real Postgres, ~66 s; PdfPig in tests only, so report assertions read text
   back out of the rendered PDF). `dotnet test` needs Docker running.
   *The figures here were stale before 2026-08-30 (403/447 recorded against an actual 436/476) —
   both were re-measured off the tree, not carried forward.*
-- **Check at session start:** the tree is green — **991 backend tests and 1575 PWA specs, both
-  re-verified by execution 2026-09-02**, `ng build` clean with no budget warning. `dotnet build` succeeds
+- **Check at session start:** the tree is green — **1740 PWA specs re-verified by execution
+  2026-09-03** (89 files, `ng build` with zero warning lines) and **1054 backend tests**, that figure
+  reported by the 2026-09-03 coordinator rather than measured again since. `dotnet build` succeeds
   with **one** warning: `CS9107` in `DemoIdentitySeedTests.cs:400`. **It is pre-existing** — confirmed by
   building a worktree at `a42adaf` — so the long-standing "0 warnings" claim in this file was simply
   wrong. Do not go hunting for it in your own diff.

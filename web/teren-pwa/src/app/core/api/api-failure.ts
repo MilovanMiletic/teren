@@ -65,10 +65,23 @@ export type FailureKind =
    * that morning to `blocked`, and a `blocked` row schedules no wake timer, so the loop went
    * permanently dormant and a restart recovered nothing.
    *
-   * A device that is revoked for good therefore retries at the ten-minute ceiling for ever. That
-   * is correct by this file's own doctrine: retries are made *visible* rather than abandoned, and
-   * {@link STALLED_AFTER_ATTEMPTS} turns "trying" into "not getting through" after about half an
-   * hour, which is a sentence a foreman can act on.
+   * ## What a revoked device does now, since 2026-09-03
+   *
+   * This paragraph used to end "a device that is revoked for good therefore retries at the
+   * ten-minute ceiling for ever", which was correct and is no longer what happens. **By founder
+   * decision a 401 on a bearer-carrying call signs the phone out**
+   * (`core/session/device-refusal.service.ts`): the credential is discarded, `usable()` turns
+   * false, and `UploadService` therefore attempts *nothing* rather than retrying at the ceiling.
+   * The rows stay in the outbox untouched and start moving again the moment the same worker
+   * re-activates.
+   *
+   * **The classification below is unchanged, and must stay unchanged.** `unauthenticated` is still
+   * retryable, and this is not a leftover: the queue must never *abandon* an entry over a
+   * credential, because a rejected credential is a statement about now. Made terminal — which is
+   * what it was until F1 — one refusal writes a morning's entries to `blocked`, and a `blocked`
+   * row schedules no wake timer, so the loop goes permanently dormant and a restart recovers
+   * nothing. The sign-out changes who is holding the credential; it does not change what the
+   * outbox believes about the work.
    */
   | 'unauthenticated'
   /**
@@ -121,8 +134,9 @@ export const FAILURE_KINDS = Object.keys(ALL_FAILURE_KINDS) as readonly FailureK
  *
  * `unauthenticated` is the one that had to be taken *out* of this set (F1). It reads like a
  * permanent answer and is not: it describes the credential's standing at this instant, and the
- * instant changes when an admin un-revokes a device or a foreman activates a new phone. Left in
- * here it did real damage — see the kind's own doc comment for the morning it cost.
+ * instant changes when a foreman activates a new phone. Left in here it did real damage — see the
+ * kind's own doc comment for the morning it cost, and for what a refusal does to the *session*
+ * since 2026-09-03, which is a separate matter from what it does to the queue.
  */
 const TERMINAL_KINDS: ReadonlySet<FailureKind> = new Set<FailureKind>([
   'rejected',

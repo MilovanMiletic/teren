@@ -1,6 +1,6 @@
 import { Injectable, computed, signal } from '@angular/core';
 
-import { Session, persistSession, readStoredSession } from './session';
+import { Session, clearSession, persistSession, readStoredSession } from './session';
 
 /**
  * Who this phone is, as far as the server is concerned.
@@ -24,10 +24,26 @@ import { Session, persistSession, readStoredSession } from './session';
  * refresh interceptor should read that sentence again: it would put a network round trip in front
  * of the record button, which is invariant 1 broken for a problem this product does not have.
  *
- * ## There is no sign-out
+ * ## There are two writers, and the second one is new (founder decision, 2026-09-03)
  *
- * Re-activation *replaces* the credential; nothing here ever deletes evidence. A "sign out" that
- * cleared Dexie would break PROJECT.md principle 3 on the one device that is the source of truth.
+ * {@link adopt} takes a credential on; {@link discard} gives one up. Until 2026-09-03 there was
+ * only the first, and this comment said so — "there is no sign-out" — because
+ * `plans/profile-and-identity.md` §10.3 and F8 held that a revoked phone keeps its session and
+ * keeps reaching the record button. **The founder reversed that on 2026-09-03**, after revoking a
+ * worker's phone from the office screen and watching the phone carry on as if nothing had
+ * happened: a credential the server refuses is cleared, the man lands on `/welcome`, and the
+ * record button goes with it. He was offered the milder policies and the old reasoning (an admin's
+ * mis-tap must not cost a foreman the day's capture) explicitly, and chose this. It is a decision,
+ * not drift.
+ *
+ * **Nothing here deletes evidence, and that half of §10.3 is untouched.** `discard()` removes one
+ * `localStorage` row; PROJECT.md principle 3 holds, the unsent day stays on the phone, and
+ * re-activating as the same worker sets it moving again. Re-activation still *replaces* rather
+ * than clears — `adopt()` is the ordinary path and `discard()` is only ever the server's refusal.
+ *
+ * The policy — what a refusal is, when to leave the screen, what to do while the microphone is
+ * live — is **not** here. It lives in `device-refusal.service.ts`, which can inject the router and
+ * the recorder; this file must go on injecting nothing (see above).
  */
 @Injectable({ providedIn: 'root' })
 export class SessionService {
@@ -82,7 +98,8 @@ export class SessionService {
   readonly activated = computed(() => this.state() !== null);
 
   /**
-   * Take on a credential. The only writer, and the event the outbox listens for.
+   * Take on a credential. The writer for every ordinary path, and the event the outbox listens
+   * for. ({@link discard} is the other one, and it only ever runs on the server's refusal.)
    *
    * Persisted first, then published: a signal update that outlived the write would leave the app
    * believing it is activated in a way that does not survive the next reload.
@@ -90,5 +107,26 @@ export class SessionService {
   adopt(session: Session): void {
     persistSession(session);
     this.state.set(session);
+  }
+
+  /**
+   * Give the credential up, because the server refused it (founder decision, 2026-09-03).
+   *
+   * The twin of `AdminSessionService.signOut`, and it carries that method's guarantee word for
+   * word: **it touches `localStorage` and nothing else — never Dexie, never evidence.** Not one
+   * entry, not one outbox row, not one audio chunk. PROJECT.md principle 3 is about what the phone
+   * *holds*, and this only forgets who the phone *is*; the unsent day survives and moves again the
+   * moment the same worker re-activates.
+   *
+   * Idempotent by construction — clearing an already-cleared row and re-setting `null` are both
+   * no-ops — which is what lets a screen's parallel loads all report the same 401 without
+   * signing out twice.
+   *
+   * Cleared first, then published, so a signal update cannot outlive the write it describes: the
+   * same ordering `adopt()` uses, for the mirror-image reason.
+   */
+  discard(): void {
+    clearSession();
+    this.state.set(null);
   }
 }

@@ -59,6 +59,15 @@ export const ACTIONS = {
   sessionLogin: 'session.login',
   sessionLogout: 'session.logout',
   sessionActivate: 'session.activate',
+  /**
+   * The server refused this phone's credential and the phone signed itself out (2026-09-03).
+   *
+   * Not a press — nobody chose it — and that is exactly why it is worth a slug: it is the one
+   * event that answers "why did this phone stop" without anybody having to guess between a
+   * revoked device, a removed worker and a suspended company, which the 401 itself deliberately
+   * cannot tell apart. Raised by `core/session/device-refusal.service.ts`.
+   */
+  sessionDeviceRefused: 'session.device.refused',
 
   appStart: 'app.start',
   appOffline: 'app.offline',

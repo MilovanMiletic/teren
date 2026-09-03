@@ -33,6 +33,26 @@
         up the same markup becomes the panel in the right-hand column.
       -->
       <section class="auth__panel welcome__paths">
+        @if (refused()) {
+          <!--
+            2026-09-03. This phone was signed out by the server, and without this block the man is
+            standing on a screen he did not ask for with the record button gone and no explanation.
+
+            Above the two buttons on purpose: the sentence is the reason he is here, and the remedy
+            — "join a site with a code" — is the control directly under it. It names no cause,
+            because the 401 behind it names none (§7: a revoked phone, a removed worker and a
+            suspended company answer identically, deliberately). `role="status"` rather than
+            `alert`: it is the state of the screen he has just arrived on, not an interruption.
+          -->
+          <div class="notice notice--err welcome__refused" role="status">
+            <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
+            <div class="notice__text">
+              <span class="notice__title">{{ t('auth.welcome.refused.title') }}</span>
+              <span class="t-meta">{{ t('auth.welcome.refused.body') }}</span>
+            </div>
+          </div>
+        }
+
         <button type="button" class="btn btn--primary" (click)="signIn()">
           {{ t('auth.welcome.signIn') }}
         </button>

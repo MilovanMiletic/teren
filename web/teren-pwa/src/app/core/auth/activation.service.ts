@@ -6,6 +6,7 @@ import { PROJECT_CACHE_KEY } from '../projects/api-project-source';
 import { ProjectService, SELECTED_PROJECT_KEY } from '../projects/project.service';
 import { AdminSession } from '../session/admin-session';
 import { AdminSessionService } from '../session/admin-session.service';
+import { clearDeviceRefusal } from '../session/device-refusal';
 import { Session } from '../session/session';
 import { SessionService } from '../session/session.service';
 import { UploadService } from '../sync/upload.service';
@@ -154,7 +155,7 @@ export interface LoginResult {
  * foreman looking at a spinner with no sentence under it, on the one screen that stands between
  * him and the record button.
  *
- * ## The four things a successful activation must do besides storing a token
+ * ## The five things a successful activation must do besides storing a token
  *
  * 1. **Clear the cached project list when the company changes.** It is another company's site
  *    list, and an entry captured against a foreign project id 404s for ever (§10.4).
@@ -166,13 +167,24 @@ export interface LoginResult {
  * 3. **Wake the loop**, so he sees something happen while he is still looking at the screen.
  * 4. **Reload the project list**, never awaited — a network call on this path must not be able to
  *    hold the screen.
+ * 5. **Forget the refusal note** (2026-09-03). A sign-out leaves one behind for `/welcome` to
+ *    explain itself with, and a man can reach `/activate` without ever passing that screen — from
+ *    a bookmark, the back gesture, or the pending screen's own button. Left behind, the note would
+ *    explain a sign-out that has already been undone the next time he happened to see Welcome.
  *
- * ## There is no sign-out and nothing is ever deleted
+ * ## Nothing is ever deleted here, and since 2026-09-03 there *is* a sign-out elsewhere
  *
  * Re-activation replaces a credential. Evidence in Dexie belongs to the phone, not to the
  * credential that was current when it was recorded (PROJECT.md principle 3), and a phone handed
  * from one worker to another still holds the first man's unsent entries — which is a founder
  * question (§14.5), not something this service decides by quietly dropping rows.
+ *
+ * This paragraph used to open "there is no sign-out". **That is no longer true: by founder
+ * decision of 2026-09-03 a phone whose credential the server refuses signs itself out**
+ * (`core/session/device-refusal.service.ts`), reversing `plans/profile-and-identity.md` §10.3.
+ * What has not changed is the half this file is responsible for — a sign-out clears one
+ * `localStorage` row and no evidence whatsoever, so {@link ActivationService.activate} still finds
+ * the whole unsent day waiting and still sets it moving with no per-entry tap.
  */
 @Injectable({ providedIn: 'root' })
 export class ActivationService {
@@ -225,6 +237,10 @@ export class ActivationService {
     }
 
     this.sessions.adopt(session);
+
+    // Whatever refused this phone last, it has been answered. Cleared after the adopt rather than
+    // before, so a failed activation leaves the explanation on the screen he is standing on.
+    clearDeviceRefusal();
 
     // A store that will not open must not turn a good activation into a failed one. The phone is
     // activated either way; what is lost is the automatic release, and the pending screen's

@@ -27,12 +27,18 @@
  * and the failure would surface as a 401 in the middle of an admin's work rather than as a login
  * screen.
  *
- * ## An admin session may be discarded, and a worker's may not
+ * ## Both sessions may be discarded now, and neither discard may touch evidence
  *
- * PROJECT.md principle 3 forbids deleting anything *local* — evidence. This holds no evidence: it
- * is a password-backed credential on what may well be a shared office tablet, and signing out
- * removes exactly one `localStorage` row and touches not a single Dexie record. That asymmetry is
- * deliberate and is why `discard()` lives here and nowhere near `SessionService`.
+ * This section read "an admin session may be discarded, and a worker's may not". **The founder
+ * reversed that on 2026-09-03**: a phone whose credential the server refuses signs itself out, so
+ * `SessionService.discard` exists beside `clearAdminSession` and does the same one thing.
+ *
+ * PROJECT.md principle 3 forbids deleting anything *local* — evidence — and both halves obey it,
+ * because a session is a credential and not evidence. This one holds none at all: it is
+ * password-backed, on what may well be a shared office tablet, and a person ends it himself. The
+ * device credential sits on a phone holding a day of unsent work, which is why the sign-out over
+ * there removes exactly one `localStorage` row and not a single Dexie record — the same line this
+ * file has always drawn, now drawn in two places.
  */
 
 /** The three roles the server may report at login. Only one of them has a screen today. */
