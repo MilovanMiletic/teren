@@ -103,6 +103,15 @@ public sealed class TerenTestApp : IAsyncLifetime
     /// <see cref="FakeJobQueueDepth"/> for why the disabled container answer is not enough.</summary>
     public FakeJobQueueDepth Queue { get; } = new();
 
+    /// <summary>
+    /// What the handlers asked the mail-job queue for. Substituted because
+    /// <c>DisabledInviteQueue</c> — the real registration on a host with Hangfire off — makes a
+    /// request for a job unobservable, which left §13.6's access notice provable only by reading
+    /// the code. Its answer to <c>EnqueueInvite</c> stays false by default, so nothing that already
+    /// asserts <c>emailed: false</c> changes.
+    /// </summary>
+    public RecordingInviteQueue Invites { get; } = new();
+
     public InsertRaceInterceptor RaceInterceptor { get; } = new();
 
     /// <summary>Records the statement sequence a request issues — see
@@ -357,13 +366,24 @@ public sealed class TerenTestApp : IAsyncLifetime
     /// 2026-09-02 while already injecting the options object that carries it — so a host that
     /// shortened the setting got links that outlived it, and the mail printed the literal.
     /// </param>
+    /// <param name="notice">
+    /// What the company's other administrators are to be told once the link has gone out. It rides
+    /// on the invite rather than being announced at the request, because only this job knows
+    /// whether anything was actually sent — see <see cref="AdminInviteJob"/>.
+    /// </param>
+    /// <param name="notices">
+    /// Where the job asks for that notice. Defaults to <see cref="Invites"/>, the same recorder the
+    /// host uses, so a test can assert the ask without wiring anything.
+    /// </param>
     public async Task<Core.Mail.MailMessage?> RunInviteJobAsync(
         Guid userId,
         Guid actorUserId,
         CancellationToken ct,
         IMailSender? sender = null,
         string appUrl = "https://app.teren.test",
-        TimeSpan? passwordTokenLifetime = null)
+        TimeSpan? passwordTokenLifetime = null,
+        AdminAccessNotice notice = AdminAccessNotice.CredentialIssued,
+        IInviteQueue? notices = null)
     {
         var mail = sender ?? new CapturingMailSender();
 
@@ -378,10 +398,11 @@ public sealed class TerenTestApp : IAsyncLifetime
         var job = new AdminInviteJob(
             identity,
             mail,
+            notices ?? Invites,
             Options.Create(options),
             NullLogger<AdminInviteJob>.Instance);
 
-        await job.RunAsync(userId, actorUserId, ct);
+        await job.RunAsync(userId, actorUserId, notice, ct);
 
         return (mail as CapturingMailSender)?.Last;
     }
@@ -422,6 +443,37 @@ public sealed class TerenTestApp : IAsyncLifetime
         await job.RunAsync(userId, ct);
 
         return (mail as CapturingMailSender)?.Last;
+    }
+
+    /// <summary>
+    /// Run the access-notice job by hand and hand back <b>every</b> message it produced — a list
+    /// rather than a slot, because the whole point of the job is that it writes to more than one
+    /// person (<see cref="AdminAccessNoticeJob"/>, plan §13.6).
+    ///
+    /// <para>
+    /// Driven directly for the same reason <see cref="RunInviteJobAsync"/> is: the test host runs
+    /// with <c>Hangfire__Enabled=false</c>, so a route reaches <c>DisabledInviteQueue</c> and
+    /// nothing runs. That the routes <em>ask</em> for this job is a separate question, asked
+    /// against a recording queue in <c>AdminAccessNoticeTests</c>.
+    /// </para>
+    /// </summary>
+    public async Task<IReadOnlyList<Core.Mail.MailMessage>> RunAccessNoticeJobAsync(
+        Guid subjectUserId,
+        AdminAccessNotice notice,
+        DateTime occurredAt,
+        CancellationToken ct,
+        IMailSender? sender = null)
+    {
+        var mail = sender ?? new CapturingMailSender();
+
+        await using var identity = CreateIdentityDbContext();
+
+        var job = new AdminAccessNoticeJob(
+            identity, mail, NullLogger<AdminAccessNoticeJob>.Instance);
+
+        await job.RunAsync(subjectUserId, notice, occurredAt, ct);
+
+        return (mail as CapturingMailSender)?.Sent ?? [];
     }
 
     /// <summary>
@@ -498,6 +550,7 @@ public sealed class TerenTestApp : IAsyncLifetime
         RaceInterceptor.Disarm();
         CommandTap.Reset();
         Queue.Depth = JobQueueDepth.Unknown(JobQueueDepth.NotConfigured);
+        Invites.Reset();
 
         // D5. The log queue is drained BEFORE the truncate below, and the order is the whole
         // point: every test in this run emits log lines, and a flush that arrived after the
@@ -653,6 +706,12 @@ public sealed class TerenTestApp : IAsyncLifetime
                 // numeric half of /api/platform/health assertable.
                 services.RemoveAll<IJobQueueDepth>();
                 services.AddSingleton<IJobQueueDepth>(app.Queue);
+
+                // The mail-job queue. Recorded rather than faked out: the shipped registration on
+                // this host is DisabledInviteQueue, which answers exactly as this does by default
+                // and remembers nothing — see RecordingInviteQueue for what that cost.
+                services.RemoveAll<IInviteQueue>();
+                services.AddSingleton<IInviteQueue>(app.Invites);
 
                 // The mail relay, faked at the seam PROJECT.md §11 put there. The renderer is
                 // *not* faked — it is the real one, wrapped so the model it was handed can be

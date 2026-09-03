@@ -363,6 +363,17 @@ public sealed partial class PlatformDirectory(
     /// read him a link. The console command <c>invite-admin</c> remains as the terminal-only
     /// bootstrap, which is also how the first super admin gets in. Configure the relay.
     /// </para>
+    /// <para>
+    /// <b>And the company's other administrators are told (plan §13.6, closed 2026-09-03).</b> A
+    /// link sent here lets whoever receives it set the password on an administrator account, so
+    /// every <em>other</em> active administrator of that company is emailed that it happened —
+    /// which account, in which company, at what time, and that Teren support did it. No token, no
+    /// link, nothing to click (<see cref="AdminInviteJob"/>, <see cref="AdminAccessNoticeJob"/>),
+    /// and announced only once the link has actually gone out, so a relay that never sent it
+    /// announces nothing. The capability stays because a customer's first admin has to come from
+    /// somewhere and a locked-out owner is a real support case; what is gone is being able to use
+    /// it without the customer being told.
+    /// </para>
     /// </summary>
     public async Task<InviteSentResponse?> InviteAsync(
         Guid userId, Guid actorUserId, CancellationToken ct)
@@ -373,7 +384,11 @@ public sealed partial class PlatformDirectory(
             return null;
         }
 
-        return new InviteSentResponse(user.Email, Invite(user.Id, actorUserId));
+        // The kind of notice travels with the invite: the company's other administrators are told
+        // once the link has actually gone out, which the job knows and this request cannot.
+        return new InviteSentResponse(
+            user.Email,
+            Invite(user.Id, actorUserId, AdminAccessNotice.CredentialIssued));
     }
 
     /// <summary>
@@ -425,6 +440,18 @@ public sealed partial class PlatformDirectory(
     /// The two company rules are the database's, restated here so the answer is a sentence rather
     /// than a 500 from a CHECK: <c>ck_app_user_company_scope</c> makes super_admin ⟺ no company an
     /// identity, in both directions.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Every administrator this company already has is emailed about it</b> (plan §13.6, closed
+    /// 2026-09-03), and that is the finding this route was rejected over rather than a courtesy.
+    /// Taking an <c>email</c> and a <c>company_id</c> together means staff can put a
+    /// <c>company_admin</c> with an address they control inside any customer's company, receive the
+    /// invite, set a password and read that customer's diaries — a wider door than the password
+    /// reset §13.6 was written about, and a quieter one, because a reset at least locks the real
+    /// administrator out. The account is still created and the invite still goes; what cannot
+    /// happen any more is that nobody in the company hears about it: the notice rides on the
+    /// invite (<see cref="AdminInviteJob"/>) and goes out once the link actually has.
     /// </para>
     /// </summary>
     public async Task<CreateAdminResult> CreateAdminAsync(
@@ -520,7 +547,11 @@ public sealed partial class PlatformDirectory(
         // race the transaction that created the account — Hangfire can start a worker before this
         // one commits, and the job would find no such user and log a warning about an account that
         // exists. Principle 4 in the other direction: the request does not wait for the relay.
-        var emailed = Invite(user.Id, actorUserId);
+        // `AdministratorAdded` rides along: once the link is actually sent, this company's other
+        // administrators are told that a new administrator exists. This is the wider of the two
+        // doors §13.6 was written about — an added account disturbs nothing a customer would
+        // notice, where a password reset at least locks the real administrator out.
+        var emailed = Invite(user.Id, actorUserId, AdminAccessNotice.AdministratorAdded);
 
         return new CreateAdminResult(
             CreateAdminOutcome.Created,
@@ -551,14 +582,14 @@ public sealed partial class PlatformDirectory(
     /// policy: visible failure, never silent invention.
     /// </para>
     /// </summary>
-    private bool Invite(Guid userId, Guid actorUserId)
+    private bool Invite(Guid userId, Guid actorUserId, AdminAccessNotice notice)
     {
         if (!mail.IsConfigured)
         {
             return false;
         }
 
-        return invites.EnqueueInvite(userId, actorUserId);
+        return invites.EnqueueInvite(userId, actorUserId, notice);
     }
 
     // ---------------------------------------------------------------------------------- audit

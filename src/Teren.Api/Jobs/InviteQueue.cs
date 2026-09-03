@@ -1,5 +1,6 @@
 using Hangfire;
 using Microsoft.Extensions.Logging;
+using Teren.Core.Mail;
 
 namespace Teren.Api.Jobs;
 
@@ -18,10 +19,18 @@ namespace Teren.Api.Jobs;
 /// </summary>
 public interface IInviteQueue
 {
-    /// <summary>True when a job was actually queued. **False is not an error and must reach the
-    /// screen**: the account exists and nobody can get into it, which is a thing a founder has to
-    /// be told rather than left to discover.</summary>
-    bool EnqueueInvite(Guid userId, Guid actorUserId);
+    /// <summary>
+    /// True when a job was actually queued. **False is not an error and must reach the screen**:
+    /// the account exists and nobody can get into it, which is a thing a founder has to be told
+    /// rather than left to discover.
+    /// </summary>
+    /// <param name="notice">
+    /// What the company's other administrators are told once the link has actually gone out — a
+    /// new administrator, or a credential on an account that already existed
+    /// (<see cref="AdminAccessNoticeJob"/>, plan §13.6). Carried through the invite rather than
+    /// announced at the request, because the request cannot know whether the mail will be sent.
+    /// </param>
+    bool EnqueueInvite(Guid userId, Guid actorUserId, AdminAccessNotice notice);
 
     /// <summary>
     /// The worker half: mail one man his own activation code (<see cref="WorkerCodeMailJob"/>).
@@ -34,15 +43,30 @@ public interface IInviteQueue
     /// </para>
     /// </summary>
     void EnqueueWorkerCodeMail(Guid userId);
+
+    /// <summary>
+    /// The notice half (<see cref="AdminAccessNoticeJob"/>): tell a company's <em>other</em>
+    /// administrators that Teren staff changed administrative access inside their company.
+    /// <para>
+    /// <b>Nothing is reported to the caller</b>, unlike an invite's answer, and that is deliberate.
+    /// Whether anybody was told depends on how many other administrators the company has, which is
+    /// a fact about the customer rather than about the request; and a screen that said "3
+    /// administrators notified" would invite somebody to treat it as a knob. The job and the log
+    /// stream record what happened, and the <c>admin_audit</c> row is what proves the act itself.
+    /// </para>
+    /// </summary>
+    void EnqueueAdminAccessNotice(
+        Guid subjectUserId, AdminAccessNotice notice, DateTime occurredAt);
 }
 
 /// <summary>Hangfire behind the seam.</summary>
 public sealed class HangfireInviteQueue(
     IBackgroundJobClient jobs, ILogger<HangfireInviteQueue> logger) : IInviteQueue
 {
-    public bool EnqueueInvite(Guid userId, Guid actorUserId)
+    public bool EnqueueInvite(Guid userId, Guid actorUserId, AdminAccessNotice notice)
     {
-        jobs.Enqueue<AdminInviteJob>(job => job.RunAsync(userId, actorUserId, CancellationToken.None));
+        jobs.Enqueue<AdminInviteJob>(job =>
+            job.RunAsync(userId, actorUserId, notice, CancellationToken.None));
 
         // The id and nothing else — never the address (ARCHITECTURE §12).
         logger.LogInformation("Invite mail queued for {UserId}.", userId);
@@ -51,6 +75,17 @@ public sealed class HangfireInviteQueue(
 
     public void EnqueueWorkerCodeMail(Guid userId) =>
         jobs.Enqueue<WorkerCodeMailJob>(job => job.RunAsync(userId, CancellationToken.None));
+
+    public void EnqueueAdminAccessNotice(
+        Guid subjectUserId, AdminAccessNotice notice, DateTime occurredAt)
+    {
+        jobs.Enqueue<AdminAccessNoticeJob>(job =>
+            job.RunAsync(subjectUserId, notice, occurredAt, CancellationToken.None));
+
+        // The id and the kind. Never an address, and there is no credential to omit.
+        logger.LogInformation(
+            "Access notice queued for {SubjectId} ({Reason}).", subjectUserId, notice.ToString());
+    }
 }
 
 /// <summary>
@@ -65,7 +100,7 @@ public sealed class HangfireInviteQueue(
 /// </summary>
 public sealed class DisabledInviteQueue(ILogger<DisabledInviteQueue> logger) : IInviteQueue
 {
-    public bool EnqueueInvite(Guid userId, Guid actorUserId)
+    public bool EnqueueInvite(Guid userId, Guid actorUserId, AdminAccessNotice notice)
     {
         logger.LogWarning(
             "Background jobs are disabled (Hangfire:Enabled=false); no invite mail was sent for "
@@ -79,4 +114,15 @@ public sealed class DisabledInviteQueue(ILogger<DisabledInviteQueue> logger) : I
         logger.LogWarning(
             "Background jobs are disabled (Hangfire:Enabled=false); no activation-code mail was "
             + "sent for {UserId}, and his live code is untouched.", userId);
+
+    public void EnqueueAdminAccessNotice(
+        Guid subjectUserId, AdminAccessNotice notice, DateTime occurredAt) =>
+        // Warning rather than silence, and it is the loudest line in this class: on a host with no
+        // job server the invite itself was not queued either (`EnqueueInvite` above returns false
+        // and the screen says so), so nothing was handed out — but if that ever stops being true,
+        // this line is the only trace that a customer was not told.
+        logger.LogWarning(
+            "Background jobs are disabled (Hangfire:Enabled=false); the company's other "
+            + "administrators were NOT told about {SubjectId} ({Reason}).",
+            subjectUserId, notice.ToString());
 }

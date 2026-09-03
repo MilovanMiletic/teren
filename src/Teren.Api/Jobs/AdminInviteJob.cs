@@ -46,6 +46,7 @@ namespace Teren.Api.Jobs;
 public sealed class AdminInviteJob(
     TerenIdentityDbContext db,
     IMailSender mail,
+    IInviteQueue notices,
     Microsoft.Extensions.Options.IOptions<AuthOptions> authOptions,
     Microsoft.Extensions.Logging.ILogger<AdminInviteJob> logger)
 {
@@ -63,7 +64,19 @@ public sealed class AdminInviteJob(
     /// </summary>
     private TimeSpan Lifetime => authOptions.Value.PasswordTokenLifetime;
 
-    public async Task RunAsync(Guid userId, Guid actorUserId, CancellationToken ct)
+    /// <param name="notice">
+    /// Which change of access the company's other administrators are to be told about
+    /// (<see cref="AdminAccessNoticeJob"/>, plan §13.6) — a new administrator, or a credential
+    /// issued on an account that already existed.
+    /// <para>
+    /// <b>It is decided by the caller and not derived here.</b> The token's own purpose
+    /// (<c>invite</c> / <c>reset</c>) cannot tell them apart: re-inviting an account that has never
+    /// had a password mints an <c>invite</c> token and is <em>not</em> a new administrator, and a
+    /// notice that said otherwise would be wrong about the one fact it exists to state.
+    /// </para>
+    /// </param>
+    public async Task RunAsync(
+        Guid userId, Guid actorUserId, AdminAccessNotice notice, CancellationToken ct)
     {
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
 
@@ -128,6 +141,20 @@ public sealed class AdminInviteJob(
 
         // The id and nothing else. Never the address, never the token, never the link.
         logger.LogInformation("Invite mail sent for {UserId}.", userId);
+
+        // **Here, and deliberately not at the request.** A credential has now actually reached a
+        // relay, which is the fact the company's other administrators are being told about; every
+        // way this method can decline to send is above this line — no such account, a worker, no
+        // relay, no `Auth:AppUrl` — and each of them would otherwise have announced a credential
+        // that never left the building. A security notice that cries wolf is worse than none.
+        //
+        // Only for a company admin: Teren's own staff belong to no customer, and there is nobody
+        // to write to. The notice job checks this again; this check is what keeps the queue from
+        // filling with jobs that can only no-op.
+        if (user.Role == AppUserRole.CompanyAdmin && user.CompanyId is not null)
+        {
+            notices.EnqueueAdminAccessNotice(user.Id, notice, DateTime.UtcNow);
+        }
     }
 }
 

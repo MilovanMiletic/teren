@@ -25,7 +25,68 @@ public sealed record DailyReport(
     string TimeZoneId,
     ReportContent Content,
     IReadOnlyList<ReportPhoto> Photos,
-    ReportProvenance Provenance);
+    ReportProvenance Provenance)
+{
+    /// <summary>
+    /// The document this one replaces, when this entry is a correction
+    /// (<c>entry.supersedes_entry_id</c>); null for an ordinary day, and then nothing extra is
+    /// printed at all.
+    /// <para>
+    /// **Why it has to be on the page.** A correction already exists as a record — the phone can
+    /// make one and the link is stored — but the PDF the client receives said nothing about the
+    /// document it replaces, so it arrived looking like an unrelated day. That is weak evidence in
+    /// precisely the dispute a correction exists for: the client has *already received* the wrong
+    /// report.
+    /// </para>
+    /// <para>
+    /// An <c>init</c> property rather than a tenth positional parameter, for the same reason
+    /// <see cref="ReportContent.DescribedVerbatim"/> is one: this is not another section of the
+    /// day, it is a statement about the standing of the whole document.
+    /// </para>
+    /// </summary>
+    public ReportCorrection? Correction { get; init; }
+}
+
+/// <summary>
+/// The predecessor, named the way a human would name it (founder, PROJECT.md §11: the report is a
+/// client's document, not a system record).
+///
+/// <para>
+/// <b>No GUID.</b> Ruling 1 took the record id off this page deliberately — "a GUID means nothing
+/// to an investor" — and the accepted trade-off is that a disputed PDF is matched to the archive by
+/// **project + date**. So that is the pair printed here: the superseded record's own work date,
+/// which is what a client can look up in his inbox and a contractor in his archive.
+/// </para>
+/// </summary>
+/// <param name="Date">
+/// The superseded entry's <c>entry_date</c> — the day of work, not the day the document was made.
+/// </param>
+/// <param name="SiteName">
+/// Normally null, and printed only when it is not: the site the superseded record belongs to, when
+/// that is <em>not</em> this report's own site.
+/// <para>
+/// <c>POST /entries</c> refuses a link to an entry of any other project, so a correction and its
+/// predecessor share a site and the date alone identifies the document — which is exactly why the
+/// site is *not* printed in the ordinary case (it is already in the masthead, the footer and the
+/// record block). This carries the abnormal case rather than trusting it cannot happen: a row
+/// written before that check existed, or by hand, would otherwise have a bare date on the page
+/// naming a document from a different site — the one way this line could be worse than silence.
+/// </para>
+/// </param>
+/// <param name="ReportSentAt">
+/// When a relay took custody of the superseded report, or null if it never did.
+/// <para>
+/// Read from the <c>report</c> row rather than from the superseded entry's <c>reported_at</c>, and
+/// the difference is load-bearing: the <c>superseded_after_send</c> case is a report that
+/// <b>went out</b> and an entry that was deliberately left unsealed. Keying on the seal would print
+/// "never sent" over a day the client is holding in his inbox, which is the worst thing this line
+/// could say.
+/// </para>
+/// </param>
+public sealed record ReportCorrection(
+    DateOnly Date,
+    string? SiteName,
+    DateTimeOffset? ReportSentAt);
 
 /// <summary>The structured day, parsed out of the entry's <c>corrected</c> JSONB (schema v1).</summary>
 public sealed record ReportContent(

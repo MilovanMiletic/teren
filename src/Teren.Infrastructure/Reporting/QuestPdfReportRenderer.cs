@@ -280,6 +280,14 @@ public sealed class QuestPdfReportRenderer : IReportRenderer
 
             var content = report.Content;
 
+            // Before everything, including a verbatim day's own words: this is the one fact on the
+            // page that changes how the whole document should be read, and a reader who meets it
+            // after the day's work has already read the wrong report twice.
+            if (report.Correction is { } correction)
+            {
+                column.Item().Element(e => CorrectionBanner(e, correction, s, zone));
+            }
+
             // First on the page, above the structured sections, because on a verbatim day it
             // *is* the description of the day — and because a reader must meet the statement
             // about where these words came from before he reads them. In the shape the
@@ -355,6 +363,52 @@ public sealed class QuestPdfReportRenderer : IReportRenderer
 
             column.Item().Element(e => RecordDetails(e, report, s, zone));
         });
+
+    /// <summary>
+    /// "This report replaces the one you already have." Directly under the masthead rule, in the
+    /// document's own accent, and deliberately not a footnote (founder: it must read as a
+    /// correction, not an erratum buried in a footer).
+    ///
+    /// <para>
+    /// **It names the predecessor by day, never by id.** PROJECT.md §11 ruling 1 took the record id
+    /// off this page — a GUID means nothing to an investor — and left project + date as the pair a
+    /// disputed PDF is matched by. So that is what a client is given: the work date of the record
+    /// being replaced, in the site's own local time (ruling 3), plus when the superseded report was
+    /// sent when it was sent at all.
+    /// </para>
+    /// <para>
+    /// **Not in the repeating masthead**, though the masthead is what repeats on every page. A band
+    /// there would push the day's work down on every page for a statement that belongs at the top
+    /// of the document; the reader who checks a document's standing rather than skimming it is
+    /// served by the <c>Corrects</c> line in the record block instead, which is the same doubling
+    /// the verbatim variant already does and for the same reason.
+    /// </para>
+    /// </summary>
+    private static void CorrectionBanner(
+        IContainer container, ReportCorrection correction, ReportStrings s, TimeZoneInfo zone) =>
+        container
+            .Background(AccentTint)
+            .Padding(11)
+            .Column(band =>
+            {
+                band.Item().Text(s.CorrectionHeading.ToUpperInvariant())
+                    .FontSize(7.5f).Bold().LetterSpacing(0.12f).FontColor(AccentDeep);
+
+                var day = s.FormatSupersededDay(correction);
+
+                // Two sentences, not one with a caveat: a document that was sent and one that
+                // never left the building are different claims, and the reader must not be sent
+                // hunting his inbox for a report he was never sent.
+                var sentence = correction.ReportSentAt is { } sentAt
+                    ? string.Format(
+                        s.NumberCulture,
+                        s.CorrectionOfSentReport,
+                        day,
+                        s.FormatTimestamp(sentAt, zone))
+                    : string.Format(s.NumberCulture, s.CorrectionOfUnsentRecord, day);
+
+                band.Item().PaddingTop(4).Text(sentence).FontSize(9.5f).FontColor(Ink);
+            });
 
     /// <summary>A titled block. The heading rule is what gives the page its structure at a
     /// glance — a client scanning it on a phone should find "Skriveni radovi" without reading.</summary>
@@ -662,10 +716,18 @@ public sealed class QuestPdfReportRenderer : IReportRenderer
     /// <b>That is unambiguous only while one entry produces at most one report per project per
     /// day</b> — which <c>ux_report_entry_id</c> and the daily-report shape guarantee today
     /// (ARCHITECTURE §6). The day that changes — a second report for the same site and date, a
-    /// weekly recap that supersedes a daily, a correction entry re-reported under its original
-    /// date — project + date stops identifying one document and this decision has to be revisited.
-    /// Nobody will remember that, which is why it is written here next to the line that would
-    /// have to come back.
+    /// weekly recap that supersedes a daily — project + date stops identifying one document and
+    /// this decision has to be revisited. Nobody will remember that, which is why it is written
+    /// here next to the line that would have to come back.
+    /// </para>
+    /// <para>
+    /// <b>One of those three cases has since arrived, and it is answered rather than open.</b> A
+    /// correction re-reported under its original date really does put two documents on the same
+    /// project + date, so a correction says so on its own face: the band under the masthead and the
+    /// <c>Corrects</c> line below name the superseded day <em>and</em> when that report was sent,
+    /// which is how a client tells the two apart in his inbox without an identifier. The
+    /// superseded report itself is never rewritten — reports are sealed — so the newer document is
+    /// the only one of a pair that ever claims to be a correction.
     /// </para>
     /// </summary>
     private static void RecordDetails(
@@ -695,6 +757,14 @@ public sealed class QuestPdfReportRenderer : IReportRenderer
                         string.IsNullOrWhiteSpace(report.ProjectAddress)
                             ? report.ProjectName
                             : report.ProjectAddress!);
+
+                    // The correction, in the place a reader checking this document's standing
+                    // looks. The band at the top of page 1 is for the person skimming the day;
+                    // this is for the person reconciling two PDFs, and he reads this block.
+                    if (report.Correction is { } correction)
+                    {
+                        Detail(details, s.Corrects, s.FormatSupersededDay(correction));
+                    }
 
                     // Said twice, and that is not redundancy. The block above tells a reader
                     // skimming the day what he is reading; this tells a reader checking the

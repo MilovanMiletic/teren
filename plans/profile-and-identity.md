@@ -889,46 +889,54 @@ code, re-activate, watch the queue drain unattended.
    `sed`. Two files, not one.
 5. **Not in scope:** per-project worker assignment, multi-company users, SSO.
 
-6. **⚠ OPEN FOUNDER DECISION — the invite/reset path lets a super admin become a company admin,
-   and therefore read that company's evidence.** Found by the D4 review, 2026-09-01.
+6. **✅ DECIDED 2026-09-03 — staff keep the ability to mint a customer's administrator, and lose the
+   ability to do it quietly.** This item was an open founder decision from the D4 review of
+   2026-09-01. **Its three options, listed below for the record, were all aimed at the wrong hole**,
+   because they were written before D6 landed.
 
-   `POST /api/platform/users/{id}/invite` (and `invite-admin` before it) mints a set-password token
-   for any non-worker account and hands the **plaintext** to the caller. `POST /auth/password` is
-   unauthenticated and validates only the token, so whoever holds it can set that admin's password,
-   sign in as him, and read everything his company has. The four layers of §6 make decision 2 true
-   of the super admin's *own* principal; they say nothing about a **different principal he is able
-   to mint**.
+   **What D6 had already changed.** No response body carries a credential: `InviteSentResponse` is
+   `(Email, Emailed)`, `PlatformCreateAdminResponse` is `(User, Emailed)`, and the token is minted
+   **inside `AdminInviteJob`** and mailed to the address on the account (founder, 2026-09-01: *"bad
+   behaviour, I don't like that"*). No platform route can change an admin's email, so staff cannot
+   redirect a reset. That is the mechanism option 3 was reaching for, shipped by another increment.
 
-   **So decision 2 as literally worded — "a super admin can never read entries, transcripts, photos
-   or reports" — is not mechanically true, and §14.7's claim that it is should not be repeated to a
-   customer in that form.** What remains true and defensible:
+   **The hole that was actually open, and it is wider.** `POST /api/platform/users` takes an `email`
+   **and** a `company_id`, so staff can mint a **brand-new `company_admin` inside any customer's
+   company** with an address they control, set a password from the invite, and read that company's
+   diaries. It is worse than the reset path this section worried about in the property the section's
+   own defensible sentence leaned on: **a reset locks the real admin out, and a new account disturbs
+   nothing the customer would notice.**
 
-   > Teren staff cannot read a customer's diary *with their own credentials*. Taking a customer's
-   > account requires resetting his password, which locks him out, revokes his sessions, and leaves
-   > an audit row naming the staff member who did it.
+   **The decision: the capability stays, silence goes.** Creating a customer's first administrator is
+   real work, and so is the case where his only administrator has left. So:
 
-   This is not new to D4 — `invite-admin` has done the same from a terminal since D2 — and it is
-   the same power every SaaS support desk holds. What D4 changed is that it is reachable through
-   the product.
+   - **Every *other* administrator of that company is emailed** whenever an administrator is added to
+     it or a credential is issued for one — in the company's language, carrying no token and no link.
+     It states what happened, who did it, and when. `AdminAccessNoticeJob` follows `AdminInviteJob`'s
+     discipline: no credential is ever a Hangfire argument.
+   - **A structural guard** forbids any type reachable from `PlatformDirectory` carrying a property
+     that names a token, link, secret, password, code, credential, url or hash. "The link is never in
+     this body" is now checked by the build rather than asserted in a comment.
+   - **`invite-admin` (the CLI) still prints a link**, deliberately. Shell access to that box already
+     means the database, so it is not an additional exposure; it is the audited escape hatch, and its
+     doc comment says so.
 
-   **The forensic signal already exists:** `password_token_issued` carries
-   `{"source": "platform", "purpose": "reset"}`, and `purpose: reset` means the target *already had*
-   a password. Staff minting a reset for a live account is exactly the shape of the dangerous act,
-   and it is distinguishable from an ordinary onboarding invite.
+   **The forensic signal was already there and still is:** `password_token_issued` carries
+   `{"source": "platform", "purpose": "reset"}`, and `purpose: reset` means the target *already had* a
+   password — staff minting a reset for a live account is the shape of the dangerous act, and it is
+   distinguishable from an ordinary onboarding invite.
 
-   **The options, for the founder:**
-   - **Accept it and reword decision 2** to the honest sentence above. Costs nothing, and the
-     product keeps its 9 p.m. escape hatch.
-   - **Narrow the route to `invite` only** (refuse when `password_hash IS NOT NULL`). Closes the
-     impersonation path — and takes the actual support case with it, because a *locked-out* admin
-     is by definition one who already has a password. With no SMTP relay he would then have no way
-     back at all.
-   - **Require a second signal for `reset`** — e.g. the customer confirms out of band, or the token
-     is only ever emailed to the account's own address (needs D6, needs a relay).
+   **Decision 2's literal wording is retired.** What the product defends now, and what §14.7 must say:
 
-   Until this is decided, `PlatformDirectory.InviteAsync` and `PlatformContracts.InviteUserResponse`
-   both carry the caveat in their doc comments, so nobody reads the old, false reasoning and
-   believes it.
+   > Teren staff cannot read a customer's diary with their own credentials. Minting or resetting an
+   > administrator's credential in a customer's company is possible, is audited, and emails every
+   > other administrator of that company — so it cannot be done without the customer being told.
+
+   *The three options as they stood, kept so the next person to widen this can see what was
+   considered: accept it and reword decision 2; narrow the route to `invite` only (which would have
+   taken the actual support case with it, since a locked-out admin is by definition one who already
+   has a password); or require a second signal for a reset. The decision taken is none of the three —
+   it keeps the capability and makes it loud, which none of the three proposed.*
 
 ---
 

@@ -47,6 +47,20 @@ namespace Teren.Api.Maintenance;
 /// produces a link, the person at the other end chooses his own passphrase over
 /// <c>POST /auth/password</c>, and the founder never learns it.
 /// </para>
+/// <para>
+/// <b>The one gap left open on purpose, written down rather than closed (plan §13.6,
+/// 2026-09-03).</b> Everything that mints an administrator's credential <em>through the product</em>
+/// now emails the company's other administrators, so it cannot be done without the customer being
+/// told (<c>AdminInviteJob</c>, <c>AdminAccessNoticeJob</c>). <b>This command does not</b>:
+/// it prints a single-use link to a terminal and tells nobody. That is deliberate and it is not an
+/// additional exposure — anyone who can run this already has a shell on the box and can read the
+/// database directly, so notifying him of his own action protects nothing. It exists as the
+/// deliberate 9 p.m. escape hatch: a relay that is down, or a host that has none, and an
+/// administrator who has to get in tonight. <b>Do not "fix" this by adding a notification and do
+/// not add a second copy of this command anywhere a request can reach.</b> The distinction that
+/// matters is the boundary, not the button: through the product, the customer is told; at the
+/// console, the machine's owner is already inside.
+/// </para>
 /// </summary>
 public static class InviteAdminCommand
 {

@@ -191,11 +191,27 @@ public abstract class ApiTestBase(TerenTestApp app) : IAsyncLifetime
 
     /// <summary>An accepted entry on project A1. Fails loudly if the API did not accept it, so a
     /// broken arrange never masquerades as a failed assertion.</summary>
-    protected async Task<Guid> GivenEntryAsync(Guid? id = null, Guid? projectId = null)
+    /// <param name="entryDate">
+    /// The day of work. Left to <c>Wire.Today</c> unless a test needs two entries to be
+    /// distinguishable by date — which a correction's report does, since the report names the
+    /// superseded record by its date and by nothing else.
+    /// </param>
+    /// <param name="supersedes">The entry this one corrects, posted the way a phone posts it.</param>
+    protected async Task<Guid> GivenEntryAsync(
+        Guid? id = null,
+        Guid? projectId = null,
+        DateOnly? entryDate = null,
+        Guid? supersedes = null)
     {
         var entryId = id ?? Guid.NewGuid();
-        var response = await Client.PostJson(
-            "/api/entries", Wire.Entry(entryId, projectId ?? TestIds.ProjectA1));
+        var body = Wire.Entry(entryId, projectId ?? TestIds.ProjectA1, entryDate);
+
+        if (supersedes is { } supersededId)
+        {
+            body["supersedes_entry_id"] = supersededId.ToString();
+        }
+
+        var response = await Client.PostJson("/api/entries", body);
 
         response.StatusCode.ShouldBe(
             HttpStatusCode.Accepted, await response.TextAsync());
@@ -310,13 +326,15 @@ public abstract class ApiTestBase(TerenTestApp app) : IAsyncLifetime
         Guid? id = null,
         Guid? projectId = null,
         int photos = 0,
-        JsonNode? corrected = null)
+        JsonNode? corrected = null,
+        DateOnly? entryDate = null,
+        Guid? supersedes = null)
     {
         var entryId = id ?? Guid.NewGuid();
         var audioBytes = Wire.AudioBytes();
         var audioId = Guid.NewGuid();
 
-        await GivenEntryAsync(entryId, projectId);
+        await GivenEntryAsync(entryId, projectId, entryDate, supersedes);
 
         var files = new List<JsonObject>
         {

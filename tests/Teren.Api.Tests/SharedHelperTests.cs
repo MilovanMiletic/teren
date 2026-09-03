@@ -40,15 +40,18 @@ public sealed class SharedHelperTests
     [InlineData("en-us")]
     [InlineData("en-US")]
     [InlineData("en-GB")]
-    public void The_three_readers_of_a_language_tag_now_agree_that_it_is_english(string tag)
+    public void Every_reader_of_a_language_tag_agrees_that_it_is_english(string tag)
     {
         // Before the reconciliation, `AdminInviteStrings.For` answered Serbian to four of these
-        // six while the other two readers answered English.
+        // six while the other two readers answered English. The fourth reader arrived on
+        // 2026-09-03 with the access notice, and it joins this list rather than getting a rule of
+        // its own — which is the whole point of the file.
         LanguageTag.IsEnglish(tag).ShouldBeTrue(tag);
 
         ReportStrings.For(tag).ShouldBe(ReportStrings.English, tag);
         WorkerInviteStrings.For(tag).ShouldBe(WorkerInviteStrings.English, tag);
         AdminInviteStrings.For(tag).ShouldBe(AdminInviteStrings.English, tag);
+        AdminAccessNoticeStrings.For(tag).ShouldBe(AdminAccessNoticeStrings.English, tag);
     }
 
     [Theory]
@@ -59,7 +62,7 @@ public sealed class SharedHelperTests
     [InlineData("sr-Latn-RS")]
     [InlineData("english")]
     [InlineData("de")]
-    public void Anything_else_is_serbian_in_all_three(string? tag)
+    public void Anything_else_is_serbian_in_every_one_of_them(string? tag)
     {
         // Serbian is the default rather than a fallback: the users are Serbian tradesmen and their
         // bosses, and a tag nobody can parse must not stop a report, an invite or a code going out.
@@ -68,6 +71,7 @@ public sealed class SharedHelperTests
         ReportStrings.For(tag).ShouldBe(ReportStrings.Serbian);
         WorkerInviteStrings.For(tag).ShouldBe(WorkerInviteStrings.Serbian);
         AdminInviteStrings.For(tag).ShouldBe(AdminInviteStrings.Serbian);
+        AdminAccessNoticeStrings.For(tag).ShouldBe(AdminAccessNoticeStrings.Serbian);
     }
 
     [Fact]

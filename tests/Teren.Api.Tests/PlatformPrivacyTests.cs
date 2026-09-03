@@ -265,6 +265,207 @@ public sealed class PlatformPrivacyTests(TerenTestApp app) : ApiTestBase(app)
     /// <summary>Things called a count that are not one, declared on an admitted type's name.</summary>
     private sealed record NotACount(string EntryCount, IReadOnlyList<int> Reported, bool ReportCount);
 
+    // ------------------------------------------------------ the credential half (plan §12/§13.6)
+
+    /// <summary>
+    /// Words that mean "a credential", which no type on the platform surface may name.
+    ///
+    /// <para>
+    /// <b>This is the second thing §13.6 asked for, and it is what turns a comment into a fact.</b>
+    /// The set-password link left every response body on 2026-09-01 (founder: *"bad behaviour, I
+    /// don't like that"*) and the doc comments on <c>InviteSentResponse</c> and
+    /// <c>PlatformCreateAdminResponse</c> say it "is not in this body and never will be". Nothing
+    /// enforced the second half of that sentence: a token, a link or a one-time code could be added
+    /// back to any of these DTOs, every existing test would stay green, and the credential would be
+    /// in a response body, a screen, a clipboard and a chat message again.
+    /// </para>
+    /// <para>
+    /// <b>Names, not types</b> — for the same reason the evidence vocabulary above works on names:
+    /// a credential is a <c>string</c>, and no walk of the type graph can tell one string from
+    /// another. And <b>names, not values</b>, so this is a tripwire rather than a wall: a property
+    /// called <c>Detail</c> stuffed with a URL would pass. What it buys is that the obvious mistake
+    /// fails loudly and the deliberate one has to be deliberate. The wall is elsewhere and it is
+    /// structural — the plaintext is minted inside <c>AdminInviteJob</c>, so no request path in this
+    /// process ever holds one to put on a DTO.
+    /// </para>
+    /// </summary>
+    private static readonly string[] CredentialWords =
+    [
+        "token", "link", "secret", "password", "code", "credential", "url", "hash",
+    ];
+
+    [Fact]
+    public void No_type_on_the_platform_surface_can_carry_a_credential()
+    {
+        var offenders = CredentialOffenders(PlatformSurfaceTypes());
+
+        offenders.ShouldBeEmpty(
+            "A platform DTO names a credential. The set-password link is minted inside "
+            + "AdminInviteJob and goes to exactly one address; it never enters a response body, a "
+            + "screen or a clipboard (founder, 2026-09-01). Staff creating or resetting an "
+            + "administrator in a customer's company is possible, audited and announced to that "
+            + "company's other administrators — what it must never be is a credential handed to "
+            + "the person who asked.\n"
+            + string.Join("\n", offenders));
+    }
+
+    /// <summary>
+    /// The one admitted name, kept as narrow as the identifier and count exceptions above.
+    /// <para>
+    /// <c>PlatformUserResponse.PasswordPending</c> is the whole meaning of the directory's
+    /// <c>status=pending</c> filter — "this account has never had a password" — and it is the state
+    /// a founder looks for when he chases an onboarding that stalled. It is a <c>bool</c>, and a
+    /// boolean cannot carry a credential. <c>string PasswordPending</c> still fails, and so does
+    /// <c>bool PasswordToken</c>: the name and the type and the declaring DTO all have to match, so
+    /// widening this is a decision somebody writes down.
+    /// </para>
+    /// </summary>
+    private static bool IsAdmittedPasswordFlag(PropertyInfo property) =>
+        property.PropertyType == typeof(bool)
+        && property.Name == nameof(Teren.Api.Contracts.PlatformUserResponse.PasswordPending)
+        && property.DeclaringType == typeof(Teren.Api.Contracts.PlatformUserResponse);
+
+    [Fact]
+    public void The_credential_vocabulary_detects_the_shapes_it_exists_for()
+    {
+        // Anti-vacuity. A vocabulary that matched nothing would pass the assertion above for ever,
+        // which is exactly how a guard becomes decoration.
+        CredentialOffenders([typeof(CredentialBait)]).Count.ShouldBe(3);
+
+        // …and it is not simply answering "yes" to everything.
+        CredentialOffenders([typeof(Teren.Api.Contracts.PlatformCompanyResponse)]).ShouldBeEmpty();
+        CredentialOffenders([typeof(Teren.Api.Contracts.PlatformUserResponse)]).ShouldBeEmpty(
+            "PasswordPending is the one admitted name");
+    }
+
+    [Fact]
+    public void The_password_flag_exception_admits_one_boolean_and_nothing_else()
+    {
+        IsAdmittedPasswordFlag(
+                typeof(Teren.Api.Contracts.PlatformUserResponse)
+                    .GetProperty(nameof(Teren.Api.Contracts.PlatformUserResponse.PasswordPending))!)
+            .ShouldBeTrue();
+
+        foreach (var property in typeof(NotThePasswordFlag)
+                     .GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            IsAdmittedPasswordFlag(property).ShouldBeFalse(property.Name);
+        }
+    }
+
+    [Fact]
+    public void The_credential_walk_actually_reaches_the_platform_surface()
+    {
+        // The guard on this guard: a walk that visited nothing would report no offenders for ever.
+        var reached = PlatformSurfaceTypes();
+
+        foreach (var expected in new[]
+                 {
+                     typeof(Teren.Api.Contracts.PlatformCompanyResponse),
+                     typeof(Teren.Api.Contracts.PlatformUserResponse),
+                     typeof(Teren.Api.Contracts.PlatformCreateAdminResponse),
+                     typeof(Teren.Api.Contracts.InviteSentResponse),
+                     typeof(Teren.Api.Contracts.CreateAdminRequest),
+                     typeof(Teren.Api.Contracts.PlatformLogResponse),
+                     typeof(Teren.Api.Contracts.PlatformHealthResponse),
+                 })
+        {
+            reached.ShouldContain(expected, expected.Name);
+        }
+    }
+
+    /// <summary>Three shapes of the mistake this vocabulary exists to catch, all of which have
+    /// been in a response body of this product at some point or nearly were.</summary>
+    private sealed record CredentialBait(
+        Guid Id, string SetPasswordLink, string ActivationCode, string TokenHash);
+
+    /// <summary>Things called a password flag that are not one.</summary>
+    private sealed record NotThePasswordFlag(
+        string PasswordPending, bool PasswordToken, bool PasswordHash);
+
+    private static List<string> CredentialOffenders(IEnumerable<Type> types) => [
+        .. from type in types
+           from property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+           where !IsAdmittedPasswordFlag(property)
+           let word = CredentialWords.FirstOrDefault(w =>
+               property.Name.Contains(w, StringComparison.OrdinalIgnoreCase))
+           where word is not null
+           select $"{type.Name}.{property.Name} (matched '{word}')"];
+
+    /// <summary>
+    /// Every type of our own that a caller of the platform surface can reach.
+    ///
+    /// <para>
+    /// Seeded from <c>PlatformDirectory</c>'s public signatures — the surface the whole privacy
+    /// proof is written against — <b>plus</b> the platform wire contracts, because two of them do
+    /// not reach that class at all: <c>CreateAdminRequest</c> is unwrapped by the endpoint into
+    /// strings, and <c>InviteSentResponse</c> is exactly where the credential used to live. A guard
+    /// seeded only from the directory would have a hole precisely where §13.6 was written.
+    /// </para>
+    /// </summary>
+    private static HashSet<Type> PlatformSurfaceTypes()
+    {
+        var seeds = typeof(PlatformDirectory)
+            .GetMembers(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static
+                        | BindingFlags.DeclaredOnly)
+            .SelectMany(SignatureTypes)
+            .Select(pair => pair.Type)
+            .Concat(typeof(Teren.Api.Contracts.PlatformCompanyResponse).Assembly
+                .GetTypes()
+                .Where(t => t.IsPublic
+                    && t.Namespace == "Teren.Api.Contracts"
+                    && (t.Name.StartsWith("Platform", StringComparison.Ordinal)
+                        || t.Name == nameof(Teren.Api.Contracts.InviteSentResponse)
+                        || t.Name == nameof(Teren.Api.Contracts.CreateAdminRequest)
+                        || t.Name == nameof(Teren.Api.Contracts.CreateCompanyRequest))));
+
+        var reached = new HashSet<Type>();
+        foreach (var seed in seeds)
+        {
+            Collect(seed, reached);
+        }
+
+        return reached;
+
+        static void Collect(Type type, HashSet<Type> reached)
+        {
+            type = Nullable.GetUnderlyingType(type) ?? type;
+
+            if (type.IsArray)
+            {
+                Collect(type.GetElementType()!, reached);
+                return;
+            }
+
+            if (type.IsGenericType)
+            {
+                foreach (var argument in type.GetGenericArguments())
+                {
+                    Collect(argument, reached);
+                }
+            }
+
+            if (!IsOurs(type) || type.IsEnum || type.IsPrimitive || !reached.Add(type))
+            {
+                return;
+            }
+
+            foreach (var property in type.GetProperties(
+                         BindingFlags.Public | BindingFlags.Instance))
+            {
+                Collect(property.PropertyType, reached);
+            }
+
+            foreach (var constructor in type.GetConstructors())
+            {
+                foreach (var parameter in constructor.GetParameters())
+                {
+                    Collect(parameter.ParameterType, reached);
+                }
+            }
+        }
+    }
+
     /// <summary>
     /// A guard on the guard: if the walk below ever stopped visiting anything, the assertion above
     /// would pass for the wrong reason and go on passing forever.

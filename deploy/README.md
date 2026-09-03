@@ -88,6 +88,36 @@ deploy/deploy.sh --skip-build                     # restart with the images alre
 ssh $TEREN_SSH_HOST "cd /opt/teren && docker compose logs -f api"
 ```
 
+### Handing it to CI, which is the step nobody has written down until now
+
+Once the first deploy has worked **from your laptop**, stop doing it from your laptop.
+`.github/workflows/deploy-dev.yml` runs `deploy/deploy.sh` from a runner after every green CI on
+`main`, so "the dev box is the latest green tree" becomes a property of the repository rather than of
+somebody remembering. It is **dormant** — it logs a notice and exits green — until three repository
+secrets exist (Settings → Secrets and variables → Actions):
+
+| Secret | What to put in it |
+|---|---|
+| `TEREN_DEV_ENV` | the entire contents of your working `deploy/.env`, verbatim. The job writes it into the runner's checkout and the runner is destroyed afterwards, so it never touches the repository |
+| `TEREN_DEV_SSH_KEY` | an **ed25519 private key made for this purpose** — not your own. Its public half goes in the host's `~/.ssh/authorized_keys` |
+| `TEREN_DEV_SSH_KNOWN_HOSTS` | the output of `ssh-keyscan <host>`. This pins the host key, so the runner **refuses** a machine that is not yours instead of asking |
+
+Two things to get right in `TEREN_DEV_ENV`, both of which have already been documented backwards
+once:
+
+- **`TEREN_DEVICE_TOKEN=` empty.** It is one demo device's server-side credential, and the value
+  committed in this repository is *published* — `deploy.sh` warns that anyone who reads the repo
+  would then hold a working credential to the demo company on that box. Empty means the host
+  provisions no demo device and every phone activates with a username and a code, which is what the
+  product does anyway.
+- **`TEREN_DOMAIN` and `TEREN_SSH_HOST` must be non-empty**, or the job fails fast and says which is
+  missing. That check exists because a half-filled `.env` otherwise fails much later, on the host,
+  halfway through a deploy.
+
+Verify it the honest way: push a trivial commit to `main` and watch the Actions tab. A dormant
+pipeline and a working one both end green, so **the notice in the log is the only thing that tells
+them apart** — read it.
+
 ### Rolling back
 
 There is no rollback command, deliberately — a fake one is worse than none. Images are tagged, not

@@ -56,8 +56,11 @@ public static class LogProperties
         // Identifiers. An id is not evidence; it is how you find the row. `JobServerId` is
         // Hangfire's own — machine name, process id and a GUID — and is composed by the library,
         // never by a caller.
+        // `SupersededEntryId` is the entry a correction replaces — the same footing as `EntryId`,
+        // which has a column of its own, and the id an operator needs when a report could not name
+        // what it corrects.
         "ActorUserId", "DeviceId", "JobServerId", "MediaId", "ProjectId", "ReportId", "SubjectId",
-        "UserId",
+        "SupersededEntryId", "UserId",
 
         // Counts and sizes.
         "Attempt", "Bytes", "Count", "DeclaredBytes", "Deleted", "Enqueued", "FailedCount",

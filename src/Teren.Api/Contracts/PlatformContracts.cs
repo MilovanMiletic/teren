@@ -106,6 +106,16 @@ public sealed record PlatformUserListResponse(
 /// configured nothing was sent and the account has no way in; the screen must say so rather than
 /// imply an email is in flight. Standing policy is visible failure over silent invention.
 /// </para>
+/// <para>
+/// <b>What is <em>not</em> in this body and does not need to be (plan §13.6, closed 2026-09-03).</b>
+/// A link sent from here lets whoever holds it set the password on an administrator account, so the
+/// company's other active administrators are emailed the fact that it happened — the account, the
+/// company and the time, with no token and nothing to click
+/// (<c>AdminInviteJob</c>, <c>AdminAccessNoticeJob</c>). It is deliberately not reported
+/// as a field here: how many administrators heard about it is a fact about the customer rather than
+/// about this request, and a number on a screen is something somebody would eventually try to
+/// bring to zero.
+/// </para>
 /// </summary>
 public sealed record InviteSentResponse(
     /// <summary>Where it went. Staff already read this address in the directory, so echoing it is
@@ -184,6 +194,12 @@ public sealed record CreateAdminRequest
 /// <b>The link is not in this body and never will be</b> (founder, 2026-09-01): it is minted
 /// inside <c>AdminInviteJob</c> and emailed. <c>Emailed</c> false means no relay was configured,
 /// so the account exists with no way in — which the screen has to say out loud.
+/// </para>
+/// <para>
+/// <b>Creating an administrator inside a customer's company is not a quiet act any more</b> (plan
+/// §13.6, closed 2026-09-03): every administrator that company already has is emailed that it
+/// happened, to whom and when. See <c>PlatformDirectory.CreateAdminAsync</c> for why that is the
+/// wider of the two doors the plan worried about.
 /// </para>
 /// </summary>
 public sealed record PlatformCreateAdminResponse(

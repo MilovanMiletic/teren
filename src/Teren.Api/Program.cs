@@ -148,6 +148,13 @@ builder.Services.AddScoped<AdminInviteJob>();
 // nothing. See WorkerCodeMailJob.
 builder.Services.AddScoped<WorkerCodeMailJob>();
 
+// §13.6's answer: whenever a set-password link for a company admin actually goes out, this tells
+// that company's OTHER administrators that it happened. Registered here because Hangfire activates
+// a job out of the container — and every test in the suite constructs these jobs by hand, so a
+// missing registration is invisible to a green suite and shows up only as a failed job on the
+// founder's host.
+builder.Services.AddScoped<AdminAccessNoticeJob>();
+
 // Session lifetimes, credential TTLs and the rate-limit window. Bound from the same Auth section;
 // every value in it is a security parameter and every one is pinned by a test.
 builder.Services

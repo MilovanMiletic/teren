@@ -119,6 +119,41 @@ This product is **not**:
 
 ## 11. Decided
 
+- **A correction names the document it replaces** (2026-09-03, delegated to Claude and taken). The
+  PDF said nothing about the report it superseded, so a correction arrived at the client looking like
+  an unrelated day — weak evidence in exactly the dispute a correction exists for, given the client
+  has already received the wrong one. The report now names the superseded record the way a human
+  would: **its work date and its site, never a GUID** (ruling 1 above), in the project's language and
+  its own time zone. Two variants, because the honest sentence differs: one for a superseded report
+  that actually reached a relay, one for a document that was still waiting. The superseded report is
+  never rewritten — reports are sealed, and the new document names its predecessor.
+
+- **Teren staff keep the ability to mint a customer's administrator, and lose the ability to do it
+  quietly** (2026-09-03, closing D4's rejection). The D4 review found that
+  `POST /api/platform/users/{id}/invite` let staff take a company admin's account. Its three options
+  in plan §13.6 were written before D6 and aimed at the wrong hole: D6 already removed the plaintext
+  from every response body (the token is minted inside `AdminInviteJob` and mailed), and no platform
+  route can change an admin's email. **The wider hole was `POST /api/platform/users`** — an email plus
+  a `company_id` mints a *brand-new* company_admin inside any customer's company, which reads that
+  company's diaries and, unlike a password reset, **locks nobody out and disturbs nothing the
+  customer would notice.** The capability stays, because creating a customer's first admin is real
+  work and so is the case where his only admin has left. What changes is that it cannot be silent:
+  1. **Every other administrator of that company is emailed**, in the company's language, whenever an
+     administrator is added to it or a credential is issued for one. The mail carries no token and no
+     link; it says that something happened, who did it and when.
+  2. **A structural guard** forbids any type reachable from `PlatformDirectory` from carrying a
+     property that names a token, link, secret, password, code, credential, url or hash — so "the
+     link is never in this body" is a fact the build checks rather than a comment.
+  3. **The CLI `invite-admin` keeps printing a link to a terminal**, deliberately: shell access to
+     that box already means the database, so it is not an additional exposure. It is the audited
+     9 p.m. escape hatch, and its doc comment now says so.
+
+  The sentence the product may defend, replacing decision 2's literal wording:
+
+  > Teren staff cannot read a customer's diary with their own credentials. Minting or resetting an
+  > administrator's credential in a customer's company is possible, is audited, and emails every
+  > other administrator of that company — so it cannot be done without the customer being told.
+
 - **A phone the server refuses signs itself out** (2026-09-03, founder). He removed a worker's phone
   from the office screen, went back to that phone, and found it working exactly as before — Home, the
   archive, the site list, the record button. **This reverses `plans/profile-and-identity.md` §10.3's

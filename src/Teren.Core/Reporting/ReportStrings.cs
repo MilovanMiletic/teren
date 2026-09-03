@@ -86,6 +86,42 @@ public sealed record ReportStrings
     /// </summary>
     public required string VerbatimNote { get; init; }
 
+    /// <summary>
+    /// Heading of the band that says this document corrects an earlier one. Short and in the same
+    /// register as a section heading: it sits directly under the masthead rule, where a reader
+    /// cannot miss it, because it is the one fact on the page that changes how everything below it
+    /// should be read.
+    /// </summary>
+    public required string CorrectionHeading { get; init; }
+
+    /// <summary>
+    /// What the band says when the superseded report actually reached a relay. <c>{0}</c> names
+    /// the superseded day, <c>{1}</c> is when that document went out — both in the site's own
+    /// local time.
+    /// <para>
+    /// It has to do two things a footnote could not: tell the reader that a document he *already
+    /// has* is wrong, and tell him which one.
+    /// </para>
+    /// </summary>
+    public required string CorrectionOfSentReport { get; init; }
+
+    /// <summary>
+    /// The variant for a predecessor no client ever received — a day whose own report failed, or
+    /// one still waiting. <c>{0}</c> names the superseded day.
+    /// <para>
+    /// Kept apart from <see cref="CorrectionOfSentReport"/> rather than softened into one sentence,
+    /// because the honest claim is different in the direction that matters: a reader must not be
+    /// told he was sent a report that never left the building, and he should not be left hunting
+    /// his inbox for it.
+    /// </para>
+    /// </summary>
+    public required string CorrectionOfUnsentRecord { get; init; }
+
+    /// <summary>Label of the provenance line that repeats the correction in the evidence block,
+    /// where a reader checking the document's standing looks. Same doubling, and same reason, as
+    /// <see cref="RecordKind"/>.</summary>
+    public required string Corrects { get; init; }
+
     /// <summary>Label of the provenance line that repeats the same fact in the evidence block,
     /// where a reader checking the document's standing actually looks.</summary>
     public required string RecordKind { get; init; }
@@ -128,6 +164,25 @@ public sealed record ReportStrings
 
     public string FormatDate(DateOnly date) =>
         date.ToString(DatePattern, CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// How a superseded record is named on the page: its work date, and the site only when that
+    /// site is not this report's own (see <see cref="ReportCorrection.SiteName"/>).
+    /// <para>
+    /// The site name is content and goes on the page exactly as the contractor wrote it; only the
+    /// label around it is localised.
+    /// </para>
+    /// </summary>
+    public string FormatSupersededDay(ReportCorrection correction)
+    {
+        ArgumentNullException.ThrowIfNull(correction);
+
+        var date = FormatDate(correction.Date);
+
+        return string.IsNullOrWhiteSpace(correction.SiteName)
+            ? date
+            : $"{date}  ·  {Site}: {correction.SiteName!.Trim()}";
+    }
 
     /// <summary>
     /// A stored UTC instant as the site's own wall-clock time.
@@ -243,6 +298,19 @@ public sealed record ReportStrings
             "Dan je opisan glasovnom porukom sa gradilišta. Tekst koji sledi je doslovan prepis "
             + "te poruke — nije razvrstan u stavke radova, materijala i radne snage.",
 
+        CorrectionHeading = "Ispravka",
+        CorrectionOfSentReport =
+            "Ovaj izveštaj ispravlja i zamenjuje dnevni izveštaj za {0}, koji Vam je poslat {1}. "
+            + "Podaci u ovom dokumentu su ispravni i zamenjuju podatke iz tog izveštaja.",
+        // The date is followed by a comma rather than a full stop, and that is not a detail: the
+        // Serbian pattern already ends in one (02.09.2026.), so "za {0}." renders as "za
+        // 02.09.2026.." — two dots on a client's document. Found by reading a rendered PDF rather
+        // than by reading the template, exactly as the email's missing period was.
+        CorrectionOfUnsentRecord =
+            "Ovaj izveštaj ispravlja i zamenjuje raniji zapis za {0}, koji Vam nije poslat — ovo "
+            + "je jedini izveštaj za taj dan.",
+        Corrects = "Ispravlja zapis za",
+
         RecordKind = "Vrsta zapisa",
         RecordKindVerbatim = "doslovan prepis glasovne poruke sa terena",
 
@@ -311,6 +379,15 @@ public sealed record ReportStrings
             "The day was described in a voice note recorded on site. The text below is a verbatim "
             + "transcript of that recording — it has not been broken down into work, material and "
             + "workforce items.",
+
+        CorrectionHeading = "Correction",
+        CorrectionOfSentReport =
+            "This report corrects and replaces the daily report for {0}, which was sent to you on "
+            + "{1}. The details in this document are the correct ones and supersede that report.",
+        CorrectionOfUnsentRecord =
+            "This report corrects and replaces an earlier record for {0}. That record was never "
+            + "sent to you, so this is the only report for that day.",
+        Corrects = "Corrects the record for",
 
         RecordKind = "Record type",
         RecordKindVerbatim = "verbatim transcript of a voice note from site",

@@ -286,6 +286,11 @@ public sealed class EntryReporter(
                 ct);
         }
 
+        // What this document replaces, if anything — after the refusal above, because an entry
+        // with nothing to report needs no predecessor, and before the render budget opens, because
+        // these are small indexed reads and must not be charged to the layout.
+        var correction = await ReadCorrectionAsync(entry, ct);
+
         // ---- 3. the reversible half, under one budget ----------------------
 
         var workspace = Path.Combine(
@@ -319,7 +324,10 @@ public sealed class EntryReporter(
                     entry.Id,
                     UtcStamp.Of(entry.CreatedAt),
                     UtcStamp.OrNull(entry.ReceivedAt),
-                    DateTimeOffset.UtcNow));
+                    DateTimeOffset.UtcNow))
+            {
+                Correction = correction,
+            };
 
             pdf = renderer.RenderDaily(report);
 
@@ -537,6 +545,83 @@ public sealed class EntryReporter(
             strings.Language, receipt.Transport);
 
         return ReportOutcome.Sent;
+    }
+
+    // ------------------------------------------------------------------ what this replaces
+
+    /// <summary>
+    /// The predecessor of a correction, named the way the report prints it — a work date, a send
+    /// time, and a site only when it is not this report's own. Null for an ordinary entry, and
+    /// then the document says nothing extra at all.
+    ///
+    /// <para>
+    /// <b>One hop, deliberately.</b> A correction of a correction names its <em>immediate</em>
+    /// predecessor, because that is the document the client last received; walking to the head of
+    /// the chain would name a report two revisions old and hide the one he is holding. Chains are
+    /// explicitly allowed (<c>EntrySupersedesTests</c>), so this is a choice rather than an
+    /// omission.
+    /// </para>
+    /// <para>
+    /// <b>Tenant-scoped, like every other read in this pass.</b> The global filter is what makes
+    /// "not visible" and "not there" one answer; <c>fk_entry_supersedes_entry</c> is satisfied by
+    /// any entry row there is and enforces nothing about whose it is.
+    /// </para>
+    /// <para>
+    /// <b>A link that cannot be read is loud and does not stop the report.</b> The entry declares
+    /// itself a correction, so silence would be a document that hides its own standing — but
+    /// refusing to send a client his diary over an unreadable back-reference would trade the thing
+    /// that matters for the thing that does not. It logs and prints nothing, which is the one case
+    /// where this page is as weak as it was before this existed.
+    /// </para>
+    /// </summary>
+    private async Task<ReportCorrection?> ReadCorrectionAsync(Entry entry, CancellationToken ct)
+    {
+        if (entry.SupersedesEntryId is not { } supersededId)
+        {
+            return null;
+        }
+
+        var superseded = await db.Entries.AsNoTracking()
+            .Where(e => e.Id == supersededId)
+            .Select(e => new { e.EntryDate, e.ProjectId })
+            .FirstOrDefaultAsync(ct);
+
+        if (superseded is null)
+        {
+            logger.LogWarning(
+                "Entry {EntryId} declares that it supersedes {SupersededEntryId}, which this "
+                + "company cannot see; the report will not name what it corrects.",
+                entry.Id, supersededId);
+            return null;
+        }
+
+        // Never the seal on the superseded entry: `superseded_after_send` is a report that went
+        // out and an entry deliberately left unsealed, and printing "never sent" over a document
+        // the client is holding is the worst thing this line could say.
+        var sentAt = await db.Reports.AsNoTracking()
+            .Where(r => r.EntryId == supersededId)
+            .Select(r => r.SentAt)
+            .FirstOrDefaultAsync(ct);
+
+        // Only when it is not this report's own site. `POST /entries` refuses a cross-site link,
+        // so this is here for a row that predates that check or was written by hand — where a bare
+        // date would name a document belonging to somebody else's inbox.
+        string? siteName = null;
+        if (superseded.ProjectId != entry.ProjectId)
+        {
+            siteName = await db.Projects.AsNoTracking()
+                .Where(p => p.Id == superseded.ProjectId)
+                .Select(p => p.Name)
+                .FirstOrDefaultAsync(ct);
+
+            logger.LogWarning(
+                "Entry {EntryId} supersedes {SupersededEntryId}, which belongs to a different "
+                + "site; the report names that site explicitly.",
+                entry.Id, supersededId);
+        }
+
+        return new ReportCorrection(
+            superseded.EntryDate, siteName, UtcStamp.OrNull(sentAt));
     }
 
     // ------------------------------------------------------------------ evidence
