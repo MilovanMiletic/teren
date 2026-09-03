@@ -5,7 +5,7 @@ The technical layer: stack, structure, data model, pipelines, and the decisions 
 
 Status: partly built. §6 (data model) now describes the real schema as migrated; the pipelines
 and ops sections are still design ahead of code. Sections marked `[to verify]` are unconfirmed.
-Last updated: 2026-08-29.
+Last updated: 2026-09-03.
 
 ---
 

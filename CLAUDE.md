@@ -128,23 +128,36 @@ before being presented as done; gating fixes go back to the implementer and are 
 
 ## Current state (update as it changes)
 
-- **Phase:** ROADMAP **M0 fully built, not done — and the gap is not code** (2026-09-02). B0–B7 are
+- **THE FOUNDER MOVED MACHINES AT THE END OF 2026-09-03, to bring up the dev server from home.**
+  Several notes in this file are facts about **that Linux laptop** and are not true anywhere else:
+  the **two Docker engines** (`desktop-linux` vs `default`), the **disk at 98 %** and the `df -h /c`
+  advice, and the **`sent` report row whose PDF `reset-demo` destroyed**. A fresh machine has one
+  engine, its own database, and no dangling row — do not hunt for any of them there, and do not
+  carry the workarounds. What a fresh machine *does* need is the four manual steps
+  (`docker compose up -d` → **`migrate`** → `seed` → `dotnet run` + `npm start`) and `invite-admin`
+  for an admin password, because the demo `company_admin` ships with none.
+- **Phase:** ROADMAP **M0 fully built, not done — and the gap is not code** (2026-09-03). B0–B7 are
   ☑ and the money path is proven end to end against real Postgres, storage and SMTP, **on the
   founder's laptop only**. B3a's deployment machinery is built, reviewed and locally proven, and
   **nothing is deployed because there is no VPS and no domain.** That single purchase gates the two
   unmet clauses of M0's own definition — *on a real phone*, *without touching a terminal* — and with
   them the whole real-device debt, which needs **https** and not merely a hostname.
-- **The identity work is nearly finished.** `plans/profile-and-identity.md` is the specification;
+- **The identity work is CODE-COMPLETE as of 2026-09-03; what is left of it is review debt.**
+  `plans/profile-and-identity.md` is the specification;
   ROADMAP's *Identity and profiles* table is the live tracker. **Start there.** Done and reviewed:
   F1, D1, F2, **D2 (accept)**, **D3 (accept-with-fixes)**, **F4 / F4b (accept-with-fixes, both
   gating items closed)**, **F5, F6, F8, D7/F9 (all accept-with-fixes, 2026-09-01)**, **D8**,
   **D4** (`/api/platform/*`, **REJECT** — see below), **D6** (invite email, 2026-09-01) and
   **F10** (`/company/profile`, 2026-09-02, unreviewed). **F3's rejection is discharged.**
-  **D5 and the log viewer are done (2026-09-02).** What is left of the identity work is F7's
-  **health page**, and nothing now blocks it.
+  **D5 and the log viewer are done (2026-09-02).** **F7 is complete** — `/platform/health` shipped
+  2026-09-03 — and so are **D9** (the report's supersedes band + D4's closure) and **D10**
+  (`DEM0-TEST` Development-only). **Every increment in the ROADMAP table is built and green.**
+  Unreviewed: **D9** (no mutation proofs — its implementer was killed before reporting; **start
+  here**), F7's health page, D6, D8, F10, D10, and F13's four founder-screenshot rounds.
 - **`docker compose ps` returning nothing can mean "wrong engine", not "your stack is gone"
-  (2026-09-03) — and the recovery step is what destroys something.** This machine runs **two Docker
-  engines**: the context is `desktop-linux` (Docker Desktop), and that is where the founder's data
+  (2026-09-03) — and the recovery step is what destroys something.** *Machine-local: this is about
+  the founder's Linux laptop, not any machine you happen to be on — check `docker context ls`
+  before assuming it applies.* That machine runs **two Docker engines**: the context is `desktop-linux` (Docker Desktop), and that is where the founder's data
   lives (`teren_postgres-data`, created 2026-08-29). An agent working against the native `default`
   engine saw `docker compose ps -a` list **nothing**, read it as a wiped stack, ran `docker compose
   up -d`, and **built a parallel stack with brand-new volumes on the other daemon** — then reported
@@ -212,7 +225,8 @@ before being presented as done; gating fixes go back to the implementer and are 
   next flush deletes it. "Why did this phone stop" is not answerable from the log stream without a
   change to `ActionLogService`.
 - **`reset-demo`'s object purge prefix is GLOBAL, so a throwaway database isolates nothing
-  (2026-09-03) — and it cost a report PDF.** `DemoReset` purges `company/{DemoSeeder.CompanyId}/`,
+  (2026-09-03) — and it cost a report PDF.** *The lost PDF is machine-local
+  (the founder's laptop); the trap is not.* `DemoReset` purges `company/{DemoSeeder.CompanyId}/`,
   which is byte-identical across databases. An agent verifying the deployed path pointed the command
   at a scratch database, and it emptied the **shared** bucket: three objects, one of them the PDF of
   the founder's `sent` report (entry …0012). Verified afterwards — `media` has 0 rows so **no
@@ -403,16 +417,18 @@ before being presented as done; gating fixes go back to the implementer and are 
   the record**, sending `described_verbatim: true` with the transcript in `notes`; the report then
   renders the day as prose, marked as his words rather than extracted data. `extracted` stays null
   and `corrected` records approval-as-is, so the eval triple can still tell approval from typing.
-- **Next, in order.** **All M0/identity code items are built and green**, and `/platform/health`
-  completed F7. `DEM0-TEST` is Development-only. The `fc5737f` frontend review is **closed**
-  (accept-with-fixes; both gating items fixed and mutation-proven — the microphone-after-leaving
-  guard and the compact pill bar at 360).
+- **Next, in order — and NOTHING IS IN FLIGHT (state saved 2026-09-03, tree clean, `origin/main` at
+  `dbc6a1f`, six commits out today).** A `teren-backend-reviewer` on `3716283` was started and
+  stopped before it read anything; it left nothing behind. **All M0/identity code items are built and
+  green**, `/platform/health` completed F7, and `DEM0-TEST` is Development-only. The `fc5737f`
+  frontend review is **closed** (accept-with-fixes; both gating items fixed and mutation-proven — the
+  microphone-after-leaving guard and the compact pill bar at 360).
   **What is left is review debt and one named UI gap:**
-  1. **The backend pair of `3716283` has never been reviewed** — the report's supersedes band, D4's
+  1. **D9 (`3716283`) has never been reviewed** — the report's supersedes band, D4's
      `AdminAccessNoticeJob`, the credential guard. Its implementer was killed before reporting, so
-     there are no mutation proofs on it.
-  2. **The `DEM0-TEST` increment has not been reviewed** either (it is green at 1142 and its
-     implementer *did* report, with proofs).
+     there are no mutation proofs on it. **Start here.**
+  2. **F7's `/platform/health` is unreviewed**, and so is **D10** (`DEM0-TEST`, green at 1142, and
+     its implementer *did* report, with proofs).
   3. **Never reviewed at all: D6, D8, F10, and F13's four founder-screenshot rounds.**
   4. **A replaced day's record screen does not say it was replaced** and offers a *second*
      correction — the archive list marks both ends, the evidence screen does not. **My commit
@@ -568,7 +584,8 @@ before being presented as done; gating fixes go back to the implementer and are 
 - **There is a demo film now: `tools/demo-video/`, `npm run demo`.** Six scenes, ~6 min, phone +
   tablet + desktop, driven against a production build proxying the dev API. **Recording it revokes
   the founder's own Zoran session** (single-use code); the run re-mints `DEM0-TEST`.
-- **The founder's disk is at 98 % and it took Docker down once (2026-09-02).** A full backend run
+- **The founder's disk is at 98 % and it took Docker down once (2026-09-02).** *Machine-local to
+  that laptop.* A full backend run
   makes ~a thousand scratch databases inside Docker's VHDX, which grows and gives space back only when
   the distro stops; C: hit 31 MB free mid-review, the engine died, and the founder's Postgres, MinIO
   and Mailpit went with it. Recovery: `docker desktop restart` (engine up in ~10 s), then
@@ -595,8 +612,9 @@ before being presented as done; gating fixes go back to the implementer and are 
   back out of the rendered PDF). `dotnet test` needs Docker running.
   *The figures here were stale before 2026-08-30 (403/447 recorded against an actual 436/476) —
   both were re-measured off the tree, not carried forward.*
-- **Check at session start:** the tree is green — **1878 PWA specs (93 files) and 1142 backend tests,
-  both re-verified by execution 2026-09-03**, `ng build` with zero warning lines. The stash is empty.
+- **Check at session start:** the tree is green and **clean**, and everything is pushed — **1878 PWA
+  specs (93 files) and 1142 backend tests, both re-verified by execution 2026-09-03**, `ng build`
+  with zero warning lines, `dotnet build -c Release` succeeding. The stash is empty.
   `dotnet build` succeeds
   with **one** warning: `CS9107` in `DemoIdentitySeedTests.cs:400`. **It is pre-existing** — confirmed by
   building a worktree at `a42adaf` — so the long-standing "0 warnings" claim in this file was simply

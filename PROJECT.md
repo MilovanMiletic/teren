@@ -9,7 +9,7 @@ only, never authoritative. A proper technical analysis document will be written 
 the roadmap.
 
 Status: being built up through conversation. Sections marked `[draft]` are proposed, not confirmed.
-Last updated: 2026-08-28.
+Last updated: 2026-09-03.
 
 ---
 
@@ -249,9 +249,11 @@ This product is **not**:
   name is instantly natural to both foreman and owner ("šta ima na terenu?"), one word, works
   across ex-YU markets. Runner-ups if the name ever needs to change: MojRaport (mojraport.rs),
   Gradilog (gradilog.rs — note .com is an unrelated football app).
-  - **Domain registration deferred** (2026-08-29): `teren.rs` gets registered when the code is
-    ready to deploy to production (roadmap C7), not before. Accepted risk: the name is not
-    reserved in the meantime. Staging until then runs on a tunnel or VPS hostname.
+  - **Domain registration deferred** (2026-08-29) — **SUPERSEDED 2026-09-03 by §11 decision 2**,
+    which registers `teren.rs` now and stands `dev.teren.rs` up first. The original reasoning was
+    that the domain waits for C7; what changed it is that two clauses of M0's own definition (*on a
+    real phone*, *without touching a terminal*) cannot be met without https, and `crypto.subtle`
+    refuses an insecure context, so the accepted risk had become the thing blocking the milestone.
 - **Hosting:** Hetzner VPS + Postgres + S3-compatible object storage. Boring on purpose;
   revisit only when scale forces it.
 - **STT provider: Azure AI Speech** (2026-08-29), `sr-RS`, fast-transcription REST endpoint.

@@ -12,6 +12,73 @@ Entry format:
 
 ---
 
+## 2026-09-03 (close) — state saved, and the machine changes under it
+
+Founder: *"I am switching to another machine and that is it for today here"* — he continues from
+home on **bringing up the dev server**. This entry exists so the next session does not have to
+reconstruct any of it.
+
+**Nothing is in flight.** One `teren-backend-reviewer` had just been started on `3716283`; it was
+stopped before it read anything and left nothing behind. **The working tree is clean and
+`origin/main` is at `dbc6a1f`** — six commits went out today: `3260b37`, `8ead6d4`, `a78cc05`,
+`3716283`, `fc5737f`, `dbc6a1f`.
+
+**Verified by execution, not carried forward: 1878 PWA specs in 93 files, 1142 backend tests,
+`ng build` with zero warning lines, `dotnet build -c Release` succeeding.** `dotnet build` has one
+warning, `CS9107` in `DemoIdentitySeedTests.cs:400`, and it is **pre-existing** — confirmed by
+building a worktree at `a42adaf`.
+
+### What is machine-local, and therefore not true on the other machine
+
+Three things this journal and `CLAUDE.md` record as facts are facts **about this laptop**, and a
+fresh machine starts clean of all of them. Do not go looking for them there, and do not carry the
+workarounds:
+
+- **Two Docker engines.** The context here is `desktop-linux` (Docker Desktop) and that is where the
+  founder's data lives; the native `default` engine holds a parallel stack an agent built by
+  accident. On a new machine there is one engine and `docker compose up -d` means what it says.
+- **The destroyed report PDF.** The `sent` report row (entry …0012) names a `report.pdf` that
+  `reset-demo` emptied out of the shared bucket. That is this laptop's database. A new machine seeds
+  its own and has no dangling row — and `reset-demo --yes-delete-demo-data` in Development fixes
+  this one whenever the founder wants it, which is why it was left to him.
+- **The disk at 98 %.** A full backend run makes ~a thousand scratch databases inside Docker's
+  VHDX; `df -h /c` before `dotnet test` is advice for *here*.
+
+### What the other machine needs, in order
+
+Four manual steps, because there is still no one-command stand-up: `docker compose up -d`, then
+**`migrate`** (running the API does not apply migrations, and skipping it fails with a bare Npgsql
+`42703`), then `seed`, then `dotnet run --project src/Teren.Api` and `npm start --prefix
+web/teren-pwa`. `seed` prints `username zoran.jovanovic, code DEM0-TEST` — still the fixed code
+there, because that machine is Development too. The demo `company_admin` ships with **no password**
+by design, so `invite-admin` is how you get into `/login`.
+
+For the dev server itself the answer is not in this repo's code at all: **`deploy/README.md` §2**,
+twelve steps, every decision pre-made.
+
+### The debt, restated so it cannot be lost
+
+**All M0 and identity code is built and green.** What is left is review debt and one UI gap:
+
+1. **D9 (`3716283`) has never been reviewed** and its implementer was killed before reporting, so it
+   carries **no mutation proofs** — the report's supersedes band, `AdminAccessNoticeJob`, the
+   credential guard. **Start here.**
+2. **F7's `/platform/health` is unreviewed**, and so are **D6, D8, F10, D10** and **F13's four
+   founder-screenshot rounds**.
+3. **A replaced day's record screen does not say it was replaced**, and offers a second correction.
+   My commit message for `fc5737f` claimed otherwise and that claim was wrong. Non-gating; the next
+   frontend item.
+4. Four non-gating review items are named in ROADMAP and `CLAUDE.md`: no in-flight guard on
+   `HealthPage.load()`, two "Prikazano" totals in one card, `capture.blocked.correction.body` blaming
+   the network in all three refusal cases, and `health.reason.unrecognised` blaming the app for what
+   the server did not recognise.
+
+**Founder-only, unchanged:** the B3a purchase, **A2** (3–5 real site voice notes — still the
+highest-value hour in the project, and the top product risk is measured on one clip from a quiet
+room), the D4 notification copy, the Serbian trade-vocabulary read, and the 1280 desktop artboards.
+
+---
+
 ## 2026-09-03 (night, later) — the review that earned its keep, and a spec of mine that did not
 
 Founder: *"Finish."* The review of `fc5737f` came back **accept-with-fixes** with two gating finds,
