@@ -50,6 +50,25 @@
         <app-icon name="activity" [size]="20" />
       </button>
 
+      <!--
+        The estate's health (F7). **The only door there is** — no email links to it and no
+        notification opens it, so a founder who cannot find this control never learns that nothing
+        has been transcribed for a week. `logs-page.spec.ts`'s discipline applies: the way in is
+        pressed in a spec and followed through the real route table.
+
+        Six controls now, and the budget is written out in `platform-page.css`: below 768 this
+        `.head` already wraps the cluster onto its own line, where 6 × 44 px and 5 × 8 px gaps are
+        304 px against the 358 px compact column at 390.
+      -->
+      <button
+        type="button"
+        class="btn-icon"
+        [attr.aria-label]="t('platform.health.open')"
+        (click)="openHealth()"
+      >
+        <app-icon name="gauge" [size]="20" />
+      </button>
+
       <button
         type="button"
         class="btn-icon"

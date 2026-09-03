@@ -290,6 +290,28 @@ export const routes: Routes = [
   },
   {
     /**
+     * The estate's health (F7, plan §8) — what the pipeline is doing across every customer.
+     *
+     * `requiresSuperAdmin`, and this is not the gate being copied for symmetry: the response
+     * carries **every customer's** company name, site names and failure counts in one body. A
+     * company admin reading it would learn which of his competitors is behind on his reports.
+     * Not "company admin or better": the roles are not a hierarchy, and a gate written as a rank
+     * is the first step towards a customer reading another customer's failures.
+     *
+     * Before the wildcard, like every other admin route — a member of staff has no device
+     * session, so `'**' -> redirectTo: ''` would send him to Home, whose guard would send him to
+     * Welcome and ask him for an activation code he cannot have.
+     *
+     * **Reachable, which is a separate question from registered** (2026-09-01, `/login`). The
+     * only door is a control in `/platform`'s head cluster, and `health-page.spec.ts` presses it
+     * and follows it through the real route table rather than asserting that a path exists.
+     */
+    path: 'platform/health',
+    canMatch: [requiresSuperAdmin],
+    loadComponent: () => import('./features/platform/health-page').then((m) => m.HealthPage),
+  },
+  {
+    /**
      * One account: his link, and the switch that takes him out of service.
      *
      * A route rather than a row action, for the reason `/company/worker/:workerId` is one:

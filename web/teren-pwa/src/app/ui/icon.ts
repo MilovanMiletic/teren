@@ -35,7 +35,8 @@ export type IconName =
   | 'copy'
   | 'building'
   | 'filter'
-  | 'activity';
+  | 'activity'
+  | 'gauge';
 
 /**
  * The icon set: stroke-based, 24 px grid, stroke-width 2, round caps and joins
@@ -242,6 +243,18 @@ export type IconName =
             column label reads as "this opens the sort", and this control also filters.
           -->
           <path d="M3 5h18l-7 8v6l-4 2v-8z" />
+        }
+        @case ('gauge') {
+          <!--
+            The estate's health (F7). A dial with a needle, deliberately **not** the pulse line the
+            activity glyph already carries: both controls sit in the platform screen's one head
+            cluster, and two glyphs meaning "the system over time" beside each other is the mistake
+            the customers screen made with an icon named *Ljudi* on a screen with a column headed
+            *Ljudi* — a spec pressed the wrong one and it looked like a broken sort. A dial reads as
+            a reading taken at a moment, which is exactly what the health screen shows.
+          -->
+          <path d="M4 17a8 8 0 1 1 16 0" />
+          <path d="M12 17l4.5-5" />
         }
       }
     </svg>

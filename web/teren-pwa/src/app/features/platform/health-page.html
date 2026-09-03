@@ -1,0 +1,532 @@
+<div class="screen" *transloco="let t">
+  <!-- No profile, no office, no platform link: staff have no device session and no company, and
+       nothing in a header may lead to the screen it is standing on. -->
+  <app-header [showProfile]="false" [showCompany]="false" [showPlatform]="false" />
+
+  <!-- Compact only: the header does not exist below 768, and a founder reading this on a phone
+       must still be able to change language and end a password-backed session. -->
+  <div class="column bar bar--compact">
+    <span class="bar__brand">{{ t('app.name') }}</span>
+    <div class="bar__controls">
+      <app-language-switcher />
+      <app-session-link />
+    </div>
+  </div>
+
+  <header class="column head band-top">
+    <button type="button" class="btn-icon" [attr.aria-label]="t('health.back')" (click)="back()">
+      <app-icon name="chevron-left" [size]="20" />
+    </button>
+
+    <div class="head__text">
+      <h1 class="t-h1 head__title">{{ t('health.title') }}</h1>
+      <!--
+        **The server's own stamp, in the head.** Every number below was computed at this moment and
+        none of them is live; a screen an owner opens because he doubts what he is told may not look
+        as though it is watching the system in real time. `d. M. HH:mm:ss` and the word saying it is
+        the server's clock, because that is the difference between "at 09:40" and "at 09:40 on
+        whichever machine you happen to be sitting at".
+      -->
+      <p class="t-meta head__sub">
+        @if (loading()) {
+          {{ t('health.loading') }}
+        } @else if (health()?.at; as at) {
+          {{ t('health.at', { at: at | date: 'd. M. HH:mm:ss' }) }}
+        } @else {
+          {{ t('health.subtitle') }}
+        }
+      </p>
+    </div>
+
+    <!-- Two controls plus the back button: well inside the four this screen's `.head` can hold on
+         one line, so no wrap rule is needed here (see `/platform`, which has five and wraps). -->
+    <div class="head__actions">
+      <app-info-popover [heading]="t('health.about.title')" [body]="t('health.about.body')" />
+
+      <button
+        type="button"
+        class="btn-icon head__reload"
+        [attr.aria-label]="t('health.reload')"
+        (click)="load()"
+      >
+        <app-icon name="refresh" [size]="20" />
+      </button>
+    </div>
+  </header>
+
+  <div class="column content">
+    @if (loading()) {
+      <!--
+        The shape of the cards that are coming, rather than the sentence "Učitava se…" — which
+        says that something is happening and nothing about what. The sentence is still here for
+        a screen reader, because a pulsing rectangle announces nothing (styles.css §Loading).
+      -->
+      <div class="card state wide card--loading" role="status">
+        <span class="visually-hidden">{{ t('health.loading') }}</span>
+        <span class="skeleton skeleton--head" aria-hidden="true"></span>
+        <span class="skeleton skeleton--row" aria-hidden="true"></span>
+        <span class="skeleton skeleton--row" aria-hidden="true"></span>
+        <span class="skeleton skeleton--row skeleton--short" aria-hidden="true"></span>
+      </div>
+    } @else {
+      @if (unconfirmed() && reasonKey(); as reason) {
+        <!--
+          Said before anything else, and — unlike the archive — **with nothing behind it.** Every
+          card below is drawn only when there is an answer to draw: five-minute-old numbers standing
+          under a notice saying the server could not be reached is precisely the screen an owner
+          would be right to stop believing.
+        -->
+        <div class="card notice notice--warn wide" role="status">
+          <app-icon name="wifi-off" [size]="20" class="notice__icon" />
+          <div class="notice__text">
+            <span class="notice__title">{{ t('platform.stale.title') }}</span>
+            <span class="t-meta">{{ t(reason) }}</span>
+          </div>
+          <!-- The sentence above says "sign in again"; this is the control to press.
+               It renders itself away unless the admin credential really is gone. -->
+          <app-sign-in-again />
+        </div>
+      }
+
+      @if (nothingLoaded()) {
+        <p class="t-meta state wide" role="status">{{ t('health.unavailable') }}</p>
+      } @else if (health(); as estate) {
+        <!--
+          The three numbers that answer the question he came with: how much work is in the system,
+          how much of it is waiting on a person, and how much of it has gone wrong. `stats--tight`
+          below 1024 for the reason `/platform/logs` uses it — every pixel above the first fact on a
+          390 px screen is a pixel he did not come for.
+        -->
+        <dl class="card stats wide" [class.stats--tight]="!viewport.expanded()">
+          <div class="stats__cell">
+            <dt class="t-label">{{ t('health.summary.days') }}</dt>
+            <dd class="t-num stats__value">{{ estate.pipeline.entryCount }}</dd>
+          </div>
+          <div class="stats__cell">
+            <dt class="t-label">{{ t('health.summary.waiting') }}</dt>
+            <dd class="t-num stats__value stats__value--warn">
+              {{ estate.pipeline.needsReview + estate.pipeline.awaitingConfirmation }}
+            </dd>
+          </div>
+          <div class="stats__cell">
+            <dt class="t-label">{{ t('health.summary.failing') }}</dt>
+            <dd class="t-num stats__value stats__value--err">{{ failureCount() }}</dd>
+          </div>
+        </dl>
+
+        <!-- ---- The pipeline, and why entries are stuck --------------------------------- -->
+        <section class="card block half" [attr.aria-label]="t('health.pipeline.title')">
+          <h2 class="t-label block__label">{{ t('health.pipeline.title') }}</h2>
+
+          <!--
+            The six states in pipeline order, so the card reads as a journey rather than as a list
+            of unrelated numbers. It goes two-up at medium and three-up at expanded on its own
+            (`auto-fit`), which is what "proportioned" means on a 640 column.
+          -->
+          <dl class="counts">
+            @for (state of states(); track state.key) {
+              <div class="counts__cell">
+                <dt class="t-label">{{ t(state.key) }}</dt>
+                <dd
+                  class="t-num counts__value"
+                  [class.counts__value--warn]="state.tone === 'warn' && state.value > 0"
+                >
+                  {{ state.value }}
+                </dd>
+              </div>
+            }
+          </dl>
+
+          <!--
+            **The tallies are a list, never a chart** (2026-09-03).
+
+            `entry.failure_reason` is written by the pipeline *and* by the report pass — the report
+            pass records a delivery failure "in both places a person might look", and
+            `superseded_after_send` exists nowhere else — so the same reason can appear here and in
+            the delivery card below. These are overlapping severity signals, **not a partition**: a
+            pie or a stacked bar would claim the parts sum to a whole, which is the same lie the
+            backend's own first cut told when it folded entry reasons through the pipeline
+            vocabulary alone and reported every delivery failure as `unrecognised`.
+
+            So: a plain list, largest first, in the order the server sent, with the overlap said out
+            loud underneath rather than left for a reader to deduce.
+          -->
+          <h3 class="t-label block__sublabel">{{ t('health.failures.pipeline') }}</h3>
+          @if (pipelineFailures().length === 0) {
+            <p class="t-meta block__none">{{ t('health.failures.none') }}</p>
+          } @else {
+            <ul class="tallies">
+              @for (tally of pipelineFailures(); track tally.reason) {
+                <li class="tallies__row">
+                  <span class="tallies__reason">{{ reasonWord(tally.reason) }}</span>
+                  <span class="t-num tallies__count">{{ tally.count }}</span>
+                </li>
+              }
+            </ul>
+            <p class="t-meta block__note">{{ t('health.failures.overlap') }}</p>
+          }
+        </section>
+
+        <!-- ---- The reports ------------------------------------------------------------- -->
+        <section class="card block half" [attr.aria-label]="t('health.delivery.title')">
+          <h2 class="t-label block__label">{{ t('health.delivery.title') }}</h2>
+
+          <dl class="counts">
+            <div class="counts__cell">
+              <dt class="t-label">{{ t('health.delivery.total') }}</dt>
+              <dd class="t-num counts__value">{{ estate.delivery.reportCount }}</dd>
+            </div>
+            <div class="counts__cell">
+              <!-- A claim nobody is holding is the interesting one here; the sweeper is what turns
+                   it into a failure, so a number that never falls is worth seeing. -->
+              <dt class="t-label">{{ t('health.delivery.sending') }}</dt>
+              <dd
+                class="t-num counts__value"
+                [class.counts__value--warn]="estate.delivery.sending > 0"
+              >
+                {{ estate.delivery.sending }}
+              </dd>
+            </div>
+            <div class="counts__cell">
+              <dt class="t-label">{{ t('health.delivery.sent') }}</dt>
+              <dd class="t-num counts__value">{{ estate.delivery.sent }}</dd>
+            </div>
+            <div class="counts__cell">
+              <dt class="t-label">{{ t('health.delivery.failed') }}</dt>
+              <dd class="t-num counts__value" [class.counts__value--err]="estate.delivery.failed > 0">
+                {{ estate.delivery.failed }}
+              </dd>
+            </div>
+          </dl>
+
+          <!-- `sent` means the relay took custody and never that a person read anything. This
+               product does not claim delivery and neither does this card. -->
+          <p class="t-meta block__note">{{ t('health.delivery.custody') }}</p>
+
+          <h3 class="t-label block__sublabel">{{ t('health.failures.delivery') }}</h3>
+          @if (deliveryFailures().length === 0) {
+            <p class="t-meta block__none">{{ t('health.failures.none') }}</p>
+          } @else {
+            <ul class="tallies">
+              @for (tally of deliveryFailures(); track tally.reason) {
+                <li class="tallies__row">
+                  <span class="tallies__reason">{{ reasonWord(tally.reason) }}</span>
+                  <span class="t-num tallies__count">{{ tally.count }}</span>
+                </li>
+              }
+            </ul>
+          }
+        </section>
+
+        <!-- ---- The job queue ----------------------------------------------------------- -->
+        <section class="card block wide" [attr.aria-label]="t('health.queue.title')">
+          <h2 class="t-label block__label">{{ t('health.queue.title') }}</h2>
+
+          @if (queue(); as jobs) {
+            @if (!jobs.available) {
+              <!--
+                **"I could not tell" is not "nothing is queued", and this is where that is kept
+                true.** An empty queue is the healthiest state there is; a process with no job
+                server is one of the worst, and until 2026-09-02 `/platform/logs` printed
+                "Učitano 0 linija — to je sve" under a notice saying the server was unreachable.
+                So the numbers below are em-dashes and this says which of the two fixed reasons
+                the server gave.
+              -->
+              <div class="notice notice--warn" role="status">
+                <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
+                <div class="notice__text">
+                  <span class="notice__title">{{ t('health.queue.unknownTitle') }}</span>
+                  <span class="t-meta">{{ t(queueDetailKey()) }}</span>
+                </div>
+              </div>
+            } @else if (jobs.servers === 0) {
+              <!--
+                The queue answered and nothing is running it. Every request still answers 200 and
+                nothing is being transcribed, extracted or sent — the one state that looks perfectly
+                healthy from every other screen in the product.
+              -->
+              <div class="notice notice--err" role="status">
+                <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
+                <div class="notice__text">
+                  <span class="notice__title">{{ t('health.queue.noServers.title') }}</span>
+                  <span class="t-meta">{{ t('health.queue.noServers.body') }}</span>
+                </div>
+              </div>
+            }
+
+            <dl class="counts">
+              <div class="counts__cell">
+                <dt class="t-label">{{ t('health.queue.enqueued') }}</dt>
+                <dd class="t-num counts__value">
+                  {{ jobs.available ? jobs.enqueued : t('platform.none') }}
+                </dd>
+              </div>
+              <div class="counts__cell">
+                <dt class="t-label">{{ t('health.queue.scheduled') }}</dt>
+                <dd class="t-num counts__value">
+                  {{ jobs.available ? jobs.scheduled : t('platform.none') }}
+                </dd>
+              </div>
+              <div class="counts__cell">
+                <dt class="t-label">{{ t('health.queue.processing') }}</dt>
+                <dd class="t-num counts__value">
+                  {{ jobs.available ? jobs.processing : t('platform.none') }}
+                </dd>
+              </div>
+              <div class="counts__cell">
+                <dt class="t-label">{{ t('health.queue.failed') }}</dt>
+                <dd
+                  class="t-num counts__value"
+                  [class.counts__value--err]="jobs.available && jobs.failed > 0"
+                >
+                  {{ jobs.available ? jobs.failed : t('platform.none') }}
+                </dd>
+              </div>
+              <div class="counts__cell">
+                <dt class="t-label">{{ t('health.queue.servers') }}</dt>
+                <dd
+                  class="t-num counts__value"
+                  [class.counts__value--err]="jobs.available && jobs.servers === 0"
+                >
+                  {{ jobs.available ? jobs.servers : t('platform.none') }}
+                </dd>
+              </div>
+            </dl>
+          }
+        </section>
+
+        <!-- ---- The sites --------------------------------------------------------------- -->
+        <section class="card sites wide" [attr.aria-label]="t('health.sites.caption')">
+          @if (sitesOmitted() > 0) {
+            <!--
+              **The server did not send the whole estate, and the screen says so.**
+
+              `sites` is capped at 500 and ordered attention-first, so what was dropped is always
+              healthy — but a table quietly showing some of the sites is the very defect the count
+              strip below exists to prevent, arrived at from the server's end. Loud, above the
+              strip, and it says *why* it is safe rather than only that it happened.
+            -->
+            <div class="notice notice--warn" role="status">
+              <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
+              <div class="notice__text">
+                <span class="notice__title">{{
+                  t('health.sites.omitted.title', {
+                    shown: estate.sites.length,
+                    total: siteTotal()
+                  })
+                }}</span>
+                <span class="t-meta">{{ t('health.sites.omitted.body') }}</span>
+              </div>
+            </div>
+          }
+
+          <!--
+            At every width and always (founder, 2026-09-02: ten rows a page, and never hide the
+            count). Quiet until a filter is live, loud the moment one is — a table showing three of
+            twenty sites is how this screen makes a founder believe a customer has no problems.
+          -->
+          <div class="table-bar" [class.table-bar--quiet]="!controls.filtering()" role="status">
+            <span class="t-meta">{{ t(countKey(), countParams()) }}</span>
+            @if (controls.filtering()) {
+              <button type="button" class="table-bar__clear" (click)="controls.clearFilters()">
+                {{ t('table.filter.clearAll') }}
+              </button>
+            }
+          </div>
+
+          <!--
+            Below 1024 the same four controls the column heads carry, as pills: one tap on the word
+            sorts, one on the funnel filters. The filter matches the words the row shows, so typing
+            "greške" into STANJE is how a founder on a phone asks for only the sites with a problem.
+          -->
+          @if (!viewport.expanded()) {
+            <div class="column-bar" role="group" [attr.aria-label]="t('health.sites.caption')">
+              <app-column-menu
+                variant="pill"
+                kind="state"
+                [label]="t('health.sites.state')"
+                [sort]="controls.directionFor('state')"
+                [filter]="controls.filterFor('state')"
+                (toggled)="sortBy('state')"
+                (sorted)="setSort('state', $event)"
+                (filterChanged)="setFilter('state', $event)"
+              />
+              <app-column-menu
+                variant="pill"
+                kind="text"
+                [label]="t('health.sites.company')"
+                [sort]="controls.directionFor('company')"
+                [filter]="controls.filterFor('company')"
+                (toggled)="sortBy('company')"
+                (sorted)="setSort('company', $event)"
+                (filterChanged)="setFilter('company', $event)"
+              />
+              <app-column-menu
+                variant="pill"
+                kind="text"
+                [label]="t('health.sites.site')"
+                [sort]="controls.directionFor('site')"
+                [filter]="controls.filterFor('site')"
+                (toggled)="sortBy('site')"
+                (sorted)="setSort('site', $event)"
+                (filterChanged)="setFilter('site', $event)"
+              />
+              <app-column-menu
+                variant="pill"
+                kind="number"
+                [label]="t('health.sites.days')"
+                [sort]="controls.directionFor('days')"
+                [filter]="controls.filterFor('days')"
+                (toggled)="sortBy('days')"
+                (sorted)="setSort('days', $event)"
+                (filterChanged)="setFilter('days', $event)"
+              />
+            </div>
+          }
+
+          @if (listed().length === 0) {
+            <!-- No sites at all, and none that answer the filter, are two different sentences. -->
+            <p class="t-meta state" role="status">
+              {{ controls.filtering() ? t('table.filter.empty') : t('health.sites.empty') }}
+            </p>
+          } @else if (viewport.expanded()) {
+            <div class="sites__scroll">
+              <table class="sites__table data-table">
+                <caption class="visually-hidden">
+                  {{
+                    t('health.sites.caption')
+                  }}
+                </caption>
+                <thead>
+                  <tr>
+                    <th
+                      scope="col"
+                      class="col--state"
+                      [attr.aria-sort]="controls.ariaSort('state')"
+                    >
+                      <app-column-menu
+                        kind="state"
+                        [label]="t('health.sites.state')"
+                        [sort]="controls.directionFor('state')"
+                        [filter]="controls.filterFor('state')"
+                        (toggled)="sortBy('state')"
+                        (sorted)="setSort('state', $event)"
+                        (filterChanged)="setFilter('state', $event)"
+                      />
+                    </th>
+                    <th
+                      scope="col"
+                      class="col--company"
+                      [attr.aria-sort]="controls.ariaSort('company')"
+                    >
+                      <app-column-menu
+                        kind="text"
+                        [label]="t('health.sites.company')"
+                        [sort]="controls.directionFor('company')"
+                        [filter]="controls.filterFor('company')"
+                        (toggled)="sortBy('company')"
+                        (sorted)="setSort('company', $event)"
+                        (filterChanged)="setFilter('company', $event)"
+                      />
+                    </th>
+                    <th scope="col" class="col--site" [attr.aria-sort]="controls.ariaSort('site')">
+                      <app-column-menu
+                        kind="text"
+                        [label]="t('health.sites.site')"
+                        [sort]="controls.directionFor('site')"
+                        [filter]="controls.filterFor('site')"
+                        (toggled)="sortBy('site')"
+                        (sorted)="setSort('site', $event)"
+                        (filterChanged)="setFilter('site', $event)"
+                      />
+                    </th>
+                    <th scope="col" class="col--days" [attr.aria-sort]="controls.ariaSort('days')">
+                      <app-column-menu
+                        kind="number"
+                        [label]="t('health.sites.days')"
+                        [sort]="controls.directionFor('days')"
+                        [filter]="controls.filterFor('days')"
+                        (toggled)="sortBy('days')"
+                        (sorted)="setSort('days', $event)"
+                        (filterChanged)="setFilter('days', $event)"
+                      />
+                    </th>
+                    <th scope="col" class="col--reports">
+                      <!-- Not sortable: it is two numbers, and "sort by sent" and "sort by failed"
+                           are different questions the state column already answers better. -->
+                      <app-column-menu
+                        [label]="t('health.sites.reports')"
+                        [sortable]="false"
+                        [filterable]="false"
+                      />
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (site of pageListed(); track site.projectId) {
+                    <tr class="site">
+                      <td class="col--state">
+                        <span class="site__chips">
+                          @for (chip of chips(site); track chip.key) {
+                            <span class="chip chip--{{ chip.tone }}">{{ chipWord(chip) }}</span>
+                          }
+                        </span>
+                      </td>
+                      <td>{{ site.companyName }}</td>
+                      <td class="site__name">{{ site.projectName }}</td>
+                      <td class="t-meta t-num">{{ site.pipeline.entryCount }}</td>
+                      <td class="t-meta t-num">
+                        {{
+                          t('health.sites.reportsValue', {
+                            sent: site.delivery.sent,
+                            total: site.delivery.reportCount
+                          })
+                        }}
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <!--
+              **Below 1024 this is a list, not a squeezed table.**
+
+              The mistake `/platform/logs` was corrected for at 834: a five-column table on a 640
+              column gives its one useful column about 300 px and spends the rest repeating
+              near-constant text. A tablet gets a deliberate layout — the state first, because the
+              question is "is anything wrong", then whose site it is, then the two numbers.
+            -->
+            <ul class="rows">
+              @for (site of pageListed(); track site.projectId) {
+                <li class="row">
+                  <span class="site__chips">
+                    @for (chip of chips(site); track chip.key) {
+                      <span class="chip chip--{{ chip.tone }}">{{ chipWord(chip) }}</span>
+                    }
+                  </span>
+                  <span class="site__name">{{ site.projectName }}</span>
+                  <span class="t-meta">{{ site.companyName }}</span>
+                  <span class="t-meta t-num">
+                    {{ t('health.sites.days') }} {{ site.pipeline.entryCount }} ·
+                    {{ t('health.sites.reports') }}
+                    {{
+                      t('health.sites.reportsValue', {
+                        sent: site.delivery.sent,
+                        total: site.delivery.reportCount
+                      })
+                    }}
+                  </span>
+                </li>
+              }
+            </ul>
+          }
+
+          <!-- One control for both renderings: the table at 1024 and up and the list below it are
+               two views of one list, and two pagers would be two places for the page to drift. -->
+          <app-table-pager [page]="page()" [pageCount]="pageCount()" (goTo)="goToPage($event)" />
+        </section>
+      }
+    }
+  </div>
+</div>

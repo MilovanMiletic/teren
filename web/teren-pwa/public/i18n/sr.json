@@ -281,6 +281,20 @@
     "gps": {
       "label": "Lokacija",
       "accuracy": "±{{metres}} m"
+    },
+    "correction": {
+      "title": "Ispravka se pravi kao nov unos",
+      "bodySent": "Ovaj unos je poslat klijentu i više se ne menja. Snimite nov unos za taj dan — biće povezan sa ovim.",
+      "bodySuperseded": "Izveštaj je otišao pre ove izmene, pa ovaj unos ne može ni da se zapečati ni da se pošalje ponovo. Snimite nov unos za taj dan — biće povezan sa ovim.",
+      "action": "Snimi ispravku",
+      "chip": "Ispravka",
+      "replacedChip": "Zamenjen",
+      "openReplacement": "Prikaži ispravku",
+      "openReplaced": "Prikaži zamenjeni unos",
+      "isCorrection": {
+        "title": "Ovo je ispravka",
+        "body": "Ovaj unos je snimljen da zameni stariji unos za taj dan, na istom gradilištu."
+      }
     }
   },
   "confirm": {
@@ -402,7 +416,11 @@
       "notConfigured": "Aplikacija nema podešen server, pa ništa ne može da se potvrdi.",
       "unknown": "Potvrda nije uspela iz nepoznatog razloga."
     },
-    "errorSafe": "Ništa nije izgubljeno — sve što ste upisali ostaje na telefonu."
+    "errorSafe": "Ništa nije izgubljeno — sve što ste upisali ostaje na telefonu.",
+    "correction": {
+      "title": "Ovo je ispravka starijeg unosa",
+      "body": "Kada potvrdite, klijent dobija nov izveštaj za taj dan. Stari izveštaj ostaje kod njega — ovaj ga ispravlja, ne briše ga."
+    }
   },
   "capture": {
     "record": {
@@ -465,7 +483,17 @@
       "storage": {
         "title": "Telefon ne može da čuva snimke",
         "body": "Pregledač ne dozvoljava lokalno čuvanje podataka, pa snimak ne bi imao gde da se sačuva. Isključite privatni režim ili oslobodite prostor pa pokušajte ponovo."
+      },
+      "correction": {
+        "title": "Ne znamo kom gradilištu pripada taj dan",
+        "body": "Unos koji ispravljate nije na ovom telefonu, a server nije dostupan. Ispravka mora da ide na isto gradilište kao i unos koji menja, pa snimanje ne počinje dok se to ne zna. Probajte ponovo kada budete imali signal — ništa nije izgubljeno."
       }
+    },
+    "correction": {
+      "ofDay": "Menja unos od {{day}} · {{site}}",
+      "ofSite": "Menja stariji unos · {{site}}",
+      "resolving": "Proveravamo kom gradilištu pripada taj dan…",
+      "saved": "Kada pošaljete, ovaj unos menja stariji unos za taj dan."
     }
   },
   "sync": {
@@ -951,6 +979,9 @@
       },
       "unconfirmed": "Server nije odgovorio, pa se ne zna da li je radnja izvršena. Osvežite pre nego što pokušate ponovo."
     },
+    "health": {
+      "open": "Stanje sistema"
+    },
     "stale": {
       "title": "Nije provereno na serveru"
     },
@@ -1061,6 +1092,122 @@
     },
     "logs": {
       "open": "Otvori log"
+    }
+  },
+  "health": {
+    "title": "Stanje sistema",
+    "subtitle": "Šta se dešava sa unosima kod svih klijenata",
+    "back": "Nazad na platformu",
+    "reload": "Osveži",
+    "loading": "Čitamo stanje sistema…",
+    "at": "Stanje na serveru u {{at}}",
+    "unavailable": "Ništa nije pročitano, pa nema brojeva koje bismo prikazali. Probajte ponovo.",
+    "about": {
+      "title": "Šta ovde vidite",
+      "body": "Svaki broj na ovom ekranu je serverov i izbrojan je u onom jednom trenutku koji stoji pod naslovom — ništa ovde nije živo, samo osvežavanje ga pomera. Dve liste grešaka se namerno preklapaju: greška u slanju se upisuje i na sam unos, pa se jedan problem opravdano vidi na oba mesta. Nikada ih ne sabirajte. Ovaj ekran broji dane, izveštaje i greške; ne sadrži ni prepis, ni fotografiju, ni izveštaj."
+    },
+    "summary": {
+      "days": "Dana u sistemu",
+      "waiting": "Čeka čoveka",
+      "failing": "Sa greškom"
+    },
+    "pipeline": {
+      "title": "Unosi"
+    },
+    "state": {
+      "received": "Primljen",
+      "processing": "U obradi",
+      "awaiting": "Čeka potvrdu",
+      "needsReview": "Vraćen čoveku",
+      "confirmed": "Potvrđen",
+      "reported": "Poslat"
+    },
+    "failures": {
+      "pipeline": "Zašto unosi stoje",
+      "delivery": "Zašto izveštaji nisu otišli",
+      "none": "Nijedan ne nosi grešku.",
+      "overlap": "Greška u slanju se upisuje i na sam unos, pa se isti razlog vidi na obe liste. To su dva pogleda na isti problem, a ne dve polovine — ne sabirajte ih."
+    },
+    "delivery": {
+      "title": "Izveštaji",
+      "total": "Izveštaja",
+      "sending": "Šalje se",
+      "sent": "Poslato",
+      "failed": "Nije prošlo",
+      "custody": "Poslato znači da je server za poštu preuzeo izveštaj — nikada i da ga je neko pročitao."
+    },
+    "queue": {
+      "title": "Red poslova",
+      "enqueued": "U redu",
+      "scheduled": "Zakazano",
+      "processing": "Radi se",
+      "failed": "Palo",
+      "servers": "Radnika",
+      "unknownTitle": "Red poslova ne može da se pročita",
+      "notConfigured": "Ovaj server ne vodi poslove, pa nema šta da se pročita — i nigde se ništa ne prepisuje, ne struktuira ni ne šalje. Brojevi ispod nisu nule, nego nepoznati.",
+      "unreadable": "Red poslova postoji ali nije odgovorio. Brojevi ispod nisu nule, nego nepoznati.",
+      "unknown": "Server nije rekao zašto. Brojevi ispod nisu nule, nego nepoznati.",
+      "noServers": {
+        "title": "Niko ne prazni red poslova",
+        "body": "Red poslova je odgovorio, a ni jedan radnik ne radi. Svaki zahtev i dalje prolazi, a ništa se ne prepisuje, ne struktuira ni ne šalje — to je jedini otkaz koji sa svakog drugog ekrana u proizvodu izgleda savršeno zdravo."
+      }
+    },
+    "sites": {
+      "caption": "Sva gradilišta, prvo ona kojima nešto treba",
+      "empty": "Još nema gradilišta.",
+      "state": "Stanje",
+      "company": "Klijent",
+      "site": "Gradilište",
+      "days": "Dana",
+      "reports": "Izveštaji",
+      "reportsValue": "{{sent}} od {{total}}",
+      "omitted": {
+        "title": "Prikazano {{shown}} od {{total}} gradilišta",
+        "body": "Server šalje najviše 500 gradilišta i prvo stavlja ona kojima nešto treba, pa je izostavljeno samo ono gde nema problema. Svi brojevi gore ipak broje ceo sistem."
+      }
+    },
+    "site": {
+      "needsReview": "Vraćeno",
+      "needsReviewCount": "{{count}} vraćeno",
+      "failures": "Greške",
+      "failuresCount": "{{count}} sa greškom",
+      "undelivered": "Nije poslato",
+      "undeliveredCount": "{{count}} nije poslato",
+      "sending": "Šalje se",
+      "sendingCount": "{{count}} u slanju",
+      "empty": "Još ništa nije snimljeno",
+      "ok": "U redu"
+    },
+    "reason": {
+      "noEvidence": "Nema dokaza — ni snimka ni fotografije",
+      "audioChecksumMismatch": "Snimak u skladištu nije onaj koji je telefon poslao",
+      "audioMissing": "Snimka nema u skladištu",
+      "storageUnavailable": "Skladište nije bilo dostupno",
+      "transcriptionNotConfigured": "Prepis nije podešen",
+      "transcriptionFailed": "Prepis nije uspeo",
+      "transcriptionEmpty": "Prepis nije vratio ni jednu reč",
+      "extractionNotConfigured": "Izvlačenje podataka nije podešeno",
+      "extractionFailed": "Izvlačenje podataka nije uspelo",
+      "extractionInvalid": "Izvučeni dan nije bio upotrebljiv",
+      "processingInterrupted": "Obrada je prekinuta",
+      "noRecipients": "Klijent nema adresu za izveštaj",
+      "recipientsUnusable": "Adresa klijenta nije upotrebljiva",
+      "deliveryNotConfigured": "Slanje pošte nije podešeno",
+      "photoChecksumMismatch": "Fotografija u skladištu nije ona koju je telefon poslao",
+      "photoMissing": "Fotografije nema u skladištu",
+      "renderTimeout": "Izrada izveštaja je trajala predugo",
+      "renderFailed": "Izveštaj nije mogao da se napravi",
+      "timeZoneUnknown": "Vremenska zona gradilišta nije poznata",
+      "nothingToReport": "Nije bilo šta da se pošalje",
+      "deliveryRejected": "Server za poštu je odbio izveštaj",
+      "deliveryUnauthorized": "Server za poštu nije prihvatio našu prijavu",
+      "deliveryFailed": "Slanje izveštaja nije uspelo",
+      "reportInterrupted": "Slanje je prekinuto",
+      "deliveryCustodyUnknown": "Ne znamo da li je pošta preuzeta",
+      "superseded": "Zamenjen novijim izveštajem",
+      "supersededAfterSend": "Unos je izmenjen posle nego što je izveštaj otišao",
+      "unexpected": "Neočekivana greška",
+      "unrecognised": "Razlog koji ova verzija aplikacije ne poznaje"
     }
   },
   "logs": {

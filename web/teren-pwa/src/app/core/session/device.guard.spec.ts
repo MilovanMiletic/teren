@@ -19,6 +19,7 @@ import { WorkerPage } from '../../features/company/worker-page';
 import { PlatformPage } from '../../features/platform/platform-page';
 import { SetPasswordPage } from '../../features/auth/set-password-page';
 import { CompaniesPage } from '../../features/platform/companies-page';
+import { HealthPage } from '../../features/platform/health-page';
 import { LogsPage } from '../../features/platform/logs-page';
 import { PersonPage } from '../../features/platform/person-page';
 import { ADMIN_SESSION_STORAGE_KEY, AdminSession } from './admin-session';
@@ -104,6 +105,7 @@ describe('the device gate', () => {
   let setPassword: string;
   let platformCompanies: string;
   let platformLogs: string;
+  let platformHealth: string;
   let platformPerson: string;
   let deepLink: string;
 
@@ -122,6 +124,7 @@ describe('the device gate', () => {
     setPassword = await routeUrlFor(SetPasswordPage);
     platformCompanies = await routeUrlFor(CompaniesPage);
     platformLogs = await routeUrlFor(LogsPage);
+    platformHealth = await routeUrlFor(HealthPage);
     platformPerson = await routeUrlFor(PersonPage);
     deepLink = `${diary}?${ARCHIVE_ENTRY_PARAM}=${ENTRY_ID}`;
   });
@@ -495,13 +498,20 @@ describe('the device gate', () => {
         url === platform ||
         url === platformCompanies ||
         url === platformPerson ||
-        url === platformLogs
+        url === platformLogs ||
+        url === platformHealth
       ) {
         // Teren's own surface, on a *third* credential. Named separately from the office branch
         // above rather than folded into "any admin screen", because that folding is precisely the
         // mistake: a super admin has no company, is refused by every evidence route on purpose,
         // and a gate that treated the two roles as ranks would be the first step towards staff
         // reading a customer's diary.
+        //
+        // `/platform/health` joined this list on 2026-09-03 and it is the sharpest member of it:
+        // one response carries **every customer's** company name, site names and failure counts,
+        // so a company admin allowed through would learn which of his competitors is behind on his
+        // reports. This spec went red until that was written down, which is the point of naming
+        // these routes one by one rather than folding them into "any admin screen".
         expect(route.canMatch, url).toEqual([requiresSuperAdmin]);
       } else {
         expect(route.canMatch, url).toEqual([requiresDevice]);

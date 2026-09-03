@@ -65,6 +65,46 @@ describe('EntryStore', () => {
       expect(await db.entries.count()).toBe(0);
     });
 
+    /**
+     * The link is written **before the first byte**, like the site — so it is part of what the day
+     * *is* rather than something the entry acquired later. PROJECT.md invariant 2 makes a
+     * correction a new entry that names the one it replaces; an entry that gained that link
+     * afterwards would be a record whose meaning changed after it was recorded.
+     */
+    it('records at capture time which day a correction replaces', async () => {
+      const entryId = crypto.randomUUID();
+      await store.beginCapture({
+        entryId,
+        project: TEST_PROJECT,
+        capturedAt: '2026-09-03T14:05:00.000Z',
+        mimeType: 'audio/ogg;codecs=opus',
+        supersedesEntryId: 'the-day-being-replaced',
+      });
+
+      // On the session, before anything is stopped.
+      expect((await db.captures.get(entryId))?.supersedesEntryId).toBe('the-day-being-replaced');
+
+      await store.appendChunk(entryId, chunk(1));
+      const entry = await store.finishCapture(entryId, { durationMs: 41_000 });
+
+      expect(entry?.supersedesEntryId).toBe('the-day-being-replaced');
+    });
+
+    /** An ordinary take carries `null`, and absence and `null` both mean "not a correction". */
+    it('leaves an ordinary take with no correction link', async () => {
+      const entryId = crypto.randomUUID();
+      await store.beginCapture({
+        entryId,
+        project: TEST_PROJECT,
+        capturedAt: '2026-09-03T14:05:00.000Z',
+        mimeType: 'audio/ogg;codecs=opus',
+      });
+      await store.appendChunk(entryId, chunk(1));
+      const entry = await store.finishCapture(entryId, { durationMs: 41_000 });
+
+      expect(entry?.supersedesEntryId).toBeNull();
+    });
+
     it('assembles the chunks in order into one blob, and clears the leftovers', async () => {
       const entryId = crypto.randomUUID();
       await store.beginCapture({
@@ -202,6 +242,34 @@ describe('EntryStore', () => {
       const [audio] = await db.media.where({ entryId, kind: 'audio' }).toArray();
       expect(audio.byteSize).toBe(360);
       expect(entry?.audioDurationMs).toBeGreaterThan(170_000);
+    });
+
+    /**
+     * **A correction the tab died in the middle of comes back as a correction.**
+     *
+     * This is the whole reason the link lives on the *session* rather than being attached when the
+     * take is saved: the start-up sweep assembles orphaned chunks into a draft without the screen
+     * that started them, so a correction whose tab was killed mid-sentence would otherwise return
+     * as an ordinary entry — the same day's work, filed as a new record rather than as the
+     * replacement of a wrong one, and nothing on any screen would say so.
+     */
+    it('assembles an interrupted correction as a correction', async () => {
+      const entryId = crypto.randomUUID();
+      await store.beginCapture({
+        entryId,
+        project: TEST_PROJECT,
+        capturedAt: new Date(Date.now() - 60_000).toISOString(),
+        mimeType: 'audio/webm;codecs=opus',
+        supersedesEntryId: 'the-day-being-replaced',
+      });
+      await store.appendChunk(entryId, chunk(1));
+      await store.appendChunk(entryId, chunk(2));
+      await abandon(entryId, LIVE_CAPTURE_WINDOW_MS + 1_000);
+
+      const result = await store.rescue();
+
+      expect(result.assembled).toBe(1);
+      expect((await db.entries.get(entryId))?.supersedesEntryId).toBe('the-day-being-replaced');
     });
 
     it('leaves the capture whose screen is open alone', async () => {

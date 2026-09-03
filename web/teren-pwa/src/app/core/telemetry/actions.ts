@@ -41,6 +41,16 @@ export const ACTIONS = {
   archiveEntryOpen: 'archive.entry.open',
   archiveMediaOpen: 'archive.media.open',
   archiveReportDownload: 'archive.report.download',
+  /**
+   * A correction was started from a closed record (2026-09-03).
+   *
+   * Worth a name of its own rather than folding into `capture.record.start`: this is the gesture
+   * that answers PROJECT.md invariant 2, and how often a foreman reaches for it is the measure of
+   * whether the confirmation gate is catching mistakes before the report goes out or after.
+   *
+   * No entry id and no site travel with it — a slug and nothing else, like every other press.
+   */
+  archiveCorrectionStart: 'archive.correction.start',
 
   companyWorkerOpen: 'company.worker.open',
   companyWorkerAdd: 'company.worker.add',
@@ -55,6 +65,15 @@ export const ACTIONS = {
   logsOpen: 'logs.open',
   logsFilter: 'logs.filter',
   logsExport: 'logs.export',
+
+  /**
+   * The estate's health screen was opened (`/platform/health`, F7).
+   *
+   * One slug for the screen and none for its controls, the same as the log viewer: there is
+   * exactly one thing to do on it — read it — and a reload that logged itself would tell us how
+   * often a founder pressed refresh rather than anything about the product.
+   */
+  healthOpen: 'health.open',
 
   sessionLogin: 'session.login',
   sessionLogout: 'session.logout',

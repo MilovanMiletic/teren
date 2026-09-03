@@ -39,6 +39,21 @@
       </div>
     </div>
 
+    @if (entry()?.supersedesEntryId) {
+      <!--
+        **The one screen between recording a correction and queueing it, so it says what it is.**
+
+        "Gotovo" below hands this entry to the outbox, and from there it is a record that replaces
+        another day. A man who tapped the wrong record in the archive has exactly this screen to
+        notice on — after the queue there is no undo, because nothing in this product deletes
+        captured evidence (principle 3).
+      -->
+      <div class="column column--focused correction">
+        <span class="chip chip--warn">{{ t('archive.correction.chip') }}</span>
+        <span class="t-meta correction__of">{{ t('capture.correction.saved') }}</span>
+      </div>
+    }
+
     <section class="column column--focused photos">
       <h2 class="t-label photos__label">
         {{ t('capture.photos.label', { count: photoCount() }) }}

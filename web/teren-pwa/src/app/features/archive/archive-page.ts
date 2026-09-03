@@ -13,6 +13,7 @@ import { TranslocoDirective } from '@jsverse/transloco';
 import { map, of, startWith, switchMap } from 'rxjs';
 
 import { EntryListItemResponse } from '../../core/api/api-types';
+import { isSupersededAfterSend } from '../../core/api/failure-reason';
 import {
   ArchiveRow,
   groupArchiveRowsByDay,
@@ -301,7 +302,19 @@ export class ArchivePage {
   }
 
   protected open(row: ArchiveRow): void {
-    void this.router.navigate(['/diary'], { queryParams: { [ARCHIVE_ENTRY_PARAM]: row.id } });
+    this.openId(row.id);
+  }
+
+  /**
+   * Open a record by id — the row itself, or the correction that replaced it.
+   *
+   * One navigation for both, and that is not only tidiness: `app.routes.spec.ts` resolves every
+   * `navigate([…])` in the app against the real table and pins the count, so a second call site
+   * spelling the same URL is a second thing that can drift. It also keeps `?entry=` behind
+   * `ARCHIVE_ENTRY_PARAM` in one place — the coupling F4b broke.
+   */
+  protected openId(entryId: string): void {
+    void this.router.navigate(['/diary'], { queryParams: { [ARCHIVE_ENTRY_PARAM]: entryId } });
   }
 
   /**
@@ -313,7 +326,16 @@ export class ArchivePage {
    * entry, which is exactly the moment he notices the typo.
    */
   protected revisable(row: ArchiveRow): boolean {
-    return canRevise(row.serverStatus, row.reportedAt);
+    // **The wasted tap, removed** (2026-09-03). `GET /api/entries` now carries `failure_reason` on
+    // the row, so the list can finally tell the two apart: a record the server refused to seal is
+    // `confirmed` with no `reported_at`, which is exactly the shape `canRevise` reads as "he may
+    // still change his mind". Until the reason arrived, this row offered "Ispravi" on the one
+    // entry whose gate can only say no — and the way *forward* is the correction card on the
+    // record, which is where the sentence explaining the dead end already lives.
+    //
+    // A null reason is silence and not an answer (`core/api/failure-reason.ts`): a local-only row,
+    // or a page from an older server, behaves exactly as it did before.
+    return canRevise(row.serverStatus, row.reportedAt) && !isSupersededAfterSend(row.failureReason);
   }
 
   /**

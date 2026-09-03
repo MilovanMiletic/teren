@@ -71,9 +71,18 @@
           <span class="detail__notice-title">{{ t('confirm.banner.awaiting.title') }}</span>
           <span class="t-meta">{{ t('home.attention.hint') }}</span>
         </div>
+        <!--
+          `--gate` names *which* door this is, and it is not decoration (2026-09-03). Every notice
+          on this screen hangs its control off `detail__notice-action` for layout, and since the
+          correction gesture there are four of them: two into the confirmation gate, one that
+          starts a new record, one that opens the day this record replaces. Three specs asserted
+          "no route into the gate from here" as *no `.detail__notice-action` anywhere*, which was
+          the same sentence only while the gate was the sole control — and the correction button
+          made all three pass for the wrong reason had the class stayed shared.
+        -->
         <button
           type="button"
-          class="btn btn--primary btn--row detail__notice-action"
+          class="btn btn--primary btn--row detail__notice-action detail__notice-action--gate"
           data-log="confirm.open"
           (click)="openConfirm()"
         >
@@ -94,7 +103,7 @@
         </div>
         <button
           type="button"
-          class="btn btn--tertiary btn--row detail__notice-action"
+          class="btn btn--tertiary btn--row detail__notice-action detail__notice-action--gate"
           data-log="confirm.open"
           (click)="openConfirm()"
         >
@@ -110,8 +119,11 @@
 
         What it says is the thing that was missing: a record the server refused to seal is
         `confirmed` with no `reported_at`, so the "you may still correct this" card used to sit
-        here offering a door into a gate that could only write the same failure back. No control,
-        because there is no control that helps.
+        here offering a door into a gate that could only write the same failure back.
+
+        **It still carries no control**, and that is deliberate rather than left over: the card
+        below is the one place the way forward is offered, for both closed states, so there is
+        never a second button for one action. This card's job is to say what happened.
       -->
       <div class="card detail__notice detail__notice--err" role="status">
         <app-icon name="alert-triangle" [size]="20" class="detail__notice-icon" />
@@ -119,6 +131,71 @@
           <span class="detail__notice-title">{{ t('archive.superseded.title') }}</span>
           <span class="t-meta">{{ t('archive.superseded.body') }}</span>
         </div>
+      </div>
+    }
+
+    @if (correctable()) {
+      <!--
+        **The way forward, and it is new** (2026-09-03).
+
+        Outside the notice chain above rather than inside it, because it answers a different
+        question: those branches say what state this day is in, and this one says what can still be
+        done about it. Two states reach it — a sealed record (invariant 2) and one the server
+        refused to seal (`superseded_after_send`) — and they share one control, so the app never
+        draws two buttons for one gesture.
+
+        The copy differs because the situation does: one is the ordinary immutability of a
+        delivered record, the other is a report that went out describing a day this archive no
+        longer describes, which is worse and reads worse.
+
+        It takes him to `/record`, the ordinary capture path, carrying only the id of the day being
+        replaced. The site is derived from that day and he is never offered a choice of one — a
+        cross-site link is a 404, and a 4xx is terminal in the outbox.
+      -->
+      <div class="card detail__notice detail__notice--accent" role="status">
+        <app-icon name="mic" [size]="20" class="detail__notice-icon" />
+        <div class="detail__notice-text">
+          <span class="detail__notice-title">{{ t('archive.correction.title') }}</span>
+          <span class="t-meta">{{
+            superseded() ? t('archive.correction.bodySuperseded') : t('archive.correction.bodySent')
+          }}</span>
+        </div>
+        <button
+          type="button"
+          class="btn btn--primary btn--row detail__notice-action detail__notice-action--correct"
+          data-log="archive.correction.start"
+          (click)="startCorrection()"
+        >
+          {{ t('archive.correction.action') }}
+        </button>
+      </div>
+    }
+
+    @if (supersedesEntryId()) {
+      <!--
+        **This record is itself a correction, and it says whose.**
+
+        The gate says it before he sends, the archive list says it in both directions, and the
+        record says it here — because this is the screen produced in a dispute, and a day that
+        replaces an earlier one is worth strictly less as evidence if nothing on it says so.
+
+        The control is what makes the claim checkable: a named record with no way to open it is a
+        footnote. It goes through the archive's own `?entry=` parameter, so at expanded width the
+        record swaps in its pane and the list beside it does not move.
+      -->
+      <div class="card detail__notice detail__notice--accent" role="status">
+        <app-icon name="pencil" [size]="20" class="detail__notice-icon" />
+        <div class="detail__notice-text">
+          <span class="detail__notice-title">{{ t('archive.correction.isCorrection.title') }}</span>
+          <span class="t-meta">{{ t('archive.correction.isCorrection.body') }}</span>
+        </div>
+        <button
+          type="button"
+          class="btn btn--tertiary btn--row detail__notice-action detail__notice-action--replaced"
+          (click)="openSuperseded()"
+        >
+          {{ t('archive.correction.openReplaced') }}
+        </button>
       </div>
     }
 

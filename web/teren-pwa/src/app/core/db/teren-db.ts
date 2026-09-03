@@ -126,6 +126,28 @@ export class TerenDb extends Dexie {
     // is defined, because that is the assumption a future reader will be tempted to generalise
     // from.
     this.version(6).stores({ clientEvents: '++seq' });
+
+    // v7 — the correction gesture (2026-09-03). `entries` and `captures` gain
+    // `supersedesEntryId`; no table changes and **no index**, for the two reasons v4 wrote out.
+    //
+    // 1. *Why the version exists.* Dexie stores undeclared properties without being told about
+    //    them, so nothing here strictly requires a bump. It is declared anyway because `verno` is
+    //    the only durable record of when the on-disk shape changed: a phone that has been in a
+    //    pocket for a month holds rows written below v7, and any future migration that has to
+    //    reason about corrections needs to be able to say "rows below v7 carry no link" without
+    //    guessing.
+    //
+    // 2. *Why no index.* The one question anybody asks of this field is "which of the days on
+    //    this screen replaces another", and the archive already holds every row it is drawing —
+    //    it merges Dexie with a page of the server's list before it paints (`archive-rows.ts`).
+    //    An index would be a second copy of that answer, maintained on the write path, for a
+    //    lookup nobody performs. And the *reverse* question — "what replaced this day" — cannot
+    //    be indexed into correctness anyway: the correction may live on another phone, so the
+    //    honest answer is derived from the rows in hand and stated as such on screen.
+    //
+    // No `.upgrade()`: there is nothing to backfill. An entry recorded before this feature
+    // existed is not a correction, and `undefined` already says so.
+    this.version(7).stores({});
   }
 }
 

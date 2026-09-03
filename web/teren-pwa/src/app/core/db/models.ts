@@ -78,6 +78,20 @@ export interface LocalEntry {
   photoCount: number;
   /** Set by B3 when the server confirms receipt. */
   confirmedByServerAt: string | null;
+  /**
+   * The entry this one corrects — the local half of `supersedes_entry_id` (Dexie v7, 2026-09-03).
+   *
+   * **It is written at capture time and never afterwards**, because it is part of what the day
+   * *is*: PROJECT.md invariant 2 makes a correction a new entry that names the one it replaces,
+   * and an entry that acquired that link later would be a record whose meaning changed after it
+   * was recorded. `undefined` on every row written before v7 and on every ordinary entry; absence
+   * and `null` both mean "this is not a correction".
+   *
+   * The site is **inherited from the target** and there is no path in this app that lets a person
+   * choose it: the server answers a cross-project link with a `404`, and a 4xx is terminal in the
+   * outbox, so a wrong site would abandon a captured day rather than bounce it (ARCHITECTURE §7).
+   */
+  supersedesEntryId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -233,6 +247,16 @@ export interface CaptureSession {
   chunkCount: number;
   /** Arrival time of the last chunk — the honest end of a recording nobody stopped. */
   lastChunkAt: string | null;
+  /**
+   * The entry this take is correcting, if it is one (Dexie v7, 2026-09-03).
+   *
+   * On the **session** and not only on the finished entry, and that is the point of it: the
+   * start-up sweep assembles orphaned chunks into a draft without the screen that started them
+   * (`EntryStore.rescue`), so a correction whose tab died mid-sentence would otherwise come back
+   * as an ordinary entry — the same day's work, filed as a new record rather than as the
+   * replacement of a wrong one. Written before the first byte is recorded, like the site.
+   */
+  supersedesEntryId?: string | null;
   updatedAt: string;
 }
 

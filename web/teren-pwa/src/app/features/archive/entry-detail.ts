@@ -16,7 +16,9 @@ import { switchMap } from 'rxjs';
 
 import { EntryResponse } from '../../core/api/api-types';
 import { supersededAfterSend } from '../../core/api/failure-reason';
+import { ARCHIVE_ENTRY_PARAM } from '../../core/archive/archive-route';
 import { ArchiveService, RemoteStatus } from '../../core/archive/archive.service';
+import { CORRECTION_PARAM } from '../../core/capture/correction-route';
 import {
   EntryStructure,
   EntryWeather,
@@ -490,6 +492,43 @@ export class EntryDetail {
    */
   protected readonly superseded = computed(() => supersededAfterSend(this.remote()));
 
+  /**
+   * Whether this day can only be fixed by recording a new one — and therefore whether the record
+   * offers the way forward (2026-09-03).
+   *
+   * **Two states, one control, and the product's own copy is the argument for it.** The footer
+   * line at the bottom of every record has read *"Unos se ne menja. Ispravka se unosi kao novi
+   * unos koji se poziva na ovaj"* since B5, and the superseded notice ends *"ispravka se pravi kao
+   * nov unos za taj dan"*. Both promised a gesture that did not exist, on the screen that
+   * explains why nothing else will do. So the button goes where the sentence already is.
+   *
+   * - `reported` is PROJECT.md invariant 2's own case: `reported_at` fires the trigger that makes
+   *   the row immutable for ever (B6), and a correction entry is the *only* remedy the product
+   *   has.
+   * - `superseded` is the pathological one ARCHITECTURE §6 names: a report went out, the record
+   *   was changed after the relay took custody, and `ux_report_entry_id` plus the absence of any
+   *   `sent → sending` transition means the newer content can never get a report of its own. Last
+   *   session left that honest and offered nothing to do about it.
+   *
+   * Both read the **server's** answer only. A `confirmed` day whose report has not gone out is
+   * {@link revisable} instead — he corrects it in place, which is cheaper for him and keeps one
+   * record where there would otherwise be two. Nothing here is offered over an entry the phone is
+   * still holding: there is nothing to supersede until the server has the day.
+   */
+  protected readonly correctable = computed(() => this.reported() || this.superseded());
+
+  /**
+   * The day **this** record replaces, if it is itself a correction.
+   *
+   * Server first: it is the value that was stored, and it is what any report built from this entry
+   * refers to. The phone's own copy is the fallback and it matters more than it looks — a
+   * correction sitting in the outbox has not reached the server at all, so without it the screen
+   * would call a correction an ordinary entry for exactly as long as the queue takes.
+   */
+  protected readonly supersedesEntryId = computed(
+    () => this.remote()?.supersedes_entry_id ?? this.local()?.supersedesEntryId ?? null,
+  );
+
   protected readonly audioDurationMs = computed(
     () => this.audio()?.durationMs ?? this.local()?.audioDurationMs ?? 0,
   );
@@ -767,6 +806,39 @@ export class EntryDetail {
   /** To the gate. The record does not edit; it hands over to the screen that does. */
   protected openConfirm(): void {
     void this.router.navigate(['/confirm', this.entryId()]);
+  }
+
+  /**
+   * Record a correction of this day: the ordinary capture path, told which day it replaces.
+   *
+   * **The URL carries an entry id and never a site.** The recording screen resolves the site from
+   * the entry (`core/capture/correction.service.ts`) and offers no choice of one, because the
+   * server accepts `supersedes_entry_id` only for an entry of the same project and refuses
+   * anything else with a `404` — terminal in the outbox, so a wrong site would strand a day of
+   * work on a phone rather than bounce (ARCHITECTURE §7).
+   *
+   * `/record` and not a second capture flow: a correction is a normal day's record that happens to
+   * name another, so it gets the same microphone, the same per-second persistence, the same
+   * photographs, the same outbox and the same confirmation gate.
+   */
+  protected startCorrection(): void {
+    void this.router.navigate(['/record'], {
+      queryParams: { [CORRECTION_PARAM]: this.entryId() },
+    });
+  }
+
+  /**
+   * Open the day this record replaces.
+   *
+   * The forward link is a claim about evidence, and a claim with no way to look at it is worth
+   * little in the dispute this archive exists to win. The archive's own parameter, so the record
+   * swaps in the pane and the list beside it does not move at expanded width.
+   */
+  protected openSuperseded(): void {
+    const target = this.supersedesEntryId();
+    if (target) {
+      void this.router.navigate(['/diary'], { queryParams: { [ARCHIVE_ENTRY_PARAM]: target } });
+    }
   }
 
   protected openViewer(index: number): void {

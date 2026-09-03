@@ -10,6 +10,7 @@ import {
   PLATFORM_STATUSES,
   PlatformService,
   PlatformStatus,
+  UNRECOGNISED_REASON,
   serverAnswered,
 } from './platform.service';
 
@@ -49,6 +50,7 @@ function failingWith(error: unknown): PlatformGateway {
     enableUser: () => Promise.reject(error),
     listLogs: () => Promise.reject(error),
     exportLogs: () => Promise.reject(error),
+    getHealth: () => Promise.reject(error),
   };
 }
 
@@ -76,6 +78,7 @@ function throwingSynchronouslyWith(error: unknown): PlatformGateway {
     enableUser: bang,
     listLogs: bang,
     exportLogs: bang,
+    getHealth: bang,
   };
 }
 
@@ -686,6 +689,220 @@ describe('PlatformService', () => {
     });
   });
 
+
+  // ---- The estate's health (F7) -----------------------------------------------------------------
+
+  /*
+   * Two rules are enforced in the narrowing layer, once, rather than on the screen — because a
+   * screen that had to remember them would eventually forget one and **the forgetting would look
+   * like good news**. That is the whole reason these specs are here and not only in
+   * `health-page.spec.ts`.
+   */
+  describe('reading the estate’s health', () => {
+    it('narrows every count, the queue and the sites', async () => {
+      const service = configure();
+
+      const { status, health } = await service.readHealth();
+
+      expect(status).toBe('ok');
+      expect(health?.pipeline.entryCount).toBe(42);
+      expect(health?.pipeline.awaitingConfirmation).toBe(3);
+      expect(health?.delivery.reportCount).toBe(28);
+      expect(health?.queue).toMatchObject({ available: true, servers: 1, enqueued: 2 });
+      expect(health?.sites).toHaveLength(3);
+      expect(health?.at).toBe('2026-09-03T09:40:00.000Z');
+    });
+
+    /**
+     * **`queue.available` is true only if the server said the literal `true`.**
+     *
+     * A missing field, a string, a body this build cannot read — all of them are "I could not
+     * tell", never an empty queue. An empty queue is the healthiest state there is and "nobody is
+     * running a job server" is one of the worst, so a truthy-test here would render the second as
+     * the first. `undefined`, `null`, `1` and `'true'` are all falsy *as this rule reads them*,
+     * which is the point.
+     */
+    it('treats anything but the literal true as an unreadable queue', async () => {
+      for (const value of [undefined, null, 0, 1, 'true', {}]) {
+        const service = configure(
+          answering({
+            getHealth: async () => ({
+              pipeline: { entry_count: 1 },
+              delivery: { report_count: 1 },
+              queue: { available: value as never, enqueued: 5 },
+            }),
+          }),
+        );
+
+        const { health } = await service.readHealth();
+        expect(health?.queue.available, `available: ${JSON.stringify(value)}`).toBe(false);
+      }
+    });
+
+    /**
+     * A body with no aggregates at all is **no answer**, never an estate of zeroes.
+     *
+     * With `pipeline`, `delivery` or `queue` missing, every count would narrow to zero and the
+     * screen would report a product in which nothing has ever happened and nothing is wrong. That
+     * is the most reassuring possible rendering of a payload nobody could read, on the screen where
+     * reassurance is the one thing that must be earned.
+     */
+    it('refuses a body missing any of the three aggregates', async () => {
+      const whole = {
+        pipeline: { entry_count: 1 },
+        delivery: { report_count: 1 },
+        queue: { available: true },
+      };
+
+      for (const missing of ['pipeline', 'delivery', 'queue'] as const) {
+        const body: Record<string, unknown> = { ...whole };
+        delete body[missing];
+        const service = configure(answering({ getHealth: async () => body }));
+
+        const result = await service.readHealth();
+        expect(result.status, `without ${missing}`).toBe('unavailable');
+        expect(result.health, `without ${missing}`).toBeNull();
+      }
+
+      // …and null or undefined for the whole body is the same answer.
+      for (const body of [null, undefined]) {
+        const service = configure(answering({ getHealth: async () => body as never }));
+        await expect(service.readHealth()).resolves.toEqual({ status: 'unavailable', health: null });
+      }
+    });
+
+    /**
+     * An estate with no site is a **real** state — a fresh install has none — and a missing site
+     * list does not make the headline numbers untrue. So `sites` is allowed to be absent, unlike
+     * the three aggregates above.
+     */
+    it('accepts an estate with no sites', async () => {
+      const service = configure(
+        answering({
+          getHealth: async () => ({
+            pipeline: { entry_count: 0 },
+            delivery: { report_count: 0 },
+            queue: { available: true },
+          }),
+        }),
+      );
+
+      const { status, health } = await service.readHealth();
+      expect(status).toBe('ok');
+      expect(health?.sites).toEqual([]);
+      expect(health?.sitesOmitted).toBe(0);
+    });
+
+    /**
+     * **A tally whose reason cannot be read becomes `unrecognised` rather than being dropped.**
+     *
+     * The count is a real count either way, and a screen that silently discarded it would
+     * under-report failures on the one screen an owner opens because he already doubts what he is
+     * told. `unrecognised` is the server's own token for a code it does not declare — one token,
+     * because to a reader they are the same fact.
+     */
+    it('keeps a tally whose reason it cannot read', async () => {
+      const service = configure(
+        answering({
+          getHealth: async () => ({
+            pipeline: { entry_count: 9 },
+            delivery: { report_count: 0 },
+            queue: { available: true },
+            pipeline_failures: [{ count: 4 }, { reason: null, count: 2 }, { reason: '', count: 1 }],
+          }),
+        }),
+      );
+
+      const { health } = await service.readHealth();
+      expect(health?.pipelineFailures).toEqual([
+        { reason: UNRECOGNISED_REASON, count: 4 },
+        { reason: UNRECOGNISED_REASON, count: 2 },
+        { reason: UNRECOGNISED_REASON, count: 1 },
+      ]);
+    });
+
+    /** …and the order the server sent is kept. Largest first is the server's arrangement, not ours. */
+    it('never re-sorts the tallies', async () => {
+      const service = configure(
+        answering({
+          getHealth: async () => ({
+            pipeline: { entry_count: 9 },
+            delivery: { report_count: 0 },
+            queue: { available: true },
+            pipeline_failures: [
+              { reason: 'render_failed', count: 5 },
+              { reason: 'audio_missing', count: 3 },
+              { reason: 'no_evidence', count: 1 },
+            ],
+          }),
+        }),
+      );
+
+      const { health } = await service.readHealth();
+      expect(health?.pipelineFailures.map((tally) => tally.reason)).toEqual([
+        'render_failed',
+        'audio_missing',
+        'no_evidence',
+      ]);
+    });
+
+    /**
+     * The two lists **overlap**, and the narrowing does not reconcile them.
+     *
+     * `entry.failure_reason` is written by the pipeline *and* by the report pass, and
+     * `superseded_after_send` exists nowhere else at all — so one problem legitimately appears in
+     * both. Anything here that de-duplicated, subtracted or summed them would be inventing a
+     * partition the server never claimed.
+     */
+    it('passes an overlapping reason through both lists untouched', async () => {
+      const service = configure(
+        answering({
+          getHealth: async () => ({
+            pipeline: { entry_count: 9 },
+            delivery: { report_count: 9 },
+            queue: { available: true },
+            pipeline_failures: [{ reason: 'storage_unavailable', count: 2 }],
+            delivery_failures: [{ reason: 'storage_unavailable', count: 1 }],
+          }),
+        }),
+      );
+
+      const { health } = await service.readHealth();
+      expect(health?.pipelineFailures).toEqual([{ reason: 'storage_unavailable', count: 2 }]);
+      expect(health?.deliveryFailures).toEqual([{ reason: 'storage_unavailable', count: 1 }]);
+    });
+
+    /**
+     * A site row with no customer name or no site name is a line of numbers the founder cannot act
+     * on, on a screen whose entire value is saying *whose* problem this is. Dropped, all or nothing.
+     */
+    it('drops a site it cannot name, and keeps one whose counts are missing', async () => {
+      const service = configure(
+        answering({
+          getHealth: async () => ({
+            pipeline: { entry_count: 9 },
+            delivery: { report_count: 9 },
+            queue: { available: true },
+            sites: [
+              { company_id: 'c', company_name: 'Firma', project_id: 'p', project_name: null },
+              { company_id: 'c', company_name: null, project_id: 'p', project_name: 'Gradilište' },
+              // Named, and nothing else. A row of zeroes still says whose site it is, and the
+              // headline numbers are the server's own aggregates, so it cannot make them wrong.
+              { company_id: 'c', company_name: 'Firma', project_id: 'p2', project_name: 'Drugo' },
+            ],
+            sites_omitted: 12,
+          }),
+        }),
+      );
+
+      const { health } = await service.readHealth();
+      expect(health?.sites.map((site) => site.projectName)).toEqual(['Drugo']);
+      expect(health?.sites[0].pipeline.entryCount).toBe(0);
+      expect(health?.sites[0].pipelineFailures).toEqual([]);
+      expect(health?.sitesOmitted).toBe(12);
+    });
+  });
+
   // ---- Every call, as one table ---------------------------------------------------------------
 
   /**
@@ -705,6 +922,10 @@ describe('PlatformService', () => {
     ],
     ['invite', (service) => service.invite(MockPlatformGateway.PETAR_ID)],
     ['setDisabled', (service) => service.setDisabled(MockPlatformGateway.PETAR_ID, true)],
+    // 2026-09-03: the estate's health (F7). In the table rather than beside it, so the two
+    // properties below — nothing on the wire without a credential, and every failure classified —
+    // are asserted about *this* call rather than about whichever ones somebody remembered.
+    ['readHealth', (service) => service.readHealth()],
   ];
 
   /**
@@ -1006,6 +1227,11 @@ class WatchedGateway implements PlatformGateway {
   exportLogs(query?: Parameters<PlatformGateway['exportLogs']>[0]) {
     this.calls.push('exportLogs');
     return this.inner.exportLogs(query);
+  }
+
+  getHealth() {
+    this.calls.push('getHealth');
+    return this.inner.getHealth();
   }
 }
 

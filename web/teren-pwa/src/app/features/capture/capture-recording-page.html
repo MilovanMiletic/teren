@@ -16,6 +16,38 @@
     <span class="t-meta t-num">{{ now | date: 'EEEE, d. M. y.' }}</span>
   </div>
 
+  @if (correcting) {
+    <!--
+      **A correction says so while it is being recorded, not afterwards.**
+
+      Two facts, and both are on screen before he speaks. Which day is being replaced, because a
+      man who taps the wrong record must find out now rather than after the report goes out. And
+      which site it is filed against — the *target's*, never the one he has selected — because a
+      correction of a day on another site is the one case where those two differ, and a screen that
+      showed the selected site over an entry filed elsewhere would be lying about the evidence it
+      is collecting.
+
+      The site name is printed even while the day is not yet known: it comes from the same resolved
+      target, so it appears at the same moment. A caveat that arrives after the claim is not a
+      caveat (F10).
+    -->
+    <div class="column column--focused correction">
+      <span class="chip chip--warn">{{ t('archive.correction.chip') }}</span>
+      @if (target(); as replacing) {
+        <span class="t-meta t-num correction__of">
+          {{
+            replacing.day
+              ? t('capture.correction.ofDay', {
+                  day: replacing.day | date: 'd. M. y.',
+                  site: replacing.project.name,
+                })
+              : t('capture.correction.ofSite', { site: replacing.project.name })
+          }}
+        </span>
+      }
+    </div>
+  }
+
   @if (problemKey(state(), blocker()); as problem) {
     <!-- Something is stopping the recording. Explain it, offer the way out, lose nothing. -->
     <div class="column column--focused problem">
@@ -64,7 +96,14 @@
         }
       </div>
 
-      @if (state() === 'starting') {
+      @if (resolving()) {
+        <!--
+          Looking up which site the day being corrected belongs to. It is a Dexie read for his own
+          record and a request for somebody else's, so it is worth a sentence rather than a silent
+          00:00 that looks like a recording nobody can hear.
+        -->
+        <span class="t-meta live__hint">{{ t('capture.correction.resolving') }}</span>
+      } @else if (state() === 'starting') {
         <span class="t-meta live__hint">{{ t('capture.record.starting') }}</span>
       } @else {
         <span class="t-meta live__hint">{{ t('capture.record.mention') }}</span>

@@ -249,6 +249,30 @@
             </section>
           }
 
+          @if (supersedesEntryId()) {
+            <!--
+              **The gate says what is about to be sent** (2026-09-03).
+
+              Confirming is what releases the report, and this one replaces an earlier day's
+              record: the client will receive a second document about work he already has a
+              document about. That is exactly the moment a man who tapped the wrong record in the
+              archive must be able to notice, and after the report leaves there is no undo —
+              `reported_at` seals the row for ever (B6).
+
+              Below the banner and above the day, so it qualifies what he is checking rather than
+              competing with the sentence that says why the screen is open at all. No control: the
+              way out of a wrong correction is the back gesture, and adding a "cancel" here would be
+              a second answer to a question the header already answers.
+            -->
+            <section class="card notice notice--warn" role="status">
+              <app-icon name="pencil" [size]="20" class="notice__icon" />
+              <div class="notice__text">
+                <span class="notice__title">{{ t('confirm.correction.title') }}</span>
+                <span class="t-meta">{{ t('confirm.correction.body') }}</span>
+              </div>
+            </section>
+          }
+
           <!-- Work done -->
           <section class="card group">
             <h2 class="t-label group__label">{{ t('archive.section.work') }}</h2>

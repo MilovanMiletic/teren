@@ -12,6 +12,79 @@ Entry format:
 
 ---
 
+## 2026-09-03 (night) — the last code items, and D4 closed against the wrong hole
+
+Founder: *"Finish all of this"* — the report's missing supersedes line, and the debts list. Two
+increments ran in parallel and **both implementers were killed when the session ended before either
+reported.** The work was verified by execution and by reading every hunk instead; nothing was taken
+on trust and no residue was found (`RESTORED`/`TODO`/`if (false)`/`.only` scan clean — every hit is
+legitimate prose).
+
+**1135 backend tests** (from 1091) and **1876 PWA specs in 93 files** (from 1740), both builds clean.
+
+### The report names what it supersedes
+
+Delegated by the founder and taken. Work date and site, **never a GUID** (PROJECT.md §11 ruling 1),
+in the project's language and time zone. **Two variants**, because the honest sentence differs: one
+for a superseded report that actually reached a relay, one for a document still waiting. The
+superseded report is never rewritten — reports are sealed; the new document names its predecessor.
+Proven with PdfPig by reading text back out of the rendered page, across a reported day, a day whose
+own report failed, a chain, and an ordinary entry that must print nothing extra.
+
+### D4 is closed, and its three options were aimed at the wrong hole
+
+§13.6 had been an open founder decision since 2026-09-01. **All three options predated D6**, which
+had already removed the plaintext from every response body: `InviteSentResponse` is
+`(Email, Emailed)`, the token is minted **inside `AdminInviteJob`** and mailed, and **no platform
+route can change an admin's email** — so staff cannot redirect a reset. That is the mechanism option
+3 was reaching for, shipped by a different increment a day earlier and never noticed here.
+
+**The hole actually open was wider and quieter.** `POST /api/platform/users` takes an `email` **and**
+a `company_id`: staff can mint a **brand-new company_admin inside any customer's company** with an
+address they control and read that company's diaries. Worse than the reset path in exactly the
+property §13.6's own defensible sentence leaned on — **a reset locks the real admin out; a new
+account disturbs nothing the customer would notice.**
+
+**Decision: the capability stays, the silence goes.** Creating a customer's first administrator is
+real work, and so is the case where his only one has left. So every *other* administrator of that
+company is emailed when an administrator is added or a credential issued — company's language, no
+token, no link, via `AdminAccessNoticeJob`, which follows `AdminInviteJob`'s discipline that no
+credential is ever a Hangfire argument. A **structural guard** forbids any type reachable from
+`PlatformDirectory` naming a token, link, secret, password, code, credential, url or hash, so "the
+link is never in this body" is checked by the build. `invite-admin` (CLI) still prints a link on
+purpose: shell on that box already means the database, and its doc comment now says so.
+
+Decision 2's literal wording is retired in favour of the sentence the product can defend:
+
+> Teren staff cannot read a customer's diary with their own credentials. Minting or resetting an
+> administrator's credential in a customer's company is possible, is audited, and emails every other
+> administrator of that company — so it cannot be done without the customer being told.
+
+*The notification copy is customer-visible mail in the founder's voice and still needs his eye.*
+
+### The frontend half — F7 is complete
+
+The correction gesture, `failure_reason` on the archive row, and **`/platform/health`, F7's last
+screen**. The gesture's hard constraint held: `CorrectionService` has **no `projectId` field at all**
+— it derives the site from the entry being corrected, because a cross-site target answers 404 and a
+4xx is terminal in the outbox, so a wrong site would abandon a captured day rather than bounce it.
+`/platform/health` is routed, guarded, and reachable — the door is a sixth control in `/platform`'s
+head cluster, which is the widest in the product and already wraps below 768, so it absorbs one more.
+
+### Also this session
+
+The `deploy/README.md` gap nobody had written down: **the three GitHub secrets that turn
+`deploy-dev.yml` on**, with the detail that a dormant pipeline and a working one both end green, so
+the log notice is the only thing that distinguishes them. And `TEREN_DEVICE_TOKEN` must be **empty**
+in `TEREN_DEV_ENV` — the committed value is published in this repository, and `deploy.sh` warns that
+anyone reading the repo would hold a working credential to the demo company on that box.
+
+**Owed, and now the top of the list: neither of tonight's increments has been reviewed.** Both
+implementers died before reporting, so there are no mutation proofs from them and no adversarial
+read. That is four unreviewed increments plus tonight's two.
+
+---
+
 ## 2026-09-03 (evening) — corrections, a health endpoint, and a Docker trap that looked like data loss
 
 Founder: *"Do what is left in code first."* The four small items standing between here and M1 planning.

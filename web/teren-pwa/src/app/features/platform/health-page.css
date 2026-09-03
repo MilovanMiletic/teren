@@ -1,0 +1,395 @@
+/*
+ * `/platform/health` — what the pipeline is doing across every customer (F7).
+ *
+ *   compact   <768      the screen's own bar (the app header is display:none there), the three
+ *                       headline numbers, then the cards in one column, then the sites as a
+ *                       **list** — one item each, state first. No table: cells forced to blocks
+ *                       lose the table role in every browser, so the markup itself changes
+ *                       (`health-page.ts` decides which, in TypeScript, never `display: none`).
+ *   medium    768–1023  the same single column, proportioned. The count grids go wider on their
+ *                       own (`auto-fit`), and the sites stay a list — a five-column table on a
+ *                       640 column is the mistake `/platform/logs` was corrected for at 834.
+ *   expanded  ≥1024     the twelve-column grid: the numbers across the top, the pipeline and the
+ *                       reports side by side at 6/6, the queue full width, and the sites as a real
+ *                       `<table>` with the product's one column control and ten rows a page.
+ *
+ * **The page scrolls and the cards size to their content.** No `100dvh`, no leftover-height
+ * arithmetic — `logs-page.css` writes out what that cost when it was tried on this surface: with
+ * `.screen` a container that could not grow, every card became a flex item in it and the base
+ * card's `overflow: hidden` sliced a loaded count through the middle of its digits. On the screen
+ * whose whole job is telling the truth, a clipped number is a wrong number.
+ *
+ * Every colour, space and radius is a token from `design/tokens.md`. There is no raw hex here.
+ */
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--space-4);
+}
+
+.bar__brand {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.bar__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* The app header exists from 768 up and carries the wordmark, so this bar would be a second one. */
+@media (min-width: 768px) {
+  .bar--compact {
+    display: none;
+  }
+}
+
+/*
+ * ---- The head ---------------------------------------------------------------------------------
+ *
+ * One line at every width, deliberately, and the budget is why it is allowed to be:
+ * `chevron-left` + info + reload is **three** 44 px controls and two 8 px gaps — 148 px against
+ * the 358 px compact column at 390, which leaves the title 196 px. `/platform` wraps because its
+ * cluster is five controls (252 px) and "Platforma" was left 92 px and ran under the icons in the
+ * founder's screenshot. Any screen on this surface that grows a fifth control needs that rule;
+ * this one has three and does not.
+ */
+.head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+
+.head__text {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+/*
+ * The server's stamp wraps rather than clipping. It is the one line on this screen that qualifies
+ * every number below it — "as the server saw it at 9. 3. 09:40:00" is past the width the title
+ * leaves at 390 — and a truncated timestamp under a page of counts is a screen inviting the reader
+ * to assume the numbers are live.
+ */
+.head__sub {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.head__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+
+@media (min-width: 768px) {
+  .head {
+    padding-top: var(--space-6);
+    padding-bottom: 0;
+  }
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-8);
+}
+
+/*
+ * ---- Expanded: the twelve-column grid ---------------------------------------------------------
+ *
+ * The one screen on this surface that earns a two-up row: the pipeline and the delivery cards are
+ * the same *shape* — a grid of counts over a list of reasons — and read side by side they answer
+ * the question a founder actually arrives with, which is *where* it is failing. Everything else
+ * spans, because the numbers and the sites want the window's width.
+ */
+@media (min-width: 1024px) {
+  .content {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: var(--space-6);
+    align-content: start;
+    padding-top: var(--space-5);
+  }
+
+  .wide {
+    grid-column: 1 / -1;
+  }
+
+  /*
+   * `align-self: start` so a short delivery card does not stretch to a tall pipeline card and
+   * strand its list against a field of empty white — the two are read against each other, not
+   * as one block.
+   */
+  .half {
+    grid-column: span 6;
+    align-self: start;
+  }
+}
+
+.state {
+  padding: var(--space-5);
+}
+
+/* ---- The three headline numbers -------------------------------------------------------------- */
+
+.stats {
+  display: grid;
+  /* `minmax(0, 1fr)`, not `1fr`: a `1fr` track's floor is its content, so "Carrying a failure"
+     could widen its tile and push the third one off the card. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  overflow: hidden;
+}
+
+.stats__cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-3);
+  border-right: 1px solid var(--color-card-line);
+}
+
+/*
+ * The number sits on the tile's floor.
+ *
+ * At 390 a tile is about 95 px inside its padding and "ČEKA ČOVEKA" takes two lines where its
+ * neighbours take one, so a number placed straight under its label sits a line lower than the two
+ * beside it — three figures meant to be read as one row, drawn on two baselines. Written as
+ * `.stats .stats__value` because `.stats dd { margin: 0 }` in `styles.css` outranks a lone class:
+ * `/platform`'s first cut lost to exactly that and measured its numbers 17 px apart, and the
+ * review found the identical defect on `/company`'s tiles the same evening.
+ */
+.stats .stats__value {
+  margin-top: auto;
+}
+
+@media (min-width: 768px) {
+  .stats__cell {
+    padding: var(--space-4) 18px;
+  }
+}
+
+.stats__cell:last-child {
+  border-right: 0;
+}
+
+/* ---- A card of counts over a list of reasons ------------------------------------------------- */
+
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) 18px var(--space-5);
+}
+
+.block__label {
+  margin: 0;
+}
+
+.block__sublabel {
+  margin: var(--space-2) 0 0;
+}
+
+/* "Nothing is carrying a failure" is the answer this screen exists to be able to give. Quiet ink,
+   because good news that shouts is indistinguishable from bad news at a glance. */
+.block__none {
+  margin: 0;
+}
+
+.block__note {
+  margin: 0;
+  color: var(--color-ink-3);
+}
+
+/*
+ * The state counts.
+ *
+ * `auto-fit` with a 96 px floor rather than a fixed column count: the same card is 358 px wide at
+ * 390 (two up), about 600 px at 834 (three up wide) and about 570 px in its half of the expanded
+ * grid at 1280 (three up). "Proportioned, two-up where content allows" without three media
+ * queries, and nothing to keep in step when the card moves between columns.
+ */
+.counts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: var(--space-3) var(--space-4);
+  margin: 0;
+}
+
+.counts__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.counts dt,
+.counts dd {
+  margin: 0;
+}
+
+.counts__value {
+  font-size: var(--text-h2);
+  line-height: 1.1;
+}
+
+/* The two colours that mean something. Everything else stays ink, so these read at a glance. */
+.counts__value--warn {
+  color: var(--color-warn);
+}
+
+.counts__value--err {
+  color: var(--color-err);
+}
+
+/*
+ * ---- The failure tallies ----------------------------------------------------------------------
+ *
+ * **A list, and never a chart.** `pipeline_failures` and `delivery_failures` overlap by design —
+ * a delivery failure is written onto the entry as well, and `superseded_after_send` exists nowhere
+ * else — so they are two views of what is wrong and not two parts of a whole. A pie or a stacked
+ * bar would claim the parts sum, which is the same lie the server's own first cut told when it
+ * folded entry reasons through the pipeline vocabulary alone. There is no width here that could
+ * be read as a proportion of anything: a sentence, a rule, a number.
+ */
+.tallies {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tallies__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-card-line);
+}
+
+.tallies__row:last-child {
+  border-bottom: 0;
+}
+
+/*
+ * A reason wraps rather than truncating, and an unrecognised code — printed as itself, which is the
+ * contract `health-reason.ts` argues for — can be a long unbroken token.
+ */
+.tallies__reason {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tallies__count {
+  flex: none;
+  font-weight: 600;
+}
+
+/* ---- The sites ------------------------------------------------------------------------------- */
+
+.sites {
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * The table's own scroller.
+ *
+ * It is why `ui/column-menu.ts` places its menu `position: fixed` and re-places it every frame:
+ * an absolutely-positioned menu is clipped by this box, and a two-row table is what the founder's
+ * screenshots show.
+ */
+.sites__scroll {
+  overflow-x: auto;
+}
+
+.sites__table {
+  min-width: 720px;
+}
+
+/*
+ * The columns, widest first by what the cell holds rather than by importance.
+ *
+ * State leads because the question is "is anything wrong" — the same order the list below uses,
+ * so the two renderings do not read as two different screens.
+ */
+.col--state {
+  width: 26%;
+}
+
+.col--company {
+  width: 24%;
+}
+
+.col--site {
+  width: 26%;
+}
+
+.col--days {
+  width: 10%;
+}
+
+.col--reports {
+  width: 14%;
+}
+
+.sites__table tbody td {
+  padding: var(--space-3) var(--col-pad);
+  border-bottom: 1px solid var(--color-card-line);
+  vertical-align: top;
+}
+
+.site:last-child td {
+  border-bottom: 0;
+}
+
+/* Chips wrap: a site can legitimately be handed back, carrying a failure and undelivered at once,
+   and three chips are past a 26 % column at 1024. */
+.site__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+/* A street name is the longest thing on the row and must not widen the table into a scroll it
+   does not need. */
+.site__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+/* ---- …and below 1024, the same list as a list ------------------------------------------------ */
+
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-card-line);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+/* The chips are the first line of the item, so they carry the gap to the name under them. */
+.row .site__chips {
+  margin-bottom: var(--space-1);
+}

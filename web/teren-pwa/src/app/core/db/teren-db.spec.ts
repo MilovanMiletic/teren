@@ -101,7 +101,7 @@ describe('TerenDb v3 — correcting the demo project ids', () => {
     const db = new TerenDb(name);
     await db.open();
 
-    expect(db.verno).toBe(6);
+    expect(db.verno).toBe(7);
 
     const first = await db.entries.get('entry-1');
     expect(first?.projectId).toBe(CANONICAL_FIRST);
@@ -140,7 +140,7 @@ describe('TerenDb v3 — correcting the demo project ids', () => {
     const db = new TerenDb(name);
     await db.open();
 
-    expect(db.verno).toBe(6);
+    expect(db.verno).toBe(7);
     expect(await db.entries.count()).toBe(0);
     expect(await db.captures.count()).toBe(0);
 

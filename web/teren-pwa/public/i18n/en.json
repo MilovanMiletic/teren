@@ -281,6 +281,20 @@
     "gps": {
       "label": "Location",
       "accuracy": "±{{metres}} m"
+    },
+    "correction": {
+      "title": "A correction is a new record",
+      "bodySent": "This record has gone to the client and does not change any more. Record a new one for that day; it will be linked to this one.",
+      "bodySuperseded": "The report went out before this change, so this record can neither be sealed nor sent again. Record a new one for that day; it will be linked to this one.",
+      "action": "Record a correction",
+      "chip": "Correction",
+      "replacedChip": "Replaced",
+      "openReplacement": "Show the correction",
+      "openReplaced": "Show the record it replaces",
+      "isCorrection": {
+        "title": "This is a correction",
+        "body": "This record was made to replace an earlier record of that day, on the same site."
+      }
     }
   },
   "confirm": {
@@ -402,7 +416,11 @@
       "notConfigured": "This app has no server set up, so nothing can be confirmed.",
       "unknown": "Confirming failed for an unexpected reason."
     },
-    "errorSafe": "Nothing was lost — everything you typed is kept on this phone."
+    "errorSafe": "Nothing was lost — everything you typed is kept on this phone.",
+    "correction": {
+      "title": "This is a correction of an earlier record",
+      "body": "When you confirm, the client gets a new report for that day. The old one stays with him: this corrects it, it does not delete it."
+    }
   },
   "capture": {
     "record": {
@@ -465,7 +483,17 @@
       "storage": {
         "title": "This phone cannot store recordings",
         "body": "The browser is not allowing local storage, so a recording would have nowhere to go. Leave private mode or free up space, then try again."
+      },
+      "correction": {
+        "title": "We cannot tell which site that day belongs to",
+        "body": "The record you are correcting is not on this phone and the server could not be reached. A correction has to go to the same site as the record it replaces, so recording will not start until that is known. Try again when you have a signal — nothing has been lost."
       }
+    },
+    "correction": {
+      "ofDay": "Replaces the record of {{day}} · {{site}}",
+      "ofSite": "Replaces an earlier record · {{site}}",
+      "resolving": "Checking which site that day belongs to…",
+      "saved": "Once you send it, this record replaces the earlier record of that day."
     }
   },
   "sync": {
@@ -951,6 +979,9 @@
       },
       "unconfirmed": "The server did not answer, so it is not known whether it took effect. Refresh before trying again."
     },
+    "health": {
+      "open": "System health"
+    },
     "stale": {
       "title": "Not confirmed with the server"
     },
@@ -1061,6 +1092,122 @@
     },
     "logs": {
       "open": "Open the log"
+    }
+  },
+  "health": {
+    "title": "System health",
+    "subtitle": "What the pipeline is doing across every customer",
+    "back": "Back to the platform",
+    "reload": "Refresh",
+    "loading": "Reading the system's state…",
+    "at": "As the server saw it at {{at}}",
+    "unavailable": "Nothing was read, so there are no numbers to show. Try again.",
+    "about": {
+      "title": "What you can see here",
+      "body": "Every number on this screen is the server's, counted at the one moment named under the title — nothing here is live, and a refresh is the only thing that moves it. The two failure lists overlap on purpose: a delivery failure is written onto the entry as well, so one problem can legitimately appear in both. Never add them together. This screen counts days, reports and failures; it holds no transcript, no photograph and no report."
+    },
+    "summary": {
+      "days": "Days in the system",
+      "waiting": "Waiting on a person",
+      "failing": "Carrying a failure"
+    },
+    "pipeline": {
+      "title": "Entries"
+    },
+    "state": {
+      "received": "Received",
+      "processing": "Processing",
+      "awaiting": "Awaiting confirmation",
+      "needsReview": "Handed back",
+      "confirmed": "Confirmed",
+      "reported": "Reported"
+    },
+    "failures": {
+      "pipeline": "Why entries are stuck",
+      "delivery": "Why reports did not go out",
+      "none": "Nothing is carrying a failure.",
+      "overlap": "A delivery failure is written onto the entry too, so a reason can appear in both lists. These are two views of what is wrong, not two halves of it — do not add them up."
+    },
+    "delivery": {
+      "title": "Reports",
+      "total": "Reports",
+      "sending": "Sending",
+      "sent": "Sent",
+      "failed": "Failed",
+      "custody": "Sent means the mail server took custody of the report — never that anybody read it."
+    },
+    "queue": {
+      "title": "Job queue",
+      "enqueued": "Queued",
+      "scheduled": "Scheduled",
+      "processing": "Running",
+      "failed": "Failed",
+      "servers": "Workers",
+      "unknownTitle": "The queue could not be read",
+      "notConfigured": "This server runs no jobs, so there is nothing to read — and nothing anywhere is being transcribed, structured or sent. The numbers below are unknown, not zero.",
+      "unreadable": "The queue exists but did not answer. The numbers below are unknown, not zero.",
+      "unknown": "The server did not say why. The numbers below are unknown, not zero.",
+      "noServers": {
+        "title": "Nobody is emptying the queue",
+        "body": "The queue answered and no worker is running. Every request still succeeds while nothing is being transcribed, structured or sent — the one failure that looks perfectly healthy from every other screen in the product."
+      }
+    },
+    "sites": {
+      "caption": "Every site, the ones needing attention first",
+      "empty": "No sites yet.",
+      "state": "State",
+      "company": "Customer",
+      "site": "Site",
+      "days": "Days",
+      "reports": "Reports",
+      "reportsValue": "{{sent}} of {{total}}",
+      "omitted": {
+        "title": "Showing {{shown}} of {{total}} sites",
+        "body": "The server sends at most 500 sites and puts the ones needing attention first, so everything left out is a site with nothing wrong. Every number above still counts the whole estate."
+      }
+    },
+    "site": {
+      "needsReview": "Handed back",
+      "needsReviewCount": "{{count}} handed back",
+      "failures": "Failures",
+      "failuresCount": "{{count}} with a failure",
+      "undelivered": "Not delivered",
+      "undeliveredCount": "{{count}} not delivered",
+      "sending": "Sending",
+      "sendingCount": "{{count}} sending",
+      "empty": "Nothing recorded yet",
+      "ok": "In order"
+    },
+    "reason": {
+      "noEvidence": "No evidence — neither a recording nor a photograph",
+      "audioChecksumMismatch": "The stored recording is not the one the phone sent",
+      "audioMissing": "The recording is not in storage",
+      "storageUnavailable": "Storage could not be reached",
+      "transcriptionNotConfigured": "Transcription is not set up",
+      "transcriptionFailed": "Transcription failed",
+      "transcriptionEmpty": "Transcription returned no words",
+      "extractionNotConfigured": "Extraction is not set up",
+      "extractionFailed": "Extraction failed",
+      "extractionInvalid": "The extracted day could not be used",
+      "processingInterrupted": "Processing was interrupted",
+      "noRecipients": "The client has no address for the report",
+      "recipientsUnusable": "The client's address cannot be used",
+      "deliveryNotConfigured": "Sending mail is not set up",
+      "photoChecksumMismatch": "A stored photograph is not the one the phone sent",
+      "photoMissing": "A photograph is not in storage",
+      "renderTimeout": "Building the report took too long",
+      "renderFailed": "The report could not be built",
+      "timeZoneUnknown": "The site's time zone is not known",
+      "nothingToReport": "There was nothing to report",
+      "deliveryRejected": "The mail server refused the report",
+      "deliveryUnauthorized": "The mail server refused our sign-in",
+      "deliveryFailed": "Sending the report failed",
+      "reportInterrupted": "Sending was interrupted",
+      "deliveryCustodyUnknown": "We cannot tell whether the mail was taken",
+      "superseded": "Replaced by a newer report",
+      "supersededAfterSend": "The record changed after its report had gone out",
+      "unexpected": "An unexpected failure",
+      "unrecognised": "A reason this version of the app does not know"
     }
   },
   "logs": {

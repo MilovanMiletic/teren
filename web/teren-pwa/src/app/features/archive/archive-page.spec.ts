@@ -32,6 +32,8 @@ function listItem(overrides: Partial<EntryListItemResponse> & Pick<EntryListItem
     reported_at: '2026-08-20T14:00:00.000Z',
     photo_count: 4,
     has_audio: true,
+    failure_reason: null,
+    supersedes_entry_id: null,
     ...overrides,
   } satisfies EntryListItemResponse;
 }
@@ -384,6 +386,191 @@ describe('ArchivePage', () => {
       onTick: () => fixture.detectChanges(),
       describe: 'the way back to be withdrawn',
     });
+  });
+
+  /*
+   * ---- The wasted tap, and both ends of a correction (2026-09-03) -----------------------------
+   *
+   * `GET /api/entries` carries `failure_reason` and `supersedes_entry_id` on every row now, so the
+   * list can finally tell a day that is merely waiting from a day that is stuck, and a replaced day
+   * from the record that replaced it.
+   */
+
+  /**
+   * **The wasted tap, removed.**
+   *
+   * `superseded_after_send` leaves the entry `confirmed` with `reported_at` still null — the exact
+   * two facts `canRevise` reads as "he may still change his mind" — so this row used to offer
+   * "Ispravi" on the one record whose gate can only say no. Pressing it confirmed successfully, the
+   * report pass wrote the same terminal reason back, and the foreman went round again.
+   */
+  it('stops offering the gate on a record the server refused to seal', async () => {
+    archive.listEntries.mockResolvedValue({
+      status: 'ok',
+      items: [
+        listItem({
+          id: 'srv-stuck',
+          status: 'confirmed',
+          reported_at: null,
+          failure_reason: 'superseded_after_send',
+        }),
+      ],
+    });
+
+    const element = await render();
+    await waitForRows(element, 1);
+
+    expect(element.querySelector('.revise__action')).toBeNull();
+  });
+
+  /**
+   * **The guard bites on one value.** A diagnostic reason the server adds later must not withdraw
+   * a correction the foreman is still allowed to make in place — which would be this row silently
+   * sealing an entry the server has not.
+   */
+  it('keeps offering the gate on a confirmed entry carrying some other reason', async () => {
+    archive.listEntries.mockResolvedValue({
+      status: 'ok',
+      items: [
+        listItem({
+          id: 'srv-open',
+          status: 'confirmed',
+          reported_at: null,
+          failure_reason: 'report_interrupted',
+        }),
+      ],
+    });
+
+    const element = await render();
+    await waitForRows(element, 1);
+
+    expect(element.querySelector('.revise__action')).not.toBeNull();
+  });
+
+  /**
+   * **A null reason is silence, not an answer** — and this is the case that has to keep behaving
+   * exactly as it did before the field existed.
+   *
+   * Three situations produce it: a row this phone captured that the server has not listed, a page
+   * from a server that predates the field, and a day with nothing wrong. A client that read a
+   * missing field as "nothing is wrong" would be right by accident; one that read it as "something
+   * is wrong" would withdraw the cheap remedy from every confirmed day in the product.
+   */
+  it('treats an explicit null reason as silence and leaves the row exactly as it was', async () => {
+    archive.listEntries.mockResolvedValue({
+      status: 'ok',
+      items: [listItem({ id: 'srv-open', status: 'confirmed', reported_at: null })],
+    });
+
+    const element = await render();
+    await waitForRows(element, 1);
+
+    expect(element.querySelector('.revise__action')).not.toBeNull();
+  });
+
+  /** …and an older server that does not send the field at all. Two spellings of one silence. */
+  it('treats an older server’s missing field as silence too', async () => {
+    archive.listEntries.mockResolvedValue({
+      status: 'ok',
+      items: [
+        {
+          ...listItem({ id: 'srv-open', status: 'confirmed', reported_at: null }),
+          failure_reason: undefined,
+        },
+      ],
+    });
+
+    const element = await render();
+    await waitForRows(element, 1);
+
+    expect(element.querySelector('.revise__action')).not.toBeNull();
+  });
+
+  /**
+   * **Both ends are marked**, because a list where a replaced day and the day that replaced it look
+   * identical is a list that produces the wrong record in a dispute.
+   *
+   * The chips sit beside the status rather than replacing it: what the pipeline is doing with a day
+   * and whether that day is still the record are two different facts.
+   */
+  it('marks the correction and the day it replaced, and does not confuse the two', async () => {
+    archive.listEntries.mockResolvedValue({
+      status: 'ok',
+      items: [
+        listItem({ id: 'new', entry_date: '2026-08-30', supersedes_entry_id: 'old' }),
+        listItem({ id: 'old', entry_date: '2026-08-27' }),
+      ],
+    });
+
+    const element = await render();
+    await waitForRows(element, 2);
+
+    const rows = [...element.querySelectorAll('.row')];
+    expect(rows).toHaveLength(2);
+    const chipsOf = (row: Element) =>
+      [...row.querySelectorAll('.chip')].map((chip) => chip.textContent?.trim());
+
+    // Newest first, so the correction is the first row.
+    expect(chipsOf(rows[0])).toContain(sr.archive.correction.chip);
+    expect(chipsOf(rows[0])).not.toContain(sr.archive.correction.replacedChip);
+    expect(chipsOf(rows[1])).toContain(sr.archive.correction.replacedChip);
+    expect(chipsOf(rows[1])).not.toContain(sr.archive.correction.chip);
+  });
+
+  /**
+   * …and the replaced day carries the way to the record that replaced it.
+   *
+   * A correction is very often filed on a *later* day than the one it replaces — `entry_date` is
+   * the day it was recorded — so the two rows are usually in different day groups and scrolling to
+   * it is not an option. It goes through the archive's own `?entry=` parameter, so at expanded
+   * width the record swaps in its pane and the list beside it does not move.
+   */
+  it('offers the way to the correction from the day it replaced', async () => {
+    archive.listEntries.mockResolvedValue({
+      status: 'ok',
+      items: [
+        listItem({ id: 'new', entry_date: '2026-08-30', supersedes_entry_id: 'old' }),
+        listItem({ id: 'old', entry_date: '2026-08-27' }),
+      ],
+    });
+
+    const element = await render();
+    await waitForRows(element, 2);
+    // `mockResolvedValue`, not a bare spy: this screen *is* `/diary`, so letting the navigation
+    // through re-enters the component and leaves a Dexie read running past the teardown that
+    // closes the database. What this screen owes is the destination.
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    const rows = [...element.querySelectorAll('.row')];
+    const control = [...rows[1].parentElement!.querySelectorAll<HTMLButtonElement>('button')].find(
+      (candidate) => candidate.textContent?.includes(sr.archive.correction.openReplacement),
+    );
+    expect(control, 'no way to the correction from the day it replaced').toBeTruthy();
+
+    control!.click();
+    expect(navigate).toHaveBeenCalledWith(['/diary'], { queryParams: { entry: 'new' } });
+  });
+
+  /**
+   * **"Of the days shown here", and the limit is the data's rather than the screen's.**
+   *
+   * The server sends the forward link on a correction and no reverse link on the original, so the
+   * older end is marked by finding the correction beside it. A correction recorded on another
+   * foreman's phone leaves the day it replaced unmarked until this device has fetched it — so the
+   * absence of the chip is never a claim that a day is the current record.
+   */
+  it('leaves a day unmarked when the correction is not on the page', async () => {
+    archive.listEntries.mockResolvedValue({
+      status: 'ok',
+      items: [listItem({ id: 'old', entry_date: '2026-08-27' })],
+    });
+
+    const element = await render();
+    await waitForRows(element, 1);
+
+    const chips = [...element.querySelectorAll('.chip')].map((chip) => chip.textContent?.trim());
+    expect(chips).not.toContain(sr.archive.correction.replacedChip);
+    expect(element.textContent).not.toContain(sr.archive.correction.openReplacement);
   });
 
   it('never nests the way back inside the row button, which would make it unreachable', async () => {

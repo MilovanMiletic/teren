@@ -24,6 +24,9 @@ const VOCABULARY = [
   'archive.entry.open',
   'archive.media.open',
   'archive.report.download',
+  // 2026-09-03: the correction gesture. The one press that answers PROJECT.md invariant 2 — a
+  // record that cannot change, corrected by recording a new day that names it.
+  'archive.correction.start',
   'company.worker.open',
   'company.worker.add',
   'company.code.issue',
@@ -35,6 +38,9 @@ const VOCABULARY = [
   'logs.open',
   'logs.filter',
   'logs.export',
+  // 2026-09-03: the estate's health screen was opened (F7). One slug for the screen and none for
+  // its controls, like the log viewer: there is exactly one thing to do on it, which is read it.
+  'health.open',
   'session.login',
   'session.logout',
   'session.activate',

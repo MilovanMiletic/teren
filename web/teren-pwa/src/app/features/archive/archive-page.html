@@ -112,9 +112,54 @@
                           }
                         </span>
                       </span>
+                      <!--
+                        **Both ends of a correction are marked** (2026-09-03), because a list where
+                        a replaced day and the day that replaced it look identical is a list that
+                        produces the wrong record in a dispute. The chips sit beside the status
+                        rather than replacing it: what the pipeline is doing with a day and whether
+                        that day is still the record are two different facts.
+                      -->
+                      @if (row.supersedesEntryId) {
+                        <span class="chip chip--neutral">{{ t('archive.correction.chip') }}</span>
+                      }
+                      @if (row.supersededBy) {
+                        <span class="chip chip--warn">{{ t('archive.correction.replacedChip') }}</span>
+                      }
                       <span class="chip chip--{{ statusTone(row) }}">{{ t(statusKey(row)) }}</span>
                       <app-icon name="chevron-right" [size]="18" class="row__chevron" />
                     </button>
+
+                    @if (row.supersededBy; as replacement) {
+                      <!--
+                        The way to the record that replaced this day.
+
+                        A sibling of the row button, never nested inside it — a button within a
+                        button is invalid and unreachable by keyboard, which is the rule the revise
+                        control below already follows.
+
+                        **It says "of the days shown here", and that wording is load-bearing.** The
+                        server sends the forward link on a correction and no reverse link on the
+                        original, so this mark is derived from the rows on screen
+                        (`core/archive/archive-rows.ts`): a correction recorded on another
+                        foreman's phone leaves the day it replaced unmarked until this device has
+                        fetched it. The screen may say what it can see and must not claim that an
+                        unmarked day is the current record.
+
+                        A correction is very often filed on a *later* day than the one it replaces
+                        — `entry_date` is the day it was recorded — so the two rows are usually in
+                        different day groups and scrolling to it is not an option.
+                      -->
+                      <div class="revise">
+                        <button
+                          type="button"
+                          class="btn btn--tertiary btn--row revise__action"
+                          (click)="openId(replacement)"
+                        >
+                          <app-icon name="chevron-right" [size]="16" />
+                          {{ t('archive.correction.openReplacement') }}
+                        </button>
+                      </div>
+                    }
 
                     @if (revisable(row)) {
                       <!--

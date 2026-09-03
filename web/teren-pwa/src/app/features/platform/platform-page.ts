@@ -423,6 +423,18 @@ export class PlatformPage {
     void this.router.navigate(['/platform/logs']);
   }
 
+  /**
+   * To the estate's health (F7).
+   *
+   * **The only way in, for the same reason `openLogs` is** — and this screen is where it has to
+   * be, because the health page is the one surface with no other producer: no email links to it,
+   * no notification opens it, and a founder who cannot find it will not learn that nothing has
+   * been transcribed for a week. Pressed in a spec and followed through the real route table.
+   */
+  protected openHealth(): void {
+    void this.router.navigate(['/platform/health']);
+  }
+
   protected openAdd(): void {
     this.resetAdd();
     this.addOpen.set(true);

@@ -43,6 +43,28 @@ export interface ArchiveRow {
   onPhone: boolean;
   /** The server holds the complete entry (`received_at` is stamped). */
   onServer: boolean;
+  /**
+   * Why this day is stuck, as the server said it — or null, which is **silence and not an answer**.
+   *
+   * Null for a row the phone captured and the server has not listed, for a row an older server
+   * sent without the field, and for a day with nothing wrong with it. All three must leave the
+   * list behaving exactly as it did before this field existed, which is why every reader goes
+   * through a named predicate (`core/api/failure-reason.ts`) rather than comparing strings.
+   */
+  failureReason: string | null;
+  /** The day this row replaces, when it is a correction (PROJECT.md invariant 2). */
+  supersedesEntryId: string | null;
+  /**
+   * The day that replaces **this** one, derived from the rows on screen — or null.
+   *
+   * **Only ever complete over the rows in hand**, and that limit is a property of the data rather
+   * than of this function: the server sends the forward link on a correction and no reverse link
+   * on the original, so the only way to mark the older end is to find the correction beside it. A
+   * correction recorded on another foreman's phone, or one sitting on a page of the list this
+   * device has not fetched, leaves the day it replaces unmarked. So a screen may say "of the days
+   * I can see, this one was replaced" and must never say "this day is the current record".
+   */
+  supersededBy: string | null;
 }
 
 /**
@@ -78,6 +100,15 @@ export function mergeArchiveRows(
       reportedAt: null,
       onPhone: true,
       onServer: entry.confirmedByServerAt !== null,
+      // Only the server knows this too: a failure is written onto an entry by the pipeline and by
+      // the report pass, never by the phone.
+      failureReason: null,
+      // The phone's own answer, because it wrote the link at capture time and principle 3 makes
+      // the phone the source of truth until the server confirms. Filled from the server below
+      // only where the phone has nothing — which is the row another device recorded.
+      supersedesEntryId: entry.supersedesEntryId ?? null,
+      // Derived from the whole list once it is assembled; see `markSuperseded`.
+      supersededBy: null,
     });
   }
 
@@ -87,6 +118,11 @@ export function mergeArchiveRows(
       existing.serverStatus = item.status;
       existing.reportedAt = item.reported_at;
       existing.onServer = existing.onServer || item.received_at !== null;
+      // The server owns this: it is the pipeline and the report pass that write a failure onto an
+      // entry. `?? null` rather than `||`, so a future server sending an empty string is not
+      // quietly turned into silence — the two would then be indistinguishable on screen.
+      existing.failureReason = item.failure_reason ?? null;
+      existing.supersedesEntryId = existing.supersedesEntryId ?? item.supersedes_entry_id ?? null;
       // The server counts what it verified. The phone counts what it holds, and after C1 prunes
       // a confirmed entry that is zero — so the larger of the two is the honest number of photos
       // this entry has, and `onPhone` says separately whether they can be opened here.
@@ -106,10 +142,49 @@ export function mergeArchiveRows(
       reportedAt: item.reported_at,
       onPhone: false,
       onServer: item.received_at !== null,
+      failureReason: item.failure_reason ?? null,
+      supersedesEntryId: item.supersedes_entry_id ?? null,
+      supersededBy: null,
     });
   }
 
-  return [...rows.values()].sort(byNewestFirst);
+  return markSuperseded([...rows.values()].sort(byNewestFirst));
+}
+
+/**
+ * Fill in `supersededBy` from the forward links the rows themselves carry.
+ *
+ * The server gives a correction the id of the day it replaces and gives that day nothing, which is
+ * right: a reverse link would be a second copy of one fact, written onto a row that is immutable
+ * the moment it is reported. So the older end is marked by looking at the rows beside it.
+ *
+ * **After the sort, deliberately.** Two corrections of one day is a legal state — a correction can
+ * itself be wrong, and the server allows chains — and the one worth naming on screen is the
+ * newest. This walks the list in the order it is drawn, so the first correction it meets wins;
+ * run it before the sort and the *oldest* replacement would silently become the one a foreman is
+ * sent to.
+ *
+ * Mutates the rows it was handed, exactly as the merge above does throughout. The array is local
+ * to {@link mergeArchiveRows} and has been handed to nobody yet.
+ */
+function markSuperseded(rows: ArchiveRow[]): ArchiveRow[] {
+  const byId = new Map(rows.map((row) => [row.id, row]));
+
+  for (const row of rows) {
+    const target = row.supersedesEntryId;
+    if (target === null || target === row.id) {
+      // A row replacing itself cannot be written by this app and cannot be stored by the server —
+      // the target has to exist before the entry that names it — but drawn, it would be its own
+      // replacement, which is a sentence with no meaning. Cheaper to refuse than to explain.
+      continue;
+    }
+    const replaced = byId.get(target);
+    if (replaced && replaced.supersededBy === null) {
+      replaced.supersededBy = row.id;
+    }
+  }
+
+  return rows;
 }
 
 /**

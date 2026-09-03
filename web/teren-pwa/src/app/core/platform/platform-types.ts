@@ -170,3 +170,111 @@ export interface PlatformLogExport {
   /** Readable cross-origin only with `Access-Control-Expose-Headers`. Null is ordinary. */
   contentDisposition: string | null;
 }
+
+/*
+ * ---- `GET /api/platform/health` --------------------------------------------------------------
+ *
+ * What the pipeline is doing across every customer, by company and by site name. Written against
+ * `src/Teren.Api/Contracts/PlatformHealthContracts.cs`, which is pinned server-side by exhaustive
+ * serialization tests — the same discipline the rest of this file records the expensive lesson for.
+ *
+ * **Two properties of this payload the client must not smooth over**, both stated on the server's
+ * own DTOs and both easy to lose in a narrowing layer:
+ *
+ * 1. `pipeline_failures` and `delivery_failures` **overlap**. `entry.failure_reason` is written by
+ *    the pipeline *and* by the report pass (`EntryReporter` records a delivery failure "in both
+ *    places a person might look", and `superseded_after_send` exists nowhere else), so one problem
+ *    can legitimately appear in both lists. They are severity signals, not a partition, and
+ *    nothing anywhere may add them up or draw them as parts of a whole.
+ * 2. `queue.available: false` means **the reader could not ask** — no job server in this process,
+ *    or storage that would not answer. It is not an empty queue. An empty queue is the healthiest
+ *    state there is and "nobody is running a job server" is one of the worst, so the two must
+ *    never render alike.
+ *
+ * Every string here other than a company name and a site name is a constant compiled into the
+ * server: a failure `reason` is a code from `ProcessingFailure`/`ReportFailure` or the literal
+ * `unrecognised`, and `queue.detail` is one of two fixed tokens. Nothing that reached the server
+ * from outside is on this response, which is what makes it safe to translate by key.
+ */
+
+/** One number per state of the entry state machine (ARCHITECTURE §6). */
+export interface PlatformPipelineHealthResponse {
+  entry_count?: number | null;
+  received?: number | null;
+  processing?: number | null;
+  awaiting_confirmation?: number | null;
+  needs_review?: number | null;
+  confirmed?: number | null;
+  reported?: number | null;
+}
+
+/** The report state machine, counted. `sent` means the relay took custody, never that anybody read it. */
+export interface PlatformDeliveryHealthResponse {
+  report_count?: number | null;
+  sending?: number | null;
+  sent?: number | null;
+  failed?: number | null;
+}
+
+/**
+ * One reason and how many carry it.
+ *
+ * `reason` is a code from a server-side vocabulary or the literal `unrecognised` — **never the
+ * English detail stored beside it**, which can fold in an external provider's own words. That is
+ * why the client is allowed to translate it at all.
+ */
+export interface PlatformFailureTallyResponse {
+  reason?: string | null;
+  count?: number | null;
+}
+
+/** The job queue: the difference between "nothing is failing" and "nothing is happening". */
+export interface PlatformQueueHealthResponse {
+  /** **False means unknown, not zero.** See the block comment above. */
+  available?: boolean | null;
+  /** A fixed token when `available` is false (`not_configured`, `unreadable`); null otherwise. */
+  detail?: string | null;
+  enqueued?: number | null;
+  scheduled?: number | null;
+  processing?: number | null;
+  failed?: number | null;
+  /** Live job servers. Zero with `available: true` is the state where every request answers 200
+   *  and nothing is being transcribed, extracted or sent. */
+  servers?: number | null;
+}
+
+/** One site of one customer: the name, and what its days and reports are doing. */
+export interface PlatformSiteHealthResponse {
+  company_id?: string | null;
+  company_name?: string | null;
+  project_id?: string | null;
+  project_name?: string | null;
+  pipeline?: PlatformPipelineHealthResponse | null;
+  pipeline_failures?: PlatformFailureTallyResponse[] | null;
+  delivery?: PlatformDeliveryHealthResponse | null;
+  delivery_failures?: PlatformFailureTallyResponse[] | null;
+}
+
+/** The whole estate. Aggregates only, so there is no paging — `sites` is capped instead. */
+export interface PlatformHealthResponse {
+  /** When the **server** computed this. A snapshot, and the screen has to say so. */
+  at?: string | null;
+  pipeline?: PlatformPipelineHealthResponse | null;
+  pipeline_failures?: PlatformFailureTallyResponse[] | null;
+  delivery?: PlatformDeliveryHealthResponse | null;
+  delivery_failures?: PlatformFailureTallyResponse[] | null;
+  queue?: PlatformQueueHealthResponse | null;
+  /**
+   * One row per site, **sites needing attention first** and then alphabetically by customer and
+   * site. That order is what makes the cap safe: truncation can only ever drop a healthy site.
+   */
+  sites?: PlatformSiteHealthResponse[] | null;
+  /**
+   * How many sites did not fit the cap of 500.
+   *
+   * Non-zero means the screen is not showing the whole estate **and must say so** — a table
+   * quietly showing some of the sites is the defect the "Prikazano 1 od 12" strip exists to
+   * prevent, arrived at from the server's end.
+   */
+  sites_omitted?: number | null;
+}

@@ -174,3 +174,22 @@
     color: var(--color-accent-deep);
   }
 }
+
+/*
+ * ---- The correction line ---------------------------------------------------------------------
+ *
+ * The same pair the recording screen shows, because this is the last screen before the queue and
+ * queueing a correction is not undoable — nothing in this product deletes captured evidence.
+ * It wraps for the reason the recording screen's does: the sentence is longer than 358 px.
+ */
+.correction {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.correction__of {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

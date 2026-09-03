@@ -9,11 +9,14 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { TranslocoDirective } from '@jsverse/transloco';
 
 import { AppStatus } from '../../core/app-status.service';
+import { CORRECTION_PARAM } from '../../core/capture/correction-route';
+import { CorrectionService, CorrectionTarget } from '../../core/capture/correction.service';
 import { EntryStore } from '../../core/db/entry-store';
+import { Project } from '../../core/db/models';
 import { AudioRecorderService, RecorderState } from '../../core/media/audio-recorder.service';
 import { negotiateAudioMimeType } from '../../core/media/audio-mime';
 import { GeolocationService } from '../../core/media/geolocation.service';
@@ -24,8 +27,15 @@ import { AppHeader } from '../../ui/app-header';
 import { formatDuration } from '../../ui/duration.pipe';
 import { Icon } from '../../ui/icon';
 
-/** What is stopping this screen from recording, if anything. */
-type Blocker = 'no-project' | 'no-storage' | null;
+/**
+ * What is stopping this screen from recording, if anything.
+ *
+ * `no-target` is the correction case: the URL names a day to replace and this build cannot say
+ * which site that day belongs to. It is a blocker rather than a fallback because the fallback —
+ * recording against the selected site — writes an entry the server answers with a `404`, which is
+ * terminal in the outbox, so the take would never leave the phone (`core/capture/correction.service.ts`).
+ */
+type Blocker = 'no-project' | 'no-storage' | 'no-target' | null;
 
 /**
  * How far the rescue of an interrupted take has got.
@@ -73,6 +83,7 @@ export class CaptureRecordingPage implements OnDestroy {
   private readonly entries = inject(EntryStore);
   private readonly geolocation = inject(GeolocationService);
   private readonly projects = inject(ProjectService);
+  private readonly corrections = inject(CorrectionService);
   private readonly status = inject(AppStatus);
   /**
    * The action log (D5).
@@ -84,7 +95,41 @@ export class CaptureRecordingPage implements OnDestroy {
    */
   private readonly actions = inject(ActionLogService);
 
-  protected readonly project = this.projects.selected;
+  /**
+   * The day this take replaces, read **once** off the URL that opened the screen.
+   *
+   * A snapshot and not a subscription, deliberately: `begin()` runs in the constructor and again
+   * on "Pokušaj ponovo", and both must record the same kind of entry. A signal following the query
+   * map would let a navigation change what a recording *is* halfway through it.
+   */
+  private readonly correctionId =
+    inject(ActivatedRoute).snapshot.queryParamMap.get(CORRECTION_PARAM) || null;
+
+  /** Whether this screen is recording a correction at all. */
+  protected readonly correcting = this.correctionId !== null;
+
+  /** The resolved target: its id and, the load-bearing half, **its** site. */
+  protected readonly target = signal<CorrectionTarget | null>(null);
+
+  /** Looking the target up right now — a state, because it can involve the network. */
+  protected readonly resolving = signal(false);
+
+  /** The lookup answered "I cannot say which site that day belongs to". */
+  protected readonly targetUnknown = signal(false);
+
+  /**
+   * The site this take is filed against.
+   *
+   * **In correction mode it is the target's and only ever the target's.** The selected site is not
+   * consulted and is not a fallback: `supersedes_entry_id` is accepted only for an entry of the
+   * same project, and a mismatch is a terminal `404` that abandons the recording in the outbox.
+   * Null while the target is still being resolved, which is what keeps `beginCapture` from being
+   * called with a site nobody has established.
+   */
+  protected readonly project = computed<Project | null>(() =>
+    this.correcting ? (this.target()?.project ?? null) : this.projects.selected(),
+  );
+
   protected readonly state = this.recorder.state;
   protected readonly levels = this.recorder.levels;
   protected readonly now = new Date();
@@ -121,6 +166,14 @@ export class CaptureRecordingPage implements OnDestroy {
   protected readonly blocker = computed<Blocker>(() => {
     if (!this.status.storageAvailable()) {
       return 'no-storage';
+    }
+    if (this.correcting) {
+      // While the lookup is in flight nothing is wrong yet, and "no site selected" would be the
+      // wrong sentence in any case — he never selected one, the entry did.
+      if (this.resolving()) {
+        return null;
+      }
+      return this.targetUnknown() ? 'no-target' : null;
     }
     return this.project() ? null : 'no-project';
   });
@@ -190,6 +243,10 @@ export class CaptureRecordingPage implements OnDestroy {
     this.salvage.set('none');
     this.recorder.reset();
 
+    if (this.correctionId !== null && !(await this.resolveTarget(this.correctionId))) {
+      return;
+    }
+
     const project = this.project();
     const blocker = this.blocker();
     if (blocker !== null || !project) {
@@ -216,6 +273,9 @@ export class CaptureRecordingPage implements OnDestroy {
         project,
         capturedAt,
         mimeType: mimeType ?? 'application/octet-stream',
+        // On the **session**, so a correction the tab dies in the middle of is still assembled as
+        // a correction by the start-up sweep rather than as a second record of the same day.
+        supersedesEntryId: this.correctionId,
       });
     } catch {
       this.status.reportStorageFailure();
@@ -380,6 +440,9 @@ export class CaptureRecordingPage implements OnDestroy {
     if (blocker === 'no-project') {
       return 'capture.blocked.project';
     }
+    if (blocker === 'no-target') {
+      return 'capture.blocked.correction';
+    }
     switch (state) {
       case 'denied':
         return 'capture.mic.denied';
@@ -396,9 +459,16 @@ export class CaptureRecordingPage implements OnDestroy {
     }
   }
 
-  /** Retrying makes no sense where the browser or the store is the problem. */
+  /**
+   * Retrying makes no sense where the browser or the store is the problem.
+   *
+   * `no-target` is the exception among the blockers and it is worth the extra clause: the lookup
+   * fails when the server cannot be reached about a day this phone does not hold, and a signal
+   * that comes back is exactly what makes another attempt succeed. `no-project` and `no-storage`
+   * are conditions of the app, not of the moment.
+   */
   protected canRetry(state: RecorderState, blocker: Blocker): boolean {
-    return blocker === null && state !== 'unsupported';
+    return (blocker === null || blocker === 'no-target') && state !== 'unsupported';
   }
 
   /** Assemble the interrupted take again after the first attempt failed. Nothing was lost. */
@@ -416,6 +486,34 @@ export class CaptureRecordingPage implements OnDestroy {
    * something else changes `entryId` underneath: a salvage that no longer owns the screen writes
    * nothing.
    */
+  /**
+   * Find out which site the day named in the URL belongs to, before the microphone is opened.
+   *
+   * Returns false when it could not be established, having put the screen into the `no-target`
+   * blocker — the caller then records nothing at all. That early return is the guarantee: there is
+   * no path from here to `beginCapture` with a site this method did not resolve, so a correction
+   * can never be filed against the selected site by accident.
+   */
+  private async resolveTarget(correctionId: string): Promise<boolean> {
+    this.targetUnknown.set(false);
+    this.resolving.set(true);
+    const target = await this.corrections.resolve(correctionId);
+    this.resolving.set(false);
+
+    if (!target) {
+      this.targetUnknown.set(true);
+      // A slug from this file's own vocabulary, never the id and never the sentence on the card.
+      this.actions.record(ACTIONS.captureRecordStart, {
+        outcome: 'blocked',
+        detail: { reason: 'no-target' },
+      });
+      return false;
+    }
+
+    this.target.set(target);
+    return true;
+  }
+
   private async salvageInterrupted(): Promise<void> {
     const entryId = this.entryId;
     if (!entryId) {

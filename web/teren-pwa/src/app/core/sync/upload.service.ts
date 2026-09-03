@@ -521,5 +521,13 @@ function toCreateRequest(entry: LocalEntry): CreateEntryRequest {
     }
   }
 
+  // A correction names the day it replaces (PROJECT.md invariant 2). Sent only when there is one:
+  // the field is new on the request contract, and an ordinary entry must reach an older server as
+  // exactly the body it has always sent. `project_id` above is the target's own, inherited at
+  // capture time — the server answers a cross-project link with a 404, which is terminal here.
+  if (entry.supersedesEntryId) {
+    request.supersedes_entry_id = entry.supersedesEntryId;
+  }
+
   return request;
 }

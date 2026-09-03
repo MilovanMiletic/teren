@@ -11,6 +11,7 @@ import {
   InviteSentResponse,
   PlatformCompanyListResponse,
   PlatformCompanyResponse,
+  PlatformHealthResponse,
   PlatformLogExport,
   PlatformLogListResponse,
   PlatformLogQuery,
@@ -66,6 +67,16 @@ export interface PlatformGateway {
   invite(userId: string): Promise<InviteSentResponse>;
   disableUser(userId: string): Promise<PlatformUserResponse>;
   enableUser(userId: string): Promise<PlatformUserResponse>;
+
+  /**
+   * What the pipeline is doing across every customer (F7's health screen).
+   *
+   * **No parameters, and no paging.** Everything on the response is an aggregate, so the reason
+   * every other list on this surface is keyset-paged — a founder scrolling while a customer signs
+   * up must not see a row twice — has nothing to bite on. The site list is capped at 500 by the
+   * server and says how many it left out.
+   */
+  getHealth(): Promise<PlatformHealthResponse>;
 
   /**
    * One keyset page of the server's log (D5).
@@ -159,6 +170,10 @@ export class HttpPlatformGateway implements PlatformGateway {
       'POST',
       `/api/platform/users/${encodeURIComponent(userId)}/enable`,
     );
+  }
+
+  getHealth(): Promise<PlatformHealthResponse> {
+    return this.get<PlatformHealthResponse>('/api/platform/health');
   }
 
   listLogs(query: PlatformLogQuery = {}): Promise<PlatformLogListResponse> {

@@ -35,6 +35,8 @@ class FakeApi {
   reportedAt: string | null = null;
   /** The one terminal reason this client branches on. See `core/api/failure-reason.ts`. */
   failureReason: string | null = null;
+  /** Set when the entry under the gate is itself a correction (2026-09-03). */
+  supersedesEntryId: string | null = null;
   structure: unknown = null;
   corrected: unknown = null;
   transcript: string | null =
@@ -68,6 +70,7 @@ class FakeApi {
       confirmed_at: null,
       reported_at: this.reportedAt,
       failure_reason: this.failureReason,
+      supersedes_entry_id: this.supersedesEntryId,
       raw_transcript: this.transcript,
       structure: this.structure,
       corrected: this.corrected,
@@ -899,6 +902,71 @@ describe('ConfirmPage', () => {
         .filter((call) => call[0] === ACTIONS.confirmEdit)
         .map((call) => (call[1] as { detail: { field: string } }).detail.field);
       expect(fields).toEqual(['materials', 'notes']);
+    });
+  });
+
+  /*
+   * ---- Confirming a correction (2026-09-03) ---------------------------------------------------
+   *
+   * Confirming is what releases the report, and a correction's report is a **second** document
+   * about a day the client already has a document about. That is exactly the moment a man who
+   * tapped the wrong record in the archive must be able to notice, because after the report leaves
+   * there is no undo — `reported_at` seals the row for ever.
+   */
+  describe('a correction', () => {
+    it('says what is about to be sent, and that the old report is not deleted', async () => {
+      const entryId = await givenEntry();
+      api.supersedesEntryId = 'the-day-being-replaced';
+
+      const element = await render(entryId);
+
+      expect(element.textContent).toContain(sr.confirm.correction.title);
+      // The honest half: the client keeps the first report. This corrects it, it does not delete it.
+      expect(element.textContent).toContain('Stari izveštaj ostaje kod njega');
+    });
+
+    it('says nothing of the kind on an ordinary day', async () => {
+      const entryId = await givenEntry();
+
+      const element = await render(entryId);
+
+      expect(element.textContent).not.toContain(sr.confirm.correction.title);
+    });
+
+    /**
+     * **The phone's copy is the fallback, and it is not decoration.**
+     *
+     * Here the server answers about the entry and says nothing about the link — an older build, or
+     * a field it does not send — while the phone wrote it at capture time and holds it for ever.
+     * Without the fallback the gate would drop the one sentence a man needs before he releases a
+     * second report about a day the client already has a report for.
+     */
+    it('knows it is a correction from the phone when the server does not say', async () => {
+      const entry = await captureEntry(store, { supersedesEntryId: 'the-day-being-replaced' });
+      await store.markConfirmedByServer(entry.id, { serverStatus: 'awaiting_confirmation' });
+      // The server answers, and its answer carries no `supersedes_entry_id` at all.
+      api.supersedesEntryId = null;
+
+      const element = await render(entry.id);
+
+      expect(element.textContent).toContain(sr.confirm.correction.title);
+    });
+
+    /**
+     * No control on the card, deliberately: the way out of a wrong correction is the back gesture,
+     * and a "cancel" here would be a second answer to a question the header already answers.
+     */
+    it('offers no control of its own', async () => {
+      const entryId = await givenEntry();
+      api.supersedesEntryId = 'the-day-being-replaced';
+
+      const element = await render(entryId);
+
+      const notice = [...element.querySelectorAll('.notice')].find((card) =>
+        card.textContent?.includes(sr.confirm.correction.title),
+      );
+      expect(notice, 'the correction notice is not on screen').toBeTruthy();
+      expect(notice!.querySelector('button')).toBeNull();
     });
   });
 });

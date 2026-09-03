@@ -225,8 +225,11 @@ describe('UploadService', () => {
   });
 
   /** An entry captured and handed to the outbox, exactly as pressing "Gotovo" leaves it. */
-  async function queued(options: { photoCount?: number } = {}) {
-    const entry = await captureEntry(store, { photoCount: options.photoCount ?? 0 });
+  async function queued(options: { photoCount?: number; supersedesEntryId?: string } = {}) {
+    const entry = await captureEntry(store, {
+      photoCount: options.photoCount ?? 0,
+      supersedesEntryId: options.supersedesEntryId ?? null,
+    });
     await store.queue(entry.id);
     return entry.id;
   }
@@ -279,6 +282,43 @@ describe('UploadService', () => {
         entry_date: entry!.localDay,
         created_at: entry!.capturedAt,
       });
+    });
+
+    /**
+     * **A correction names the day it replaces, and it goes through the ordinary outbox** (PROJECT.md
+     * invariant 2, 2026-09-03).
+     *
+     * Nothing about the gesture bypasses this loop: same `POST /entries`, same media declaration,
+     * same `/complete`, same backoff. What is different is one field, and `project_id` beside it is
+     * the **target's own** — inherited at capture time, because the server answers a cross-project
+     * link with a `404` and a 4xx is terminal here.
+     */
+    it('declares a correction with the day it replaces', async () => {
+      const entryId = await queued({ supersedesEntryId: 'the-day-being-replaced' });
+
+      await uploads.flush();
+
+      expect(api.created[0].supersedes_entry_id).toBe('the-day-being-replaced');
+      expect(api.created[0]).toMatchObject({ id: entryId, project_id: TEST_PROJECT.id });
+      // …and it really did travel the whole loop rather than a shortcut.
+      expect(api.completeCalls).toBe(1);
+      expect((await store.getEntry(entryId))?.status).toBe('confirmed_by_server');
+    });
+
+    /**
+     * **An ordinary entry sends exactly the body it has always sent.**
+     *
+     * The field is new on the request contract this week, so it is omitted rather than sent as
+     * `null`: a build talking to a server that predates it must not start putting an unknown
+     * property on every entry a foreman records. `not.toHaveProperty`, because `{ x: undefined }`
+     * and `{}` serialise the same but read differently, and this asserts the absence.
+     */
+    it('leaves the field off an entry that is not a correction', async () => {
+      await queued();
+
+      await uploads.flush();
+
+      expect(api.created[0]).not.toHaveProperty('supersedes_entry_id');
     });
 
     it('declares a 64-hex checksum per file and echoes the signed content type on the PUT', async () => {

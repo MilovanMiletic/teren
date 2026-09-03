@@ -322,6 +322,19 @@ export class ConfirmPage {
     this.bannerKey() === 'noStructure' || this.bannerKey() === 'noTranscript' ? 'warn' : 'accent',
   );
 
+  /**
+   * The day this entry replaces, when it is a correction (2026-09-03).
+   *
+   * Server first, phone as the fallback — and the fallback is not decoration. The gate opens on an
+   * entry the server has, so `remote` normally answers; but `remote` is re-read on a poll and can
+   * be momentarily null, and the phone wrote this link at capture time and holds it for ever.
+   * A gate that briefly forgot a correction was a correction would drop the one sentence a man
+   * needs before he releases a second report about a day the client already has a report for.
+   */
+  protected readonly supersedesEntryId = computed(
+    () => this.remote()?.supersedes_entry_id ?? this.local()?.supersedesEntryId ?? null,
+  );
+
   protected readonly editable = computed(() => this.state() === 'ready');
 
   /**

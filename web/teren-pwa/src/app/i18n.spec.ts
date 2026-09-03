@@ -12,6 +12,8 @@ import { PROFILE_ROLES } from './core/identity/profile.service';
 import { REPORT_FAILURES } from './core/report/report.service';
 import { COMPANY_REASON_KEYS } from './features/company/company-reason';
 import { ACTION_VOCABULARY } from './core/telemetry/actions';
+import { HEALTH_REASON_KEYS } from './features/platform/health-reason';
+import { SITE_CHIP_KEYS } from './features/platform/health-sites';
 import { LOG_LEVELS, LOG_RANGES } from './features/platform/log-level';
 import { REASON_KEYS } from './features/pending/pending-page';
 import { AVAILABLE_LANGUAGES, DEFAULT_LANGUAGE } from './i18n';
@@ -552,6 +554,84 @@ describe('translation dictionaries', () => {
       [...scanned].some((key) => key === slug || key.startsWith(`${slug}.`)),
     );
     expect(referenced.length, 'no colliding slug is checked as a key any more').toBeGreaterThan(0);
+  });
+
+  /**
+   * The same guard for the health screen's failure vocabulary (F7).
+   *
+   * `HEALTH_REASON_KEYS` is a literal map, so the scan above already sees every value — this walks
+   * it at runtime as well, which is the guard that would survive somebody deciding to build a key
+   * from a variable after all. It matters more here than on most screens: the vocabulary lives in
+   * `src/Teren.Core/` as two closed sets reflected over at runtime, and **no compiler joins them to
+   * this file**, so the map can only ever be as fresh as the last person who read them.
+   *
+   * There is deliberately no assertion that the map is *complete*. A code this build has never
+   * heard of renders as itself, which is the honest contract: losing a failure would be the defect,
+   * printing it untranslated is a blemish.
+   */
+  it('can name every failure code the health screen declares', () => {
+    const codes = Object.keys(HEALTH_REASON_KEYS);
+    expect(codes.length).toBeGreaterThan(20);
+
+    for (const code of codes) {
+      const key = HEALTH_REASON_KEYS[code];
+      expect(enKeys, `no English sentence for '${code}'`).toContain(key);
+      expect(srKeys, `no Serbian sentence for '${code}'`).toContain(key);
+    }
+
+    // …and no real code borrows the sentence meant for a code nobody recognises, which would make
+    // a named failure indistinguishable from an unnamed one on the glass.
+    for (const [code, key] of Object.entries(HEALTH_REASON_KEYS)) {
+      if (code !== 'unrecognised') {
+        expect(key, `'${code}' falls back to the unrecognised line`).not.toBe(
+          'health.reason.unrecognised',
+        );
+      }
+    }
+  });
+
+  /**
+   * The chips on a site row, including the four that interpolate a count.
+   *
+   * Those four are the reason `SiteChip` carries a written-out `wordKey`: the first cut built them
+   * by concatenation, which hid all four from the literal scan above — the same mistake
+   * `health-reason.ts` exists to avoid, in a different costume.
+   */
+  it('can name every chip a site row can wear', () => {
+    expect(SITE_CHIP_KEYS.length).toBeGreaterThan(0);
+    for (const key of SITE_CHIP_KEYS) {
+      expect(enKeys, `no English word for '${key}'`).toContain(key);
+      expect(srKeys, `no Serbian word for '${key}'`).toContain(key);
+    }
+  });
+
+  /**
+   * **"Nothing is queued" and "I could not tell" must not read alike**, pinned as a property of
+   * the copy so the founder's pass can rewrite the sentences and only the conflation is forbidden.
+   *
+   * The three sentences behind an unreadable queue each have to say the numbers are *unknown*, not
+   * zero. On `/platform/logs` a failed load once printed "Učitano 0 linija — to je sve" beneath a
+   * notice saying the server was unreachable; this is the same defect refused in advance on the
+   * screen where an empty queue is the healthiest state there is.
+   */
+  it('never lets an unreadable queue read as an empty one', () => {
+    for (const key of ['notConfigured', 'unreadable', 'unknown'] as const) {
+      expect(sr.health.queue[key], `sr health.queue.${key}`).toMatch(/nepoznat/i);
+      expect(en.health.queue[key], `en health.queue.${key}`).toMatch(/unknown/i);
+    }
+  });
+
+  /**
+   * …and the card that shows both failure lists says out loud that they overlap.
+   *
+   * They are severity signals and never a partition — the report pass writes a delivery failure
+   * onto the entry as well, and `superseded_after_send` exists nowhere else — so a reader who
+   * summed them would over-count. The screen refuses to draw them as parts of a whole; this makes
+   * sure it also refuses to leave the reader to deduce that.
+   */
+  it('tells a reader not to add the two failure lists together', () => {
+    expect(sr.health.failures.overlap).toMatch(/ne sabirajte/i);
+    expect(en.health.failures.overlap).toMatch(/do not add/i);
   });
 
   it('keeps Serbian the default runtime locale', () => {

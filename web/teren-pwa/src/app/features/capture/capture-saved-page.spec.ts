@@ -207,4 +207,32 @@ describe('CaptureSavedPage', () => {
       });
     });
   });
+
+  /**
+   * **The one screen between recording a correction and queueing it, so it says what it is.**
+   *
+   * "Gotovo" hands this entry to the outbox, and from there it is a record that replaces another
+   * day. A man who tapped the wrong record in the archive has exactly this screen to notice on —
+   * after the queue there is no undo, because nothing in this product deletes captured evidence
+   * (PROJECT.md principle 3).
+   */
+  it('says a correction is a correction before it is queued', async () => {
+    const entry = await captureEntry(store, {
+      project: DEMO_PROJECTS[0],
+      supersedesEntryId: 'the-day-being-replaced',
+    });
+
+    const element = await render(entry.id);
+
+    expect(element.textContent).toContain(sr.archive.correction.chip);
+    expect(element.textContent).toContain(sr.capture.correction.saved);
+  });
+
+  it('says nothing of the kind on an ordinary take', async () => {
+    const entry = await captureEntry(store, { project: DEMO_PROJECTS[0] });
+
+    const element = await render(entry.id);
+
+    expect(element.textContent).not.toContain(sr.capture.correction.saved);
+  });
 });

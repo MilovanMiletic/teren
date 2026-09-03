@@ -34,6 +34,21 @@ export interface CreateEntryRequest {
   latitude?: number;
   longitude?: number;
   gps_accuracy_m?: number;
+
+  /**
+   * The entry this one corrects (2026-09-03, ARCHITECTURE §7).
+   *
+   * **The server refuses a target that is not an entry of the same project with a `404`, and a
+   * 4xx is terminal in the outbox taxonomy** — so a wrong value here does not bounce, it abandons
+   * a captured day. That is the whole reason nothing in this client lets a person choose the site
+   * of a correction: the id is inherited from the original entry and never from the site picker.
+   * `core/capture/correction.service.ts` is the only place that resolves one.
+   *
+   * Omitted entirely on an ordinary entry rather than sent as `null`: the field was absent from
+   * the request contract until this week, and a build talking to an older server must send exactly
+   * what it always sent.
+   */
+  supersedes_entry_id?: string;
 }
 
 /**
@@ -120,6 +135,25 @@ export interface EntryListItemResponse {
   created_at: string;
   received_at: string | null;
   reported_at: string | null;
+  /**
+   * Why this entry is stuck, `"{code}: {detail}"` as stored — on the row since 2026-09-03.
+   *
+   * **Null is silence, not an answer**, exactly as on {@link EntryResponse}: the list may be a
+   * page an older server sent, and a client that read a missing field as "nothing is wrong" would
+   * offer the door into the confirmation gate on the one record the gate can do nothing for. The
+   * client branches on the *code* and never on the English prose (`core/api/failure-reason.ts`).
+   */
+  failure_reason?: string | null;
+  /**
+   * Set on a correction: the entry of this same site that this one replaces — on the row since
+   * 2026-09-03, which is what lets a list mark **both** ends.
+   *
+   * The superseded set a client derives from a page is complete **only over the rows in that
+   * page** (the server's own contract says so). A correction written on a page this device has not
+   * fetched leaves the older day unmarked until it does, so no screen may claim more than "of the
+   * days I can see, this one was replaced".
+   */
+  supersedes_entry_id?: string | null;
   photo_count: number;
   has_audio: boolean;
 }

@@ -16,6 +16,14 @@ export interface CaptureFixtureOptions {
   chunks?: Uint8Array<ArrayBuffer>[];
   durationMs?: number;
   photoCount?: number;
+  /**
+   * The entry this take corrects, when the fixture is producing a correction (2026-09-03).
+   *
+   * Handed to `beginCapture` and not written onto the finished row, deliberately: the link lives on
+   * the **session** so that a take the tab dies in the middle of is still assembled as a correction
+   * by the start-up sweep. A fixture that set it afterwards would prove nothing about that path.
+   */
+  supersedesEntryId?: string | null;
 }
 
 /**
@@ -35,6 +43,7 @@ export async function captureEntry(
     project: options.project ?? TEST_PROJECT,
     capturedAt: options.capturedAt ?? new Date().toISOString(),
     mimeType: options.mimeType ?? 'audio/ogg;codecs=opus',
+    supersedesEntryId: options.supersedesEntryId ?? null,
   });
 
   for (const chunk of chunks) {

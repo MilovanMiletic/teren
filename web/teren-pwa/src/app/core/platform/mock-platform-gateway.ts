@@ -9,6 +9,7 @@ import {
   InviteSentResponse,
   PlatformCompanyListResponse,
   PlatformCompanyResponse,
+  PlatformHealthResponse,
   PlatformLogExport,
   PlatformLogListResponse,
   PlatformLogQuery,
@@ -224,6 +225,138 @@ export class MockPlatformGateway implements PlatformGateway {
    */
   useLogs(rows: PlatformLogResponse[]): void {
     this.logs = rows;
+  }
+
+  /**
+   * The estate's health, as `GET /api/platform/health` describes it.
+   *
+   * **Built to be the awkward answer rather than the tidy one**, because the tidy one certifies a
+   * screen that cannot tell the truth:
+   *
+   * - `storage_unavailable` appears in **both** failure lists, and `superseded_after_send` appears
+   *   in `pipeline_failures` — which is where the server really puts it, because `EntryReporter`
+   *   writes delivery failures onto the entry. A fixture that partitioned the two would let a
+   *   stacked bar or a pie ship, and reintroduce in the UI the exact lie the backend's own first
+   *   cut told.
+   * - one tally carries the literal `unrecognised`, which is what the server reports for a code
+   *   this build's vocabulary does not declare. A screen that dropped it would under-report
+   *   failures on the one screen whose job is saying what is wrong.
+   * - the second site has **never recorded anything** — zeroes everywhere, which is a real state
+   *   and two of the three demo sites are in it.
+   * - the sites are in the server's own order: **attention first**, then customer, then site.
+   *   Anything else would let a client-side default sort look right while reshuffling the first
+   *   paint of the real screen.
+   *
+   * `queue` is available with one server and a small backlog: the legible day. The unavailable
+   * case — which must never render as an empty queue — is a knob on
+   * `testing/platform-gateway-double.ts`, because it is a failure and the mock models the server
+   * working.
+   */
+  private health: PlatformHealthResponse = {
+    at: '2026-09-03T09:40:00.000Z',
+    pipeline: {
+      entry_count: 42,
+      received: 1,
+      processing: 2,
+      awaiting_confirmation: 3,
+      needs_review: 4,
+      confirmed: 5,
+      reported: 27,
+    },
+    pipeline_failures: [
+      { reason: 'extraction_failed', count: 3 },
+      { reason: 'storage_unavailable', count: 2 },
+      { reason: 'superseded_after_send', count: 1 },
+      { reason: 'unrecognised', count: 1 },
+    ],
+    delivery: { report_count: 28, sending: 1, sent: 25, failed: 2 },
+    delivery_failures: [
+      { reason: 'delivery_failed', count: 1 },
+      { reason: 'storage_unavailable', count: 1 },
+    ],
+    queue: {
+      available: true,
+      detail: null,
+      enqueued: 2,
+      scheduled: 0,
+      processing: 1,
+      failed: 0,
+      servers: 1,
+    },
+    sites: [
+      {
+        company_id: MockPlatformGateway.VODOINSTAL_ID,
+        company_name: 'Vodoinstal Petrović d.o.o.',
+        project_id: 'd3a0c1f0-5b8e-4f1a-9c62-000000000002',
+        project_name: 'Stambena zgrada Vidikovac',
+        pipeline: {
+          entry_count: 30,
+          received: 1,
+          processing: 2,
+          awaiting_confirmation: 2,
+          needs_review: 4,
+          confirmed: 3,
+          reported: 18,
+        },
+        pipeline_failures: [
+          { reason: 'extraction_failed', count: 3 },
+          { reason: 'superseded_after_send', count: 1 },
+        ],
+        delivery: { report_count: 19, sending: 1, sent: 16, failed: 2 },
+        delivery_failures: [{ reason: 'delivery_failed', count: 1 }],
+      },
+      {
+        company_id: MockPlatformGateway.VODOINSTAL_ID,
+        company_name: 'Vodoinstal Petrović d.o.o.',
+        project_id: 'd3a0c1f0-5b8e-4f1a-9c62-000000000003',
+        project_name: 'Poslovni prostor Zemun',
+        pipeline: {
+          entry_count: 0,
+          received: 0,
+          processing: 0,
+          awaiting_confirmation: 0,
+          needs_review: 0,
+          confirmed: 0,
+          reported: 0,
+        },
+        pipeline_failures: [],
+        delivery: { report_count: 0, sending: 0, sent: 0, failed: 0 },
+        delivery_failures: [],
+      },
+      {
+        company_id: MockPlatformGateway.ELEKTRO_ID,
+        company_name: 'Elektro Nikolić d.o.o.',
+        project_id: 'd3a0c1f0-5b8e-4f1a-9c62-000000000004',
+        project_name: 'Trafostanica Borča',
+        pipeline: {
+          entry_count: 12,
+          received: 0,
+          processing: 0,
+          awaiting_confirmation: 1,
+          needs_review: 0,
+          confirmed: 2,
+          reported: 9,
+        },
+        pipeline_failures: [{ reason: 'storage_unavailable', count: 2 }],
+        delivery: { report_count: 9, sending: 0, sent: 9, failed: 0 },
+        delivery_failures: [{ reason: 'storage_unavailable', count: 1 }],
+      },
+    ],
+    sites_omitted: 0,
+  };
+
+  /**
+   * Hand over a different estate — a truncated one, an unreadable queue, five hundred sites.
+   *
+   * The fixture above is three legible sites, which is right for reading the screen and useless
+   * for proving that it pages at ten or that it says so when the server left rows out.
+   */
+  useHealth(health: PlatformHealthResponse): void {
+    this.health = health;
+  }
+
+  async getHealth(): Promise<PlatformHealthResponse> {
+    return this.health;
   }
 
   async listCompanies(query: { q?: string } = {}): Promise<PlatformCompanyListResponse> {

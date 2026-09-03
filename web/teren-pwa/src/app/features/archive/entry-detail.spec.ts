@@ -613,7 +613,7 @@ describe('EntryDetail', () => {
     const element = await render(entry.id);
     await settled(element, 'Proverite i potvrdite');
 
-    element.querySelector<HTMLButtonElement>('.detail__notice-action')!.click();
+    element.querySelector<HTMLButtonElement>('.detail__notice-action--gate')!.click();
     expect(navigate).toHaveBeenCalledWith(['/confirm', entry.id]);
   });
 
@@ -640,7 +640,7 @@ describe('EntryDetail', () => {
     expect(element.querySelector('.detail__notice--warn')).toBeNull();
     expect(element.querySelector('.detail__notice--err')).toBeNull();
 
-    element.querySelector<HTMLButtonElement>('.detail__notice-action')!.click();
+    element.querySelector<HTMLButtonElement>('.detail__notice-action--gate')!.click();
     expect(navigate).toHaveBeenCalledWith(['/confirm', entry.id]);
   });
 
@@ -663,8 +663,17 @@ describe('EntryDetail', () => {
     // very load that carries `reported_at` rather than asserting on a half-drawn record.
     await settled(element, 'Potvrđen');
 
-    expect(element.querySelector('.detail__notice-action')).toBeNull();
+    // **No route into the confirmation gate.** Named precisely, because since 2026-09-03 this
+    // screen also carries a control that is *not* the gate — the correction — and the earlier
+    // spelling of this assertion (`.detail__notice-action`) would have gone green on the wrong
+    // control the moment that button appeared.
+    expect(element.querySelector('.detail__notice-action--gate')).toBeNull();
     expect(element.textContent).not.toContain('Ovaj unos još može da se ispravi');
+
+    // …and what replaced the dead end: the only remedy PROJECT.md invariant 2 allows, offered
+    // where the sentence explaining it already was. Nothing on this card edits the sealed record.
+    expect(element.querySelector('.detail__notice-action--correct')).not.toBeNull();
+    expect(element.textContent).toContain('Ispravka se pravi kao nov unos');
   });
 
   it('shuts the door back in on a record that was changed after its report went out', async () => {
@@ -691,11 +700,18 @@ describe('EntryDetail', () => {
     await settled(element, 'Izveštaj je već otišao klijentu');
 
     // No route to the gate from here, and the "still correctable" card is gone with it.
-    expect(element.querySelector('.detail__notice-action')).toBeNull();
+    expect(element.querySelector('.detail__notice-action--gate')).toBeNull();
     expect(element.textContent).not.toContain('Ovaj unos još može da se ispravi');
     // …and the record says what happened and what to do instead, rather than going quiet.
     expect(element.textContent).toContain('izveštaj predat na slanje');
     expect(element.textContent).toContain('nov unos');
+
+    // **And now there is something to press** (2026-09-03). This state was left honest and empty
+    // last session: the screen explained that only a new record can fix it and offered no way to
+    // make one. The wording differs from the plain sealed case on purpose — a report went out
+    // describing a day this archive no longer describes, which is worse and reads worse.
+    expect(element.querySelector('.detail__notice-action--correct')).not.toBeNull();
+    expect(element.textContent).toContain('Izveštaj je otišao pre ove izmene');
   });
 
   it('keeps the door open on a confirmed entry carrying some other reason', async () => {
@@ -716,8 +732,11 @@ describe('EntryDetail', () => {
     const element = await render(entry.id);
     await settled(element, 'Ovaj unos još može da se ispravi');
 
-    expect(element.querySelector('.detail__notice-action')).not.toBeNull();
+    expect(element.querySelector('.detail__notice-action--gate')).not.toBeNull();
     expect(element.textContent).not.toContain('Izveštaj je već otišao klijentu');
+    // …and no correction is offered, because he can still change this record in place: one record
+    // where there would otherwise be two, which is cheaper for him and truer as evidence.
+    expect(element.querySelector('.detail__notice-action--correct')).toBeNull();
   });
 
   it('offers no gate on a reported entry, which never changes again', async () => {
@@ -731,7 +750,10 @@ describe('EntryDetail', () => {
     const element = await render(entry.id);
     await settled(element, 'Poslat');
 
-    expect(element.querySelector('.detail__notice-action')).toBeNull();
+    expect(element.querySelector('.detail__notice-action--gate')).toBeNull();
+    // The record is immutable and the only remedy is a new one, so the correction is offered here
+    // too — the same control, on the state PROJECT.md invariant 2 is actually about.
+    expect(element.querySelector('.detail__notice-action--correct')).not.toBeNull();
   });
 
   /*
@@ -987,7 +1009,7 @@ describe('EntryDetail', () => {
       const element = await render(entry.id);
       await settled(element, 'Proverite i potvrdite');
 
-      expect(describeClick(element.querySelector('.detail__notice-action'))).toBe(
+      expect(describeClick(element.querySelector('.detail__notice-action--gate'))).toBe(
         ACTIONS.confirmOpen,
       );
     });
@@ -1022,6 +1044,136 @@ describe('EntryDetail', () => {
         entryId: 'entry-1',
         detail: { reason: 'not-ready' },
       });
+    });
+  });
+
+  /*
+   * ---- The correction gesture (2026-09-03) ----------------------------------------------------
+   *
+   * The product's own copy has read *"Unos se ne menja. Ispravka se unosi kao novi unos koji se
+   * poziva na ovaj"* at the foot of every record since B5, and the superseded notice has ended
+   * *"ispravka se pravi kao nov unos za taj dan"*. Both promised a gesture that did not exist. The
+   * button goes where the sentence already was.
+   */
+  describe('recording a correction', () => {
+    /**
+     * **The URL carries an entry id and never a site.**
+     *
+     * The recording screen derives the site from the entry, because the server accepts
+     * `supersedes_entry_id` only for an entry of the same project and refuses anything else with a
+     * `404` — terminal in the outbox, so a wrong site would strand a day of work on a phone rather
+     * than bounce. A URL that carried both could pair one day with another day's site.
+     */
+    it('goes to the ordinary capture path carrying the day, and no site', async () => {
+      const entry = await captureEntry(store);
+      archive.getEntry.mockResolvedValue({
+        status: 'ok',
+        missing: false,
+        entry: serverEntry({ id: entry.id }),
+      });
+
+      const element = await render(entry.id);
+      await settled(element, 'Poslat');
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+
+      element.querySelector<HTMLButtonElement>('.detail__notice-action--correct')!.click();
+
+      expect(navigate).toHaveBeenCalledWith(['/record'], {
+        queryParams: { supersedes: entry.id },
+      });
+      // No project id anywhere on that URL — the point of the whole gesture.
+      const [, options] = navigate.mock.calls[0] as [unknown, { queryParams: object }];
+      expect(Object.keys(options.queryParams)).toEqual(['supersedes']);
+    });
+
+    /** …and the press is logged under its own declared slug, never the sentence on the card. */
+    it('logs the press under its own name', async () => {
+      const entry = await captureEntry(store);
+      archive.getEntry.mockResolvedValue({
+        status: 'ok',
+        missing: false,
+        entry: serverEntry({ id: entry.id }),
+      });
+
+      const element = await render(entry.id);
+      await settled(element, 'Poslat');
+
+      expect(describeClick(element.querySelector('.detail__notice-action--correct'))).toBe(
+        ACTIONS.archiveCorrectionStart,
+      );
+    });
+
+    /**
+     * **A record that is itself a correction says whose day it replaces.**
+     *
+     * This is the screen produced in a dispute, and a day that replaces an earlier one is worth
+     * strictly less as evidence if nothing on it says so. The control is what makes the claim
+     * checkable: a named record with no way to open it is a footnote.
+     */
+    it('says a record is a correction, and opens the day it replaces', async () => {
+      const entry = await captureEntry(store);
+      archive.getEntry.mockResolvedValue({
+        status: 'ok',
+        missing: false,
+        entry: serverEntry({ id: entry.id, supersedes_entry_id: 'the-older-day' }),
+      });
+
+      const element = await render(entry.id);
+      await settled(element, 'Poslat');
+
+      expect(element.textContent).toContain('Ovo je ispravka');
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+      element.querySelector<HTMLButtonElement>('.detail__notice-action--replaced')!.click();
+
+      // The archive's own parameter, so at expanded width the record swaps in its pane and the
+      // list beside it does not move.
+      expect(navigate).toHaveBeenCalledWith(['/diary'], {
+        queryParams: { entry: 'the-older-day' },
+      });
+    });
+
+    /**
+     * The phone's own copy is the fallback, and it matters more than it looks: a correction sitting
+     * in the outbox has not reached the server at all, so without it this screen would call a
+     * correction an ordinary entry for exactly as long as the queue takes.
+     */
+    it('knows an unsent correction is a correction', async () => {
+      const entry = await captureEntry(store, { supersedesEntryId: 'the-older-day' });
+      // Nothing on the server at all — the entry is still in the outbox.
+      archive.getEntry.mockResolvedValue({ status: 'ok', missing: true, entry: null });
+
+      const element = await render(entry.id);
+
+      expect(element.textContent).toContain('Ovo je ispravka');
+    });
+
+    it('says nothing of the kind on a record that replaces nothing', async () => {
+      const entry = await captureEntry(store);
+      archive.getEntry.mockResolvedValue({
+        status: 'ok',
+        missing: false,
+        entry: serverEntry({ id: entry.id }),
+      });
+
+      const element = await render(entry.id);
+      await settled(element, 'Poslat');
+
+      expect(element.textContent).not.toContain('Ovo je ispravka');
+      expect(element.querySelector('.detail__notice-action--replaced')).toBeNull();
+    });
+
+    /**
+     * **Nothing is offered over an entry the phone is still holding**: there is nothing to
+     * supersede until the server has the day. Both states that reach the control read the server's
+     * answer only.
+     */
+    it('offers no correction on a day the server has never seen', async () => {
+      const entry = await captureEntry(store);
+      archive.getEntry.mockResolvedValue({ status: 'ok', missing: true, entry: null });
+
+      const element = await render(entry.id);
+
+      expect(element.querySelector('.detail__notice-action--correct')).toBeNull();
     });
   });
 });

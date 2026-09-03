@@ -38,5 +38,24 @@ export const SUPERSEDED_AFTER_SEND = 'superseded_after_send';
  * silence must leave every other screen behaving exactly as it did before.
  */
 export function supersededAfterSend(entry: EntryResponse | null | undefined): boolean {
-  return entry?.failure_reason === SUPERSEDED_AFTER_SEND;
+  return isSupersededAfterSend(entry?.failure_reason);
+}
+
+/**
+ * The same question asked of a bare reason string, for the archive **list** row (2026-09-03).
+ *
+ * `GET /api/entries` now carries `failure_reason` on every row, so the list can finally tell a day
+ * that is merely waiting from a day that is stuck — and stop offering "Ispravi" on a record whose
+ * only honest answer is the gate saying no. There is no `EntryListItemResponse` to hand
+ * {@link supersededAfterSend}, so the predicate is factored rather than duplicated: two spellings
+ * of one rule is how one of them rots while the other keeps a screen looking right, which is the
+ * argument `entry-detail.ts` already makes about `revisable`.
+ *
+ * **`undefined` and `null` are both silence.** `undefined` is an older server that does not send
+ * the field; `null` is this server saying nothing is wrong. Neither is "it is superseded", and the
+ * distinction that matters here — is this the one terminal state the client knows by name — is
+ * false for both.
+ */
+export function isSupersededAfterSend(reason: string | null | undefined): boolean {
+  return reason === SUPERSEDED_AFTER_SEND;
 }

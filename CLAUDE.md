@@ -226,12 +226,24 @@ before being presented as done; gating fixes go back to the implementer and are 
   durable now and `ActivationService` is its only clearer, because it describes a **condition** and
   not a handoff. *`ArrivalHandoff.take()` was cited as the precedent for take-once; it is a handoff
   between two screens inside one navigation, which is a different thing.*
-- **D4's rejection is open and it is a founder decision, not a code fix.** The authenticated
-  invite/reset hatch lets Teren staff mint a working set-password link for a company admin, take his
-  account, and read his diaries — exactly what plan decision 2 says is impossible. It predates D4
-  (`invite-admin` since D2); D4 put a button on it. Plan §13.6. **Until it is settled, do not repeat
-  the privacy claim to a customer unqualified**: it is true of every typed route and false of one
-  deliberate door.
+- **D4's rejection is CLOSED (2026-09-03), and the plan's three options were aimed at the wrong
+  hole.** All three predated D6, which had already removed the plaintext from every response body —
+  the token is minted inside `AdminInviteJob` and mailed, and **no platform route can change an
+  admin's email**. The wider hole was `POST /api/platform/users`: an email plus a `company_id` mints a
+  **brand-new company_admin inside any customer's company**, which reads that company's diaries and,
+  unlike a password reset, **locks nobody out and disturbs nothing the customer would notice**. The
+  decision (PROJECT.md §11, plan §13.6, both authoritative): **the capability stays, the silence
+  goes.** Every *other* administrator of that company is emailed when an administrator is added or a
+  credential issued — company's language, no token, no link, via `AdminAccessNoticeJob`, which like
+  `AdminInviteJob` never puts a credential in a Hangfire argument. A **structural guard** forbids any
+  type reachable from `PlatformDirectory` naming a token, link, secret, password, code, credential,
+  url or hash. `invite-admin` (CLI) still prints a link on purpose: shell on that box already means
+  the database.
+  **The claim you may now make to a customer**, replacing decision 2's literal wording: *staff cannot
+  read a customer's diary with their own credentials; minting or resetting an administrator's
+  credential is possible, is audited, and emails every other administrator of that company.*
+  *The notification copy is customer-visible mail in the founder's voice and has not been reviewed by
+  him.*
 - **The privacy guard has two halves, and the second is the one plan §12 actually asked for.** A
   reflection walk over `PlatformDirectory` catches a signature that *reaches* `Entry`/`Media`/
   `Report`; it cannot catch `entry_count`, which is an `int`. So platform DTO **property names** are
@@ -364,23 +376,26 @@ before being presented as done; gating fixes go back to the implementer and are 
   the record**, sending `described_verbatim: true` with the transcript in `notes`; the report then
   renders the day as prose, marked as his words rather than extracted data. `extracted` stays null
   and `corrected` records approval-as-is, so the eval triple can still tell approval from typing.
-- **Next, in order.** The **backend** halves of the last four code items are ☑ and reviewed
-  (`supersedes_entry_id` on the create request, `failure_reason` on the list row,
-  `GET /api/platform/health`, the M3 proof) — **uncommitted in the working tree**, verified at
-  1091/1091. What is left of them is the **frontend half, parked in `stash@{0}`**: the correction
-  gesture, the list row's use of `failure_reason`, and `/platform/health` (F7's last screen). Two
-  known faults in that stash — `health-page.css` was never written (`ng build` fails `NG2008`) and
-  the **inline** `PlatformGateway` doubles in spec files lag `getHealth()` so the suite will not
-  compile; `platform-gateway-double.ts` is already updated but `WatchedGateway` and two object
-  literals are not. *One constraint the review handed that work: the correction gesture must inherit
-  `project_id` from the original and never offer a site choice, because a cross-site target is a 404
-  and a 4xx is terminal in the outbox — it would abandon a captured day rather than bounce it.*
-  **Then B3a for real**: a VPS, a domain, a stable **https** origin. That purchase is what unblocks
-  the whole real-device debt and both unmet clauses of M0's definition.
-- **Open founder decision from 2026-09-03: the report does not name what it supersedes.** A
-  correction whose PDF does not reference the document it replaces is weak evidence in a dispute, and
-  the client has already received the wrong one. Flagged rather than invented, because it changes the
-  artefact a customer's client reads.
+- **Next, in order.** **Every code item on the M0/identity list is now built and green** — the
+  correction gesture (`/entry/:id` → a new entry carrying `supersedes_entry_id`, project inherited
+  from the original and never chosen), `failure_reason` on the archive row, **`/platform/health`
+  (F7's last screen, so F7 is complete)**, the report's supersedes band, and D4's closure.
+  **Two of those increments have NOT been reviewed** — the report/D4 backend pair and the
+  correction/health frontend pair — because both implementers were killed when a session ended, and
+  the work was verified by execution and by reading the diff instead. **Run their reviewers first.**
+  Then the four never-reviewed older increments: **D6, D8, F10, and F13's four founder-screenshot
+  rounds.** Then **B3a for real**: a VPS, a domain, a stable **https** origin — the purchase that
+  unblocks the whole real-device debt and both unmet clauses of M0's definition.
+  *One decision taken but NOT yet implemented: `DEM0-TEST` should stay the fixed demo code only in
+  Development, with `seed` minting a random one on any deployed environment and printing it. Its
+  original justification — "there is no admin screen until F6" — expired when F6 shipped, and a
+  published credential to a company behind a public URL is not the same thing as one on a laptop.*
+- **A correction now names the document it replaces (2026-09-03).** The decision was delegated and
+  taken: the report names the superseded record by **work date and site, never a GUID** (PROJECT.md
+  §11 ruling 1), in the project's language and time zone, with **two variants** — one for a superseded
+  report that reached a relay, one for a document still waiting, because the honest sentence differs.
+  The superseded report is never rewritten. *Report assertions read text back out of the rendered PDF
+  with PdfPig, so these are proven on the page rather than at the builder.*
 - **Demo seed is now three sites** (`d3a0c1f0-5b8e-4f1a-9c62-` + `000000000002/3/4`), and those ids
   are a **contract** with `web/.../core/projects/project-source.ts`: if they drift, every
   `POST /api/entries` 404s and captured entries can never leave the phone. See ARCHITECTURE §6.
@@ -536,16 +551,14 @@ before being presented as done; gating fixes go back to the implementer and are 
   Linux shell.** `action-wiring.spec.ts` built its file map with `relative()`, which answers with
   backslashes here, so both hand-written checks failed at their first entry. `shortPath` normalises
   `sep` now. *If a spec fails only on one OS, suspect the path separator before the code.*
-- **Suites: 1740 PWA specs** (89 files) and **1091 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
+- **Suites: 1876 PWA specs** (93 files) and **1135 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
   + Testcontainers over real Postgres, ~66 s; PdfPig in tests only, so report assertions read text
   back out of the rendered PDF). `dotnet test` needs Docker running.
   *The figures here were stale before 2026-08-30 (403/447 recorded against an actual 436/476) —
   both were re-measured off the tree, not carried forward.*
-- **Check at session start:** the tree is green — **1740 PWA specs and 1091 backend tests, both
-  re-verified by execution 2026-09-03** (89 spec files, `ng build` with zero warning lines,
-  `dotnet build -c Release` succeeding). **`git stash list` is not empty and that is deliberate:**
-  `stash@{0}` holds the unfinished frontend half of the corrections/health increment — see the
-  2026-09-03 (evening) JOURNAL entry before popping it. `dotnet build` succeeds
+- **Check at session start:** the tree is green — **1876 PWA specs (93 files) and 1135 backend tests,
+  both re-verified by execution 2026-09-03**, `ng build` with zero warning lines. The stash is empty
+  again (it was popped and finished). `dotnet build` succeeds
   with **one** warning: `CS9107` in `DemoIdentitySeedTests.cs:400`. **It is pre-existing** — confirmed by
   building a worktree at `a42adaf` — so the long-standing "0 warnings" claim in this file was simply
   wrong. Do not go hunting for it in your own diff.

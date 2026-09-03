@@ -9,8 +9,13 @@ import {
   CreateAdminRequest,
   InviteSentResponse,
   PlatformCompanyResponse,
+  PlatformDeliveryHealthResponse,
+  PlatformFailureTallyResponse,
+  PlatformHealthResponse,
   PlatformLogQuery,
   PlatformLogResponse,
+  PlatformPipelineHealthResponse,
+  PlatformSiteHealthResponse,
   PlatformUserResponse,
 } from './platform-types';
 
@@ -187,6 +192,96 @@ export interface LogExportResult {
   filename: string | null;
 }
 
+/*
+ * ---- The estate's health, narrowed (F7) ------------------------------------------------------
+ *
+ * Two rules are enforced *here*, once, rather than on the screen — because a screen that had to
+ * remember them would eventually forget one and the forgetting would look like good news:
+ *
+ * 1. **`queue.available` is true only if the server said the literal `true`.** Anything else — a
+ *    missing field, a body this build cannot read — is "I could not tell", never an empty queue.
+ * 2. **A tally whose reason cannot be read becomes `unrecognised`**, which is the server's own
+ *    token for a code it does not recognise. Dropping it would under-report failures on the one
+ *    screen an owner opens because he already doubts what he is told.
+ */
+
+/** One number per state of the entry state machine (ARCHITECTURE §6). */
+export interface PipelineHealth {
+  entryCount: number;
+  received: number;
+  processing: number;
+  awaitingConfirmation: number;
+  needsReview: number;
+  confirmed: number;
+  reported: number;
+}
+
+/** The report state machine, counted. `sent` is custody, never readership. */
+export interface DeliveryHealth {
+  reportCount: number;
+  sending: number;
+  sent: number;
+  failed: number;
+}
+
+/**
+ * One reason and how many carry it.
+ *
+ * `reason` is always a code the server compiled in, or the literal {@link UNRECOGNISED_REASON}.
+ * **Never free text**, which is what makes it safe for a screen to translate.
+ */
+export interface FailureTally {
+  reason: string;
+  count: number;
+}
+
+/** What the server calls a failure code it does not declare — and what this client calls one it
+ *  cannot read. Same token, because they are the same fact to a reader. */
+export const UNRECOGNISED_REASON = 'unrecognised';
+
+/** The job queue. `available: false` means **unknown** — see the block comment above. */
+export interface QueueHealth {
+  available: boolean;
+  /** A fixed token (`not_configured`, `unreadable`) when unavailable; null otherwise. */
+  detail: string | null;
+  enqueued: number;
+  scheduled: number;
+  processing: number;
+  failed: number;
+  servers: number;
+}
+
+/** One site of one customer, named. No address, no coordinates, no recipients — see the DTOs. */
+export interface SiteHealth {
+  companyId: string;
+  companyName: string;
+  projectId: string;
+  projectName: string;
+  pipeline: PipelineHealth;
+  pipelineFailures: FailureTally[];
+  delivery: DeliveryHealth;
+  deliveryFailures: FailureTally[];
+}
+
+export interface Health {
+  /** When the **server** computed it. Null only if it did not say; the screen then says so. */
+  at: string | null;
+  pipeline: PipelineHealth;
+  pipelineFailures: FailureTally[];
+  delivery: DeliveryHealth;
+  deliveryFailures: FailureTally[];
+  queue: QueueHealth;
+  /** Capped at 500 by the server, **attention first**, so what is missing is always healthy. */
+  sites: SiteHealth[];
+  /** Non-zero means the screen is not showing the whole estate and has to say so. */
+  sitesOmitted: number;
+}
+
+export interface HealthResult {
+  status: PlatformStatus;
+  health: Health | null;
+}
+
 /**
  * Teren's own surface: customers, accounts, and the links that let people in.
  *
@@ -347,6 +442,27 @@ export class PlatformService {
       return invite ? { status: 'ok', invite } : { status: 'unavailable', invite: null };
     } catch (error) {
       return { status: this.classify(error), invite: null };
+    }
+  }
+
+  /**
+   * What the pipeline is doing across every customer.
+   *
+   * **A body this build cannot read is reported as `unavailable` with no health at all**, never as
+   * an estate of zeroes. Same doctrine as {@link createCustomer}, and here it is the whole point of
+   * the screen: "there is nothing wrong anywhere" and "I could not find out" are opposite claims,
+   * and this is the screen a founder opens precisely because he does not trust what he is being
+   * told. `serverAnswered` is false for `unavailable`, so the screen says *reload*.
+   */
+  async readHealth(): Promise<HealthResult> {
+    if (!this.admins.signedIn()) {
+      return { status: 'notSignedIn', health: null };
+    }
+    try {
+      const health = toHealth(await this.gateway.getHealth());
+      return health ? { status: 'ok', health } : { status: 'unavailable', health: null };
+    } catch (error) {
+      return { status: this.classify(error), health: null };
     }
   }
 
@@ -579,6 +695,115 @@ function toLogRecord(response: PlatformLogResponse | null): LogRecord | null {
     companyId: text(response?.company_id),
     entryId: text(response?.entry_id),
     correlation: text(response?.correlation),
+  };
+}
+
+/**
+ * The estate, narrowed — or null when the body says nothing this screen could draw.
+ *
+ * **All or nothing on the three aggregate blocks**, the same rule `toCustomer` applies to a row.
+ * With `pipeline`, `delivery` or `queue` missing, every count would narrow to zero and the screen
+ * would report a product in which nothing has ever happened and nothing is wrong. That is the most
+ * reassuring possible rendering of a payload nobody could read, on the screen where reassurance is
+ * the one thing that must be earned.
+ *
+ * `sites` is allowed to be absent or empty, because an estate with no site is a real state — a
+ * fresh install has none — and a missing site list does not make the headline numbers untrue.
+ */
+function toHealth(response: PlatformHealthResponse | null | undefined): Health | null {
+  const pipeline = response?.pipeline;
+  const delivery = response?.delivery;
+  const queue = response?.queue;
+  if (!pipeline || !delivery || !queue) {
+    return null;
+  }
+
+  return {
+    at: text(response?.at),
+    pipeline: toPipeline(pipeline),
+    pipelineFailures: toTallies(response?.pipeline_failures),
+    delivery: toDelivery(delivery),
+    deliveryFailures: toTallies(response?.delivery_failures),
+    queue: {
+      // **The literal `true`, and nothing else.** A missing field is not permission to draw an
+      // empty queue: `false` here means *the reader could not ask*, which is one of the worst
+      // states the system has, and zero enqueued jobs is one of the best.
+      available: queue.available === true,
+      detail: text(queue.detail),
+      enqueued: count(queue.enqueued),
+      scheduled: count(queue.scheduled),
+      processing: count(queue.processing),
+      failed: count(queue.failed),
+      servers: count(queue.servers),
+    },
+    sites: (response?.sites ?? []).map(toSite).filter(isPresent),
+    sitesOmitted: count(response?.sites_omitted),
+  };
+}
+
+function toPipeline(response: PlatformPipelineHealthResponse): PipelineHealth {
+  return {
+    entryCount: count(response.entry_count),
+    received: count(response.received),
+    processing: count(response.processing),
+    awaitingConfirmation: count(response.awaiting_confirmation),
+    needsReview: count(response.needs_review),
+    confirmed: count(response.confirmed),
+    reported: count(response.reported),
+  };
+}
+
+function toDelivery(response: PlatformDeliveryHealthResponse): DeliveryHealth {
+  return {
+    reportCount: count(response.report_count),
+    sending: count(response.sending),
+    sent: count(response.sent),
+    failed: count(response.failed),
+  };
+}
+
+/**
+ * The failure tallies, in the order the server sent them — **largest first, and never re-sorted.**
+ *
+ * A reason that cannot be read becomes {@link UNRECOGNISED_REASON} rather than being dropped: the
+ * count is a real count either way, and a screen that silently discarded it would under-report
+ * failures. A tally of zero is dropped, because "this failure happened no times" is not a fact
+ * anybody needs a row for.
+ */
+function toTallies(rows: PlatformFailureTallyResponse[] | null | undefined): FailureTally[] {
+  return (rows ?? [])
+    .map((row) => ({ reason: text(row?.reason) ?? UNRECOGNISED_REASON, count: count(row?.count) }))
+    .filter((tally) => tally.count > 0);
+}
+
+/**
+ * One site, or null.
+ *
+ * Every naming field or nothing — the rule `toCustomer` applies, and for the sharper reason: a row
+ * with no customer name and no site name is a line of numbers the founder cannot act on, on a
+ * screen whose entire value is saying *whose* problem this is.
+ */
+function toSite(response: PlatformSiteHealthResponse | null): SiteHealth | null {
+  const companyId = text(response?.company_id);
+  const companyName = text(response?.company_name);
+  const projectId = text(response?.project_id);
+  const projectName = text(response?.project_name);
+  if (!companyId || !companyName || !projectId || !projectName) {
+    return null;
+  }
+
+  return {
+    companyId,
+    companyName,
+    projectId,
+    projectName,
+    // A site whose blocks are missing narrows to zeroes rather than being dropped: the row still
+    // names a real site, and the estate totals above it are computed by the server from the
+    // aggregates themselves, so a row of zeroes cannot make the headline numbers wrong.
+    pipeline: toPipeline(response?.pipeline ?? {}),
+    pipelineFailures: toTallies(response?.pipeline_failures),
+    delivery: toDelivery(response?.delivery ?? {}),
+    deliveryFailures: toTallies(response?.delivery_failures),
   };
 }
 

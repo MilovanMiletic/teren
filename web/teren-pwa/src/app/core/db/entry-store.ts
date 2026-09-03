@@ -47,6 +47,15 @@ export interface BeginCaptureInput {
   capturedAt: string;
   /** The container the recorder actually negotiated on this device. */
   mimeType: string;
+  /**
+   * The entry this take corrects, when it is a correction (2026-09-03).
+   *
+   * Handed in at the *beginning* rather than attached when the take is saved, so an interrupted
+   * correction that the start-up sweep assembles is still a correction. The caller is responsible
+   * for having taken `project` from the same target — see `core/capture/correction.service.ts`,
+   * which is the only place that resolves the pair, and which never lets a person choose the site.
+   */
+  supersedesEntryId?: string | null;
 }
 
 /**
@@ -108,6 +117,7 @@ export class EntryStore {
       geo: null,
       chunkCount: 0,
       lastChunkAt: null,
+      supersedesEntryId: input.supersedesEntryId ?? null,
       updatedAt: nowIso,
     });
   }
@@ -203,6 +213,9 @@ export class EntryStore {
           audioDurationMs: durationMs,
           photoCount: 0,
           confirmedByServerAt: null,
+          // Carried from the session, so a take the start-up sweep assembles is still the
+          // correction the foreman meant it to be rather than a second record of the same day.
+          supersedesEntryId: session.supersedesEntryId ?? null,
           createdAt: nowIso,
           updatedAt: nowIso,
         };

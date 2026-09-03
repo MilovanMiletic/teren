@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 import { routes } from './app.routes';
 import { ARCHIVE_ENTRY_PARAM } from './core/archive/archive-route';
+import { CORRECTION_PARAM } from './core/capture/correction-route';
 import { RETURN_URL_PARAM } from './core/session/return-url';
 
 /**
@@ -214,8 +215,15 @@ function navigationTargets(): { targets: NavigationTarget[]; unresolvable: strin
  * `login-page.ts` performs on a successful sign-in, and on the founder's own browser `/login` was
  * itself unreachable (`requiresNoAdminSession`). A route table cannot see that: reachability is a
  * property of the guards, not of the paths. `device.guard.spec.ts` pins it where it lives.
+ *
+ * **47 → 51 (2026-09-03)**: the correction gesture and the health screen. `entry-detail.ts` gained
+ * two — `/record` carrying the day being replaced, and `/diary` opening the day this record
+ * replaces — `health-page.ts` gained its way back to `/platform`, and `platform-page.ts` gained the
+ * one door to `/platform/health`. `archive-page.ts` is a **net zero**: its row press and the new
+ * "show the correction" control share one `openId`, deliberately, so there is one place spelling
+ * that URL rather than two that can drift.
  */
-const NAVIGATION_COUNT = 47;
+const NAVIGATION_COUNT = 51;
 
 /**
  * The query parameters a navigation may put on the URL, by the name of the constant that holds
@@ -232,11 +240,18 @@ const NAVIGATION_COUNT = 47;
  *
  * **5 → 7 at F8**: Home's revocation notice and the pending row's "Unesi novi kod" each carry
  * `RETURN_URL_PARAM` to `/activate`, so the code screen is a detour rather than a destination.
+ *
+ * **7 → 8 at the correction gesture (2026-09-03)**: `CORRECTION_PARAM` turns `/record` into
+ * *record a correction of this day*. It is the parameter with the sharpest consequence of the
+ * three — the recording screen derives the **site** from the entry it names, and the server answers
+ * a cross-project `supersedes_entry_id` with a `404` that is *terminal* in the outbox. A producer
+ * and a consumer drifting on this name would not misroute a tap; it would record a day of work
+ * that can never leave the phone.
  */
-const QUERY_PARAM_CONSTANTS = ['ARCHIVE_ENTRY_PARAM', 'RETURN_URL_PARAM'];
+const QUERY_PARAM_CONSTANTS = ['ARCHIVE_ENTRY_PARAM', 'RETURN_URL_PARAM', 'CORRECTION_PARAM'];
 
 /** How many `queryParams: { … }` literals the app writes today. Pinned for the same reason. */
-const QUERY_PARAM_USE_COUNT = 8;
+const QUERY_PARAM_USE_COUNT = 10;
 
 /** Every `queryParams: { … }` object literal written at a navigation call site. */
 function queryParamKeys(): { key: string; source: string; file: string }[] {
@@ -350,9 +365,13 @@ describe('app routes', () => {
       'a query parameter constant that is not in QUERY_PARAM_CONSTANTS — add it there deliberately',
     ).toEqual([]);
 
-    // And the constants really are the two names this app navigates with, so a rename of either
-    // one lands here rather than nowhere.
-    expect([ARCHIVE_ENTRY_PARAM, RETURN_URL_PARAM]).toEqual(['entry', 'next']);
+    // And the constants really are the three names this app navigates with, so a rename of any one
+    // of them lands here rather than nowhere.
+    expect([ARCHIVE_ENTRY_PARAM, RETURN_URL_PARAM, CORRECTION_PARAM]).toEqual([
+      'entry',
+      'next',
+      'supersedes',
+    ]);
   });
 
   it('routes home, capture, saved, confirm, archive, pending, profile, identity and the office, and sends anything else home', () => {
@@ -401,6 +420,11 @@ describe('app routes', () => {
       // `entry_id`, and "which customer had an error at 18:12" is Teren's business and nobody
       // else's.
       'platform/logs',
+      // The estate's health (F7, 2026-09-03) — what the pipeline is doing across every customer.
+      // The sharpest `requiresSuperAdmin` on the surface: one response carries every customer's
+      // company name, site names and failure counts, so a company admin let through would learn
+      // which of his competitors is behind on his reports.
+      'platform/health',
       // One account: his link, and the switch that takes him out of service. A route rather than
       // a row action, because re-inviting mints a working credential and supersedes any live one.
       'platform/user/:userId',

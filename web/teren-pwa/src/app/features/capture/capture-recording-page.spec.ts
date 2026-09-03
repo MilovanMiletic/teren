@@ -1,10 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Router, provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { TranslocoTestingModule } from '@jsverse/transloco';
 
 import en from '../../../../public/i18n/en.json';
 import sr from '../../../../public/i18n/sr.json';
 import { AppStatus } from '../../core/app-status.service';
+import { ArchiveService, RemoteEntry } from '../../core/archive/archive.service';
+import { CORRECTION_PARAM } from '../../core/capture/correction-route';
 import { EntryStore } from '../../core/db/entry-store';
 import { TEREN_DB, TerenDb } from '../../core/db/teren-db';
 import {
@@ -118,6 +120,17 @@ describe('CaptureRecordingPage', () => {
       projects?: boolean;
       /** How long the microphone permission sheet stays up before the take begins. */
       permissionDelayMs?: number;
+      /**
+       * `?supersedes=<id>` on the URL that opened the screen — the correction gesture.
+       *
+       * Provided as an `ActivatedRoute` snapshot rather than by navigating, because
+       * `TestBed.createComponent` builds the component outside the router's outlet and there is no
+       * activated snapshot to read. The component takes the value **once**, in a field initialiser,
+       * so a snapshot is exactly the shape it consumes.
+       */
+      correction?: string;
+      /** A take that records nothing, so the harness must not wait for chunks. */
+      expectSilence?: boolean;
     } = {},
   ) {
     /*
@@ -171,6 +184,18 @@ describe('CaptureRecordingPage', () => {
         provideRouter(routes),
         { provide: TEREN_DB, useValue: db },
         { provide: GeolocationService, useValue: { currentFix: async () => null } },
+        ...(options.correction === undefined
+          ? []
+          : [
+              {
+                provide: ActivatedRoute,
+                useValue: {
+                  snapshot: {
+                    queryParamMap: convertToParamMap({ [CORRECTION_PARAM]: options.correction }),
+                  },
+                },
+              },
+            ]),
         {
           provide: AudioRecorderService,
           useFactory: () =>
@@ -200,7 +225,7 @@ describe('CaptureRecordingPage', () => {
     // on a loaded one: every spec below starts from a settled store, not a probable one.
     // Only when a recording really was started: without a site the screen refuses to record, and
     // with a denied microphone there is nothing to write.
-    if ((options.outcome ?? 'ok') === 'ok' && options.projects !== false) {
+    if ((options.outcome ?? 'ok') === 'ok' && options.projects !== false && !options.expectSilence) {
       await waitUntil(async () => (await db.chunks.count()) === 2, {
         onTick: () => fixture.detectChanges(),
         describe: 'the recorded chunks to reach the store',
@@ -672,5 +697,230 @@ describe('CaptureRecordingPage', () => {
         entryId,
       });
     });
+  });
+});
+
+/*
+ * ---- Recording a correction (2026-09-03) ------------------------------------------------------
+ *
+ * `?supersedes=<entry id>` turns this screen into *record a correction of that day*. It is the
+ * ordinary capture path — same microphone, same per-second persistence, same outbox, same gate —
+ * with one field on the entry and one rule about the site.
+ */
+describe('CaptureRecordingPage recording a correction', () => {
+  let db: TerenDb;
+  let store: EntryStore;
+  let fixture: ComponentFixture<CaptureRecordingPage>;
+
+  /** The day being corrected, recorded on a site the foreman is **not** standing on. */
+  const TARGET_SITE = DEMO_PROJECTS[1];
+
+  let remote: RemoteEntry;
+
+  async function configure(
+    options: { correction: string; seedTarget?: boolean; expectSilence?: boolean },
+  ): Promise<HTMLElement> {
+    localStorage.setItem(
+      SESSION_STORAGE_KEY,
+      JSON.stringify({
+        token: 'trn_d_a-real-device-token',
+        deviceId: '11111111-1111-1111-1111-111111111111',
+        userId: '22222222-2222-2222-2222-222222222222',
+        username: 'zoran.jovanovic',
+        displayName: 'Zoran Jovanović',
+        companyId: '33333333-3333-3333-3333-333333333333',
+        companyName: 'Gradnja d.o.o.',
+        activatedAt: '2026-08-30T08:00:00.000Z',
+      }),
+    );
+
+    db = new TerenDb(`teren-test-${crypto.randomUUID()}`);
+    remote = { status: 'offline', entry: null, missing: false };
+
+    TestBed.configureTestingModule({
+      imports: [
+        CaptureRecordingPage,
+        TranslocoTestingModule.forRoot({
+          langs: { sr, en },
+          translocoConfig: {
+            availableLangs: ['sr', 'en'],
+            defaultLang: 'sr',
+            reRenderOnLangChange: true,
+          },
+          preloadLangs: true,
+        }),
+      ],
+      providers: [
+        provideRouter(routes),
+        { provide: TEREN_DB, useValue: db },
+        { provide: GeolocationService, useValue: { currentFix: async () => null } },
+        {
+          provide: ArchiveService,
+          useValue: { getEntry: async (): Promise<RemoteEntry> => remote } as unknown as ArchiveService,
+        },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              queryParamMap: convertToParamMap({ [CORRECTION_PARAM]: options.correction }),
+            },
+          },
+        },
+        {
+          provide: AudioRecorderService,
+          useFactory: () => new FakeRecorder(inject(EntryStore)),
+        },
+      ],
+    });
+
+    store = TestBed.inject(EntryStore);
+    const projects = TestBed.inject(ProjectService);
+    await projects.load();
+    // The foreman is standing on the *first* demo site. The day he is correcting was recorded on
+    // the second, which is the one case where the selected site and the correct one differ.
+    projects.select(DEMO_PROJECTS[0].id);
+
+    if (options.seedTarget !== false) {
+      await db.entries.put({
+        id: options.correction,
+        projectId: TARGET_SITE.id,
+        projectName: TARGET_SITE.name,
+        capturedAt: '2026-09-01T14:12:00.000Z',
+        localDay: '2026-09-01',
+        status: 'confirmed_by_server',
+        serverStatus: 'reported',
+        geo: null,
+        audioDurationMs: 41_000,
+        photoCount: 0,
+        confirmedByServerAt: '2026-09-01T14:13:00.000Z',
+        createdAt: '2026-09-01T14:12:00.000Z',
+        updatedAt: '2026-09-01T14:12:00.000Z',
+      });
+    }
+
+    fixture = TestBed.createComponent(CaptureRecordingPage);
+    await fixture.whenStable();
+
+    if (options.expectSilence) {
+      await flushLiveQueries(10);
+    } else {
+      await waitUntil(async () => (await db.chunks.count()) === 2, {
+        onTick: () => fixture.detectChanges(),
+        describe: 'the recorded chunks to reach the store',
+      });
+    }
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  afterEach(async () => {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    db.close();
+    await db.delete();
+  });
+
+  /**
+   * **The site is the target's, and the selected one is not a fallback.**
+   *
+   * `POST /api/entries` accepts `supersedes_entry_id` only for an entry of the same project;
+   * anything else is a `404`, which is **terminal** in the outbox. So a correction filed against
+   * the site the foreman happens to have picked would not bounce and heal — it would sit blocked,
+   * and a day of his work would never leave the phone.
+   */
+  it('opens the session on the target’s site, not the selected one', async () => {
+    const element = await configure({ correction: 'the-day-being-replaced' });
+
+    const [session] = await db.captures.toArray();
+    expect(session.projectId).toBe(TARGET_SITE.id);
+    expect(session.projectId).not.toBe(DEMO_PROJECTS[0].id);
+    expect(session.supersedesEntryId).toBe('the-day-being-replaced');
+
+    // …and the screen says so before he speaks, naming the target's site and the day.
+    expect(text(element)).toContain(TARGET_SITE.name);
+    expect(text(element)).toContain('Menja unos od');
+    expect(text(element)).toContain(sr.archive.correction.chip);
+  });
+
+  /** The finished take carries the link, so the outbox has something to send. */
+  it('writes the link onto the entry the take produces', async () => {
+    await configure({ correction: 'the-day-being-replaced' });
+
+    const [session] = await db.captures.toArray();
+    const entry = await store.finishCapture(session.entryId, { durationMs: 41_000 });
+
+    expect(entry?.supersedesEntryId).toBe('the-day-being-replaced');
+    expect(entry?.projectId).toBe(TARGET_SITE.id);
+  });
+
+  /**
+   * **Nothing is recorded when the site cannot be established** — and that is the whole point of
+   * the blocker rather than a fallback.
+   *
+   * The target is not on this phone and the server cannot be reached. Recording against the
+   * selected site would produce an entry the server answers with a `404`, terminal, so the take
+   * would never leave the phone. Refusing costs him a retry; guessing costs him the day.
+   */
+  it('refuses to record when it cannot say which site the day belongs to', async () => {
+    const element = await configure({
+      correction: 'a-day-on-another-phone',
+      seedTarget: false,
+      expectSilence: true,
+    });
+
+    expect(await db.captures.count()).toBe(0);
+    expect(await db.chunks.count()).toBe(0);
+    expect(await db.entries.count()).toBe(0);
+
+    // And it says which of the app's problems this is — not "no site selected", which would be the
+    // wrong sentence: he never selected one, the entry did.
+    expect(text(element)).toContain(sr.capture.blocked.correction.title);
+    expect(text(element)).not.toContain(sr.capture.blocked.project.title);
+    // Nothing has been lost, and the copy says so.
+    expect(text(element)).toContain('ništa nije izgubljeno');
+  });
+
+  /**
+   * …and the retry is offered, which is the one blocker where it makes sense.
+   *
+   * The lookup fails when the server cannot be reached about a day this phone does not hold, and a
+   * signal that comes back is exactly what makes another attempt succeed. `no-project` and
+   * `no-storage` are conditions of the app, not of the moment.
+   */
+  it('offers another attempt, because a signal coming back is what fixes it', async () => {
+    const element = await configure({
+      correction: 'a-day-on-another-phone',
+      seedTarget: false,
+      expectSilence: true,
+    });
+
+    const retry = [...element.querySelectorAll<HTMLButtonElement>('button')].find((candidate) =>
+      candidate.textContent?.includes(sr.capture.record.retry),
+    );
+    expect(retry, 'no way to try again once the signal is back').toBeTruthy();
+
+    // The server answers this time, on the target's own site.
+    remote = {
+      status: 'ok',
+      entry: {
+        id: 'a-day-on-another-phone',
+        project_id: TARGET_SITE.id,
+        entry_date: '2026-08-20',
+        status: 'reported',
+        created_at: '2026-08-20T13:40:00.000Z',
+        received_at: '2026-08-20T13:41:00.000Z',
+        reported_at: '2026-08-20T14:06:00.000Z',
+      } as never,
+      missing: false,
+    };
+
+    retry!.click();
+    await waitUntil(async () => (await db.chunks.count()) === 2, {
+      onTick: () => fixture.detectChanges(),
+      describe: 'the retried take to reach the store',
+    });
+
+    const [session] = await db.captures.toArray();
+    expect(session.projectId).toBe(TARGET_SITE.id);
+    expect(session.supersedesEntryId).toBe('a-day-on-another-phone');
   });
 });

@@ -9,6 +9,7 @@ import {
   InviteSentResponse,
   PlatformCompanyListResponse,
   PlatformCompanyResponse,
+  PlatformHealthResponse,
   PlatformLogExport,
   PlatformLogListResponse,
   PlatformLogQuery,
@@ -76,6 +77,16 @@ export class KnobbedPlatformGateway implements PlatformGateway {
   createAdminError: unknown = null;
   logsError: unknown = null;
   exportError: unknown = null;
+  healthError: unknown = null;
+
+  /**
+   * A `200` whose body this build cannot read at all.
+   *
+   * Worth a knob because the health screen's answer to it has to be "I could not tell you",
+   * never a page of zeroes — and no error path reaches that branch: a thrown `HttpErrorResponse`
+   * is classified, an unreadable body is not.
+   */
+  unreadableHealth = false;
 
   /**
    * An export that answers 200 with nothing in it.
@@ -101,6 +112,7 @@ export class KnobbedPlatformGateway implements PlatformGateway {
   /** Held open, a call lets a spec look at the screen while the request is still in flight. */
   usersGate: PlatformDeferred | null = null;
   logsGate: PlatformDeferred | null = null;
+  healthGate: PlatformDeferred | null = null;
   exportGate: PlatformDeferred | null = null;
   createAdminGate: PlatformDeferred | null = null;
   suspendGate: PlatformDeferred | null = null;
@@ -116,6 +128,9 @@ export class KnobbedPlatformGateway implements PlatformGateway {
    * looking at**, and the only way to prove it is to compare the two queries that reached the
    * wire. A `vi.fn()` that agreed with itself could not.
    */
+  /** How many times the estate's health was actually asked for — a reload is not a repaint. */
+  healthReadings = 0;
+
   readonly logQueries: PlatformLogQuery[] = [];
   readonly exportQueries: PlatformLogQuery[] = [];
 
@@ -190,6 +205,15 @@ export class KnobbedPlatformGateway implements PlatformGateway {
     this.refuse(this.inviteError);
     this.invited.push(userId);
     return { ...(await this.real.invite(userId)), emailed: this.emailed };
+  }
+
+  async getHealth(): Promise<PlatformHealthResponse> {
+    this.healthReadings += 1;
+    await this.healthGate?.promise;
+    this.refuse(this.healthError);
+    return this.unreadableHealth
+      ? (null as unknown as PlatformHealthResponse)
+      : this.real.getHealth();
   }
 
   async listLogs(query: PlatformLogQuery = {}): Promise<PlatformLogListResponse> {
