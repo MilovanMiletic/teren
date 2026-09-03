@@ -692,7 +692,7 @@ Rules that fall out of it:
 | Method | Route | Purpose |
 |---|---|---|
 | `GET` | `/api/projects` | projects visible to this device |
-| `POST` | `/api/entries` | create entry from client UUID → **202**, returns upload targets. Idempotent |
+| `POST` | `/api/entries` | create entry from client UUID → **202**, returns upload targets. Idempotent. Accepts `supersedes_entry_id` (2026-09-03) — see below |
 | `POST` | `/api/entries/{id}/media` | request presigned PUT URLs for audio/photos |
 | `POST` | `/api/entries/{id}/complete` | all uploads finished → enqueue processing |
 | `GET` | `/api/entries/{id}` | status, `raw_transcript`, extracted structure, `failure_reason` (client polls this) |
@@ -703,6 +703,33 @@ Rules that fall out of it:
 | `GET` | `/health` | liveness: Kestrel answers, nothing more |
 | `GET` | `/health/ready` | readiness (2026-09-02): `SELECT 1` on both contexts, no pending migration on either history, a Hangfire server heartbeat within 2 min when the job server is enabled. 503 with a plain body naming only the failing check. The compose healthcheck and `deploy.sh`'s verify step read this one |
 | — | `/hangfire` | job dashboard, behind auth |
+
+**`supersedes_entry_id` on the create request (2026-09-03)** is what makes §6's documented answer to
+a superseded record something a phone can actually do. It was on the entity and on `EntryResponse`
+from the start and **not** on the request, so `System.Text.Json` dropped it in silence and a
+correction gesture would have written an entry that *claimed* to be a correction and linked to
+nothing. Three decisions live in its XML doc rather than in a constraint:
+
+- **Any target state is accepted.** A "must be reported" rule was refused, and the product's own
+  behaviour is the argument: an entry parked `confirmed` with `superseded_after_send` has had a
+  report delivered and can never get another (`ux_report_entry_id`, no `sent → sending`), so a
+  reported-only rule would forbid the one correction the server itself asks a human to make.
+  Second argument: a 4xx is **terminal** in the outbox taxonomy, so a refusal abandons a captured
+  day rather than bouncing it.
+- **Chains are allowed** — a correction can itself be wrong. Cycles are impossible by construction,
+  because the target must exist before the entry that names it.
+- **Same project, not merely same company.** `fk_entry_supersedes_entry` is satisfied by any entry
+  row, and a cross-project link would put one client's day inside another's report. Both a foreign
+  company's id and another of this company's sites answer **404** — existence, asked at the
+  granularity the request itself uses. *Consequence for the client: a correction gesture must
+  inherit `project_id` from the original and must never offer a choice of site, because that 404 is
+  terminal in the outbox.*
+
+The check sits **after** the replay check, so a replay is answered from what the server already
+holds and the body is never consulted — a replay can neither add, change nor drop a link.
+
+**`failure_reason` is on the archive list row too** (2026-09-03), not only on the single-entry poll,
+so a list can stop offering a door that lands on a dead end.
 
 **Polling, not SignalR.** Processing takes roughly 20–60 seconds and exactly one screen cares.
 A 3-second poll is a handful of lines; a realtime transport is a dependency. Revisit only if the
@@ -750,6 +777,7 @@ admits, and a caller of the wrong role learns nothing about its payload shape. A
 | `GET` | `/api/platform/audit` | super_admin | the admin audit trail |
 | `GET` | `/api/platform/logs` | super_admin | the log stream, keyset-paged over `(at DESC, id DESC)`; `level`, `source`, `company_id`, `entry_id`, `q`, `from`, `to` |
 | `GET` | `/api/platform/logs/export` | super_admin | the same query as a CSV download, capped at 50 000 rows |
+| `GET` | `/api/platform/health` | super_admin | pipeline state counts, `failure_reason` tallies, delivery failures and Hangfire queue depth, broken down by company and **site name** (plan decision 12). Aggregates only, so no paging; `sites` is capped at 500 with `sites_omitted`, ordered attention-first so truncation can only ever drop a healthy site |
 | `POST` | `/api/client-events` | any credential | what was pressed in the app, as slugs |
 
 **`POST /api/client-events` is the one write path open to both credentials** (D5), because the
@@ -1114,6 +1142,49 @@ platform code path is compiled against, not a policy anyone has to remember. Bot
 explicit closed sets — `ApplyConfigurationsFromAssembly` was removed from `TerenDbContext` so an
 identity configuration cannot be swallowed into the evidence model — and each has a
 model-composition test asserting the other's types are absent.
+
+**The barrier was widened on 2026-09-03, and the claim above needed re-wording rather than
+repeating.** `GET /api/platform/health` is specified to report pipeline state counts and
+`failure_reason` tallies **broken down by company and site name** (plan decision 12), and it was
+impossible as the model stood: `PlatformDirectory` resolves only this context, and raw SQL is
+forbidden on that path by `PlatformRawSqlTests` — which is the guard working, not an obstacle to
+route around. So the identity model gained **three types and no more**:
+
+- `Project` mapped to `{id, company_id, name}` with `Address`, `Latitude`, `Longitude`,
+  `Recipients`, `Vocabulary`, `ReportLanguage`, `TimeZone` and `CreatedAt` **`Ignore()`d** — so an
+  address is *not selectable*, rather than merely not selected.
+- `EntryHealthRow` and `ReportHealthRow`: **keyless** read-throughs of `entry` and `report`
+  carrying four columns each — company, project, status, failure reason.
+
+`db.Set<Entry>()`, `Set<Media>()` and `Set<Report>()` still throw, so the sentence above stays
+literally true; what changed is that the barrier is now **"no evidence content"** rather than **"no
+evidence tables"**. Three things keep that honest, and the third arrived only after review:
+
+1. **The CLR declaration *is* the column allow-list**, because EF maps every scalar a keyless type
+   has. `IdentityModelTests` pins all three tables' columns — shadow properties included — keyed on
+   **table name**, so a second leaky type mapped to `entry` is caught too.
+2. **All three are `ExcludeFromMigrations()`**, so neither history owes anything and
+   `has-pending-model-changes` reports clean on both. (The next identity `migrations add` will
+   rewrite the snapshot to include them; that is the differ, not a change.)
+3. **`PlatformPrivacyTests.Forbidden` had to learn the two new types.** It listed `Entry`, `Media`
+   and `Report` only, so a member of `PlatformDirectory` returning `EntryHealthRow` — whose
+   `FailureReason` is the full `"{code}: {detail}"` string, provider text included — walked past
+   **both** structural walks with all eleven privacy tests green. *The widening opened a hole in the
+   guard that exists for precisely this, and the guard did not know.*
+
+**SQL views were considered and rejected**: their grain is a bucket, which is strictly stronger, but
+they cost a migration in the *evidence* history — the history carrying invariant 2's immutability
+triggers — for a marginal gain over a tested column pin, and they foreclose any future per-row
+question. If that trade ever looks wrong, the change is one migration plus `ToView`.
+
+**Residual risk, named rather than fixed:** this context carries no query filters (that is what
+leaves `IgnoreQueryFilters()` in one file under `src/`), so `Projects` here is cross-tenant by
+construction — correct for a super admin, who is cross-tenant by design. But the *company-scoped*
+handlers (`WorkerEndpoints`, `DeviceEndpoints`, `MeEndpoints`) run in this same context on manual
+scoping, and before this change they could not name a project at all. None reads it today, and no
+structural guard would notice one that did. Also: never materialise a `Project` **entity** from this
+context — the ignored properties read as *absent*, not as *not loaded*, which is the exact shape of
+the F10 defect where a screen printed "no address on file" for a value it had never fetched.
 
 It has its own migration history table, `__EFMigrationsHistory_identity`; `migrate` applies both.
 

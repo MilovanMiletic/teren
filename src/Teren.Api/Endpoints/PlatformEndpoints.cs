@@ -99,6 +99,11 @@ public static class PlatformEndpoints
         // same RoleFilter and cannot be given a different gate by accident.
         group.MapPlatformLogEndpoints();
 
+        group.MapGet("/health", HealthAsync)
+            .WithName("PlatformHealth")
+            .WithSummary("What the pipeline is doing across every customer, by company and site.")
+            .Produces<PlatformHealthResponse>();
+
         group.MapGet("/audit", ListAuditAsync)
             .WithName("ListPlatformAudit")
             .WithSummary("What administrators have done, newest first.")
@@ -106,6 +111,24 @@ public static class PlatformEndpoints
 
         return api;
     }
+
+    // -------------------------------------------------------------------------------- health
+
+    /// <summary>
+    /// <b>No parameters, and no paging.</b> Everything here is an aggregate, so the reason every
+    /// other list on this surface is keyset-paged — a founder scrolling while a customer signs up
+    /// must not see a row twice — has nothing to bite on. The site list is capped
+    /// (<see cref="PlatformDirectory.MaxSites"/>) and reports what it left out instead.
+    /// <para>
+    /// Filters were considered and left out on purpose: this screen's question is "is anything
+    /// wrong anywhere", the answer is a few kilobytes, and the client already owns sorting,
+    /// per-column filtering and ten-row paging over a table it holds (ARCHITECTURE §5). A
+    /// server-side filter would be a second implementation of a control that exists.
+    /// </para>
+    /// </summary>
+    private static async Task<IResult> HealthAsync(
+        PlatformDirectory directory, CancellationToken ct) =>
+        TypedResults.Ok(await directory.HealthAsync(ct));
 
     // ------------------------------------------------------------------------------ companies
 

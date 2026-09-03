@@ -55,6 +55,19 @@ public sealed class CreateEntryRequestValidator : AbstractValidator<CreateEntryR
         RuleFor(r => r.GpsAccuracyM)
             .GreaterThanOrEqualTo(0)
             .When(r => r.GpsAccuracyM is not null);
+
+        // Shape only, as the class comment says: whether that entry exists, is this company's and
+        // belongs to the site being written to is stored state, and the handler answers it with a
+        // 404 that says nothing about other tenants. All this can catch is an all-zero UUID, which
+        // is a client that built a Guid it never filled in rather than one naming a real day —
+        // `Guid.Empty` can never be an entry id, because ids are generated on the phone.
+        //
+        // No validator is registered for this: CreateEntryRequest already has one
+        // (Program.cs), which is the third of the job ValidatorWiringTests exists to guard.
+        RuleFor(r => r.SupersedesEntryId)
+            .NotEqual(Guid.Empty)
+            .When(r => r.SupersedesEntryId is not null)
+            .WithMessage("supersedes_entry_id must be the UUID of the entry being corrected.");
     }
 }
 

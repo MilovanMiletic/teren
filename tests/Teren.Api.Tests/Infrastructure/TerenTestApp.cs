@@ -99,6 +99,10 @@ public sealed class TerenTestApp : IAsyncLifetime
         Options.Create(new ReportingOptions()),
         NullLogger<QuestPdfReportRenderer>.Instance);
 
+    /// <summary>The health page's queue reading, substitutable — see
+    /// <see cref="FakeJobQueueDepth"/> for why the disabled container answer is not enough.</summary>
+    public FakeJobQueueDepth Queue { get; } = new();
+
     public InsertRaceInterceptor RaceInterceptor { get; } = new();
 
     /// <summary>Records the statement sequence a request issues — see
@@ -493,6 +497,7 @@ public sealed class TerenTestApp : IAsyncLifetime
         Renderer.Reset();
         RaceInterceptor.Disarm();
         CommandTap.Reset();
+        Queue.Depth = JobQueueDepth.Unknown(JobQueueDepth.NotConfigured);
 
         // D5. The log queue is drained BEFORE the truncate below, and the order is the whole
         // point: every test in this run emits log lines, and a flush that arrived after the
@@ -642,6 +647,12 @@ public sealed class TerenTestApp : IAsyncLifetime
 
                 services.RemoveAll<IPipelineQueue>();
                 services.AddSingleton<IPipelineQueue>(app.Pipeline);
+
+                // The health page's queue depth. Hangfire is off in this host, so the container's
+                // own registration is the "not configured" one; substituting it is what makes the
+                // numeric half of /api/platform/health assertable.
+                services.RemoveAll<IJobQueueDepth>();
+                services.AddSingleton<IJobQueueDepth>(app.Queue);
 
                 // The mail relay, faked at the seam PROJECT.md §11 put there. The renderer is
                 // *not* faked — it is the real one, wrapped so the model it was handed can be

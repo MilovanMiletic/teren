@@ -333,6 +333,25 @@ was also casual.
 `app_log` is in the identity model too, which is what keeps the log viewer on the super-admin-safe
 side of the split rather than reaching into `TerenDbContext`.
 
+**And two more types arrived with the health endpoint on 2026-09-03, which this section anticipated
+for `Project` and not for these.** Counts and `failure_reason` tallies are aggregates over `entry`
+and `report`, and neither table was reachable: `PlatformDirectory` resolves only this context and
+raw SQL on that path is forbidden by `PlatformRawSqlTests`. So `EntryHealthRow` and
+`ReportHealthRow` are **keyless** read-throughs carrying **four columns each** — company, project,
+status, failure reason. `db.Set<Entry>()` still throws; the barrier is now *"no evidence content"*
+rather than *"no evidence tables"*, and ARCHITECTURE §12 carries the full reasoning, the rejected
+SQL-view alternative and the residual risks.
+
+The line to say out loud is unchanged by it, which is the test of whether the widening was
+legitimate: staff see which companies and sites exist and what is failing, and cannot read a
+transcript, view a photo or open a report.
+
+**One thing the review found that belongs here rather than only in a commit message:** the
+reflection guard listed `Entry`, `Media` and `Report`, so it did **not** know about the two new
+types — a `PlatformDirectory` member returning `EntryHealthRow`, whose `FailureReason` is the whole
+`"{code}: {detail}"` string with provider text in it, passed all eleven privacy tests. *A widening
+of the model is also a widening of what the guard must forbid, and the guard cannot infer it.*
+
 Two benefits fall out: the credential authenticator uses this context too (it must read
 `device`/`admin_session`/`app_user`/`company` before any tenant is known), so **`IgnoreQueryFilters()`
 disappears from the auth path entirely** — and afterwards appears in `src/` in exactly **one** file,

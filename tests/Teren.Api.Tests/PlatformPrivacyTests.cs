@@ -4,6 +4,7 @@ using System.Reflection;
 using Teren.Api.Platform;
 using Teren.Api.Tests.Infrastructure;
 using Teren.Core.Entities;
+using Teren.Core.Platform;
 
 namespace Teren.Api.Tests;
 
@@ -42,7 +43,19 @@ public sealed class PlatformPrivacyTests(TerenTestApp app) : ApiTestBase(app)
     /// person to widen this list will otherwise assume the previous widening was casual too.
     /// </para>
     /// </summary>
-    private static readonly Type[] Forbidden = [typeof(Entry), typeof(Media), typeof(Report)];
+    private static readonly Type[] Forbidden =
+    [
+        typeof(Entry), typeof(Media), typeof(Report),
+        // Added 2026-09-03 with the health page, and this is the hole the model widening opened in
+        // the guard that exists for exactly this. EntryHealthRow and ReportHealthRow are the
+        // four-column read-throughs of `entry` and `report` that TerenIdentityDbContext now maps,
+        // and one of those four columns is `failure_reason` — the FULL "{code}: {detail}" string,
+        // whose detail folds in an external provider's own words. PlatformDirectory.HealthAsync
+        // reduces them to codes and counts before anything is serialised; a future public member
+        // that simply RETURNED them would carry the raw text past both structural walks, and
+        // before this line all eleven of these tests stayed green when one did.
+        typeof(EntryHealthRow), typeof(ReportHealthRow),
+    ];
 
     [Fact]
     public void No_platform_signature_can_carry_evidence()
@@ -118,7 +131,7 @@ public sealed class PlatformPrivacyTests(TerenTestApp app) : ApiTestBase(app)
         var offenders = (
             from dto in dtos
             from property in dto.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            where !IsBareIdentifier(property)
+            where !IsBareIdentifier(property) && !IsAdmittedCount(property)
             let word = EvidenceWords.FirstOrDefault(w =>
                 property.Name.Contains(w, StringComparison.OrdinalIgnoreCase))
             where word is not null
@@ -176,6 +189,83 @@ public sealed class PlatformPrivacyTests(TerenTestApp app) : ApiTestBase(app)
     private sealed record NotAnIdentifier(int EntryCount, string EntryNotes, string EntryId);
 
     /// <summary>
+    /// The second exception, and it is the one the vocabulary was always going to collide with.
+    ///
+    /// <para>
+    /// A health page (<c>GET /api/platform/health</c>, plan §8) is <em>inherently</em> a table of
+    /// entry counts by state: <c>entry_count</c>, <c>reported</c>, <c>report_count</c>. Those are
+    /// three of the words above, and there was no honest way round it. Naming them something bland
+    /// would have been worse than an exemption — this file's own documentation admits that "a
+    /// synonym always exists", so a euphemism does not satisfy the boundary, it merely walks past
+    /// the tripwire. So the collision is admitted, in writing, and kept as small as it can be.
+    /// </para>
+    /// <para>
+    /// <b>The reasoning, which is the part that has to survive this test being read in a year.</b>
+    /// A count is not content. How many days of work sit in <c>needs_review</c> on one site is a
+    /// fact about whether Teren's own pipeline is working; what was done on that site, what was
+    /// said, what was photographed and where it is are facts about the customer's work, and none
+    /// of them is reachable — <c>PlatformHealthResponse</c> is read from a model that maps four
+    /// columns of <c>entry</c> and four of <c>report</c>
+    /// (<see cref="IdentityModelTests.The_platform_path_sees_four_columns_of_entry_and_four_of_report"/>).
+    /// A project's <em>name</em> is admitted by the founder's decision of 2026-08-30 and nothing
+    /// else about a project is.
+    /// </para>
+    /// <para>
+    /// <b>Narrow three ways, and every one of them matters.</b> The declaring type must be one of
+    /// the two count blocks — <c>EntryCount</c> on <see cref="Contracts.PlatformCompanyResponse"/> still
+    /// fails, which is the mutation plan §12 itself names as how this boundary is actually lost.
+    /// The property must be an <c>int</c> — a <c>string</c> or a list called <c>EntryCount</c>
+    /// still fails. And the pair must be on this list by name, so a fourth count is a decision
+    /// somebody writes down rather than one that arrives with a field.
+    /// </para>
+    /// </summary>
+    private static readonly (Type Dto, string Property)[] AdmittedCounts =
+    [
+        (typeof(Contracts.PlatformPipelineHealth),
+            nameof(Contracts.PlatformPipelineHealth.EntryCount)),
+        (typeof(Contracts.PlatformPipelineHealth),
+            nameof(Contracts.PlatformPipelineHealth.Reported)),
+        (typeof(Contracts.PlatformDeliveryHealth),
+            nameof(Contracts.PlatformDeliveryHealth.ReportCount)),
+    ];
+
+    /// <inheritdoc cref="AdmittedCounts"/>
+    private static bool IsAdmittedCount(PropertyInfo property) =>
+        (property.PropertyType == typeof(int) || property.PropertyType == typeof(long))
+        && AdmittedCounts.Any(admitted =>
+            admitted.Dto == property.DeclaringType && admitted.Property == property.Name);
+
+    [Fact]
+    public void The_count_exemption_admits_three_integers_and_nothing_else()
+    {
+        // Anti-vacuity, in both directions. Loosening IsAdmittedCount to "any int on any platform
+        // DTO" would re-open exactly the door §12 says this guard exists to hold, and every other
+        // assertion in this file would stay green.
+        foreach (var (dto, name) in AdmittedCounts)
+        {
+            IsAdmittedCount(dto.GetProperty(name)!).ShouldBeTrue($"{dto.Name}.{name}");
+        }
+
+        // The same name on a DTO that is not a health count block.
+        IsAdmittedCount(
+                typeof(NotTheHealthPage).GetProperty(nameof(NotTheHealthPage.EntryCount))!)
+            .ShouldBeFalse("a count of a customer's diary on an account DTO is the mutation");
+
+        // The right type, the wrong shape.
+        foreach (var property in typeof(NotACount)
+                     .GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            IsAdmittedCount(property).ShouldBeFalse(property.Name);
+        }
+    }
+
+    /// <summary>A company row that learned how many diaries the customer keeps. Must keep failing.</summary>
+    private sealed record NotTheHealthPage(Guid Id, int EntryCount);
+
+    /// <summary>Things called a count that are not one, declared on an admitted type's name.</summary>
+    private sealed record NotACount(string EntryCount, IReadOnlyList<int> Reported, bool ReportCount);
+
+    /// <summary>
     /// A guard on the guard: if the walk below ever stopped visiting anything, the assertion above
     /// would pass for the wrong reason and go on passing forever.
     /// </summary>
@@ -202,12 +292,26 @@ public sealed class PlatformPrivacyTests(TerenTestApp app) : ApiTestBase(app)
         FirstForbidden(typeof(List<Media>), []).ShouldBe(typeof(Media));
         FirstForbidden(typeof(Bait), []).ShouldBe(typeof(Report));
 
+        // The health page's two read-throughs, proven the same way: adding a type to `Forbidden`
+        // without proving the walk can see it is how a list grows into decoration.
+        FirstForbidden(typeof(EntryHealthRow), []).ShouldBe(typeof(EntryHealthRow));
+        FirstForbidden(typeof(IReadOnlyList<ReportHealthRow>), [])
+            .ShouldBe(typeof(ReportHealthRow));
+        FirstForbidden(typeof(HealthBait), []).ShouldBe(typeof(EntryHealthRow));
+
         // And a type that does not, so the walk is not simply answering "yes" to everything.
         FirstForbidden(typeof(Teren.Api.Contracts.PlatformCompanyResponse), []).ShouldBeNull();
     }
 
     /// <summary>A DTO shaped exactly like the mistake this file exists to catch.</summary>
     private sealed record Bait(Guid Id, IReadOnlyList<Report> Reports);
+
+    /// <summary>
+    /// And the mistake the health page made reachable: a DTO that hands over the read-through rows
+    /// themselves rather than counts of them. <c>FailureReason</c> on those rows is the whole
+    /// stored string, detail included.
+    /// </summary>
+    private sealed record HealthBait(Guid ProjectId, IReadOnlyList<EntryHealthRow> Buckets);
 
     private static IEnumerable<(Type Type, string Where)> SignatureTypes(MemberInfo member)
     {
@@ -316,6 +420,7 @@ public sealed class PlatformPrivacyTests(TerenTestApp app) : ApiTestBase(app)
     [InlineData("/api/platform/companies")]
     [InlineData("/api/platform/users")]
     [InlineData("/api/platform/audit")]
+    [InlineData("/api/platform/health")]
     public async Task A_company_admin_is_refused_by_every_platform_route(string route)
     {
         // The mirror of RoleGateTests: the customer cannot see the platform, exactly as the

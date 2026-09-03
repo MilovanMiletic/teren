@@ -115,9 +115,39 @@ public static class EntryEndpoints
         if (existing is not null)
         {
             // Replay. The first declaration wins — an entry is evidence, and a retry is not a
-            // licence to rewrite what was already accepted.
+            // licence to rewrite what was already accepted. Note where this sits: BEFORE the
+            // supersedes check below, so a replay can neither add a link, change one, nor drop
+            // one, and pays for no extra query in the process. What the server holds is the
+            // answer; the body of a retry is not consulted at all.
             logger.LogInformation("Entry {EntryId} replayed; returning current state.", entryId);
             return TypedResults.Ok(await ToResponseAsync(db, existing, ct));
+        }
+
+        if (request.SupersedesEntryId is { } supersededId)
+        {
+            // Tenant-scoped by the global query filter and narrowed to the site this same request
+            // names, so there are two things this cannot become: a link into another company's
+            // diary — which `EntryResponse.SupersedesEntryId` would then hand back to a caller who
+            // has no business holding that id — and a correction of a day on one site recorded
+            // against another, whose report goes to a different client's inbox. The foreign key
+            // enforces neither: `fk_entry_supersedes_entry` is satisfied by any entry row there is.
+            //
+            // 404 rather than a 403 or a 409, and the doctrine is ARCHITECTURE §7's: this answer
+            // depends on which row was named, so it answers existence — and existence is asked at
+            // the granularity the request itself uses, a day of THIS site. An entry of another of
+            // the caller's own sites is therefore reported as absent too; the detail says which
+            // site was searched so whoever reads a log is not left guessing.
+            //
+            // Deliberately no state condition. The reasoning is on CreateEntryRequest, and the
+            // short version is that the one correction ARCHITECTURE §6 explicitly asks for
+            // (`superseded_after_send`) is of an entry that is `confirmed` and not `reported`.
+            if (!await db.Entries.AnyAsync(
+                    e => e.Id == supersededId && e.ProjectId == projectId, ct))
+            {
+                return ApiProblems.NotFound(
+                    $"Entry {supersededId} was not found in project {projectId}, "
+                    + "so this entry cannot declare that it supersedes it.");
+            }
         }
 
         var now = DateTime.UtcNow;
@@ -134,6 +164,10 @@ public static class EntryEndpoints
             Latitude = request.Latitude,
             Longitude = request.Longitude,
             GpsAccuracyM = request.GpsAccuracyM,
+            // The link lives on the correction and the superseded row is never touched — which is
+            // not merely tidy: past `reported_at` that row cannot be written at all, by the
+            // application guard and by `trg_entry_guard_update` underneath it.
+            SupersedesEntryId = request.SupersedesEntryId,
             // The authenticated device, always — never anything the body claimed. entry.device_id
             // is provenance on an evidence row, and the one thing a phone must not be able to say
             // is which phone recorded the day. The same rule, and the same reason, for the author:
@@ -832,6 +866,8 @@ public static class EntryEndpoints
                 UtcStamp.Of(e.CreatedAt),
                 UtcStamp.OrNull(e.ReceivedAt),
                 UtcStamp.OrNull(e.ReportedAt),
+                e.FailureReason,
+                e.SupersedesEntryId,
                 mediaByEntry[e.Id].Count(m => m.Kind == MediaKind.Photo),
                 mediaByEntry[e.Id].Any(m => m.Kind == MediaKind.Audio)))
             .ToList();

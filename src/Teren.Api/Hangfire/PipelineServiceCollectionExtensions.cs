@@ -105,6 +105,7 @@ public static class PipelineServiceCollectionExtensions
         {
             services.AddSingleton<IPipelineQueue, DisabledPipelineQueue>();
             services.AddSingleton<IInviteQueue, DisabledInviteQueue>();
+            services.AddSingleton<IJobQueueDepth, DisabledJobQueueDepth>();
             return services;
         }
 
@@ -132,6 +133,7 @@ public static class PipelineServiceCollectionExtensions
 
         services.AddSingleton<IPipelineQueue, HangfirePipelineQueue>();
         services.AddSingleton<IInviteQueue, HangfireInviteQueue>();
+        services.AddSingleton<IJobQueueDepth, HangfireJobQueueDepth>();
 
         return services;
     }

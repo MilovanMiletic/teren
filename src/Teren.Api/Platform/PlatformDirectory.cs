@@ -46,7 +46,12 @@ namespace Teren.Api.Platform;
 public sealed partial class PlatformDirectory(
     TerenIdentityDbContext db,
     IMailSender mail,
-    IInviteQueue invites)
+    IInviteQueue invites,
+    // The health page's queue depth (PlatformDirectory.Health.cs). A seam and not `JobStorage`,
+    // because Hangfire:Enabled=false registers no Hangfire services and the container validates
+    // dependencies at start-up — the first cut of IInviteQueue injected IBackgroundJobClient here
+    // and took the whole host down, 611 tests failing at once, none of them about invites.
+    IJobQueueDepth queue)
 {
     // The link's lifetime moved to AdminInviteJob with the minting. This class no longer builds
     // a URL or holds a token, so it needs neither Auth:AppUrl nor a TimeSpan.

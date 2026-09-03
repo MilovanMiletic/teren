@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore;
 using Teren.Api.Tests.Infrastructure;
 using Teren.Core.Entities;
+using Teren.Core.Platform;
 using Teren.Infrastructure.Persistence;
 
 namespace Teren.Api.Tests;
@@ -28,10 +29,24 @@ namespace Teren.Api.Tests;
 public sealed class IdentityModelTests(TerenTestApp app) : ApiTestBase(app)
 {
     /// <summary>
-    /// Everything the platform path may see. <c>Project</c> is deliberately <b>not</b> here yet:
-    /// §6 admits it by the founder's decision of 2026-08-30 so the platform health page can name a
-    /// site, but nothing reads it before D4, and adding it there is meant to be a visible,
-    /// deliberate widening that turns this list red rather than an afternoon's convenience.
+    /// Everything the platform path may see.
+    /// <para>
+    /// <b>This list went red on 2026-09-03 and was widened by three types, deliberately</b> — the
+    /// visible, arguable widening the previous version of this comment said it was meant to force.
+    /// <c>GET /api/platform/health</c> cannot say <em>what is failing and whose</em> without
+    /// reading <c>entry</c> and <c>report</c>, and it cannot name a site without
+    /// <c>project</c>. §6 admits <see cref="Project"/> by the founder's decision of 2026-08-30
+    /// (<c>{id, company_id, name}</c> and nothing else); the two health rows are the narrowest
+    /// thing that answers the rest.
+    /// </para>
+    /// <para>
+    /// The claim to make out loud is therefore the narrowed one and not the old absolute:
+    /// <em>Teren staff can see which companies and sites exist and what is failing; they cannot
+    /// read a transcript, view a photograph, or open a report.</em>
+    /// <see cref="The_platform_path_sees_four_columns_of_entry_and_four_of_report"/> is what makes
+    /// the second half mechanical rather than editorial, and
+    /// <see cref="Asking_the_identity_context_for_an_entry_throws"/> is unchanged.
+    /// </para>
     /// </summary>
     private static readonly string[] IdentityModelTypes =
     [
@@ -44,8 +59,80 @@ public sealed class IdentityModelTests(TerenTestApp app) : ApiTestBase(app)
         nameof(AppUser),
         nameof(Company),
         nameof(Device),
+        // The health page's three (2026-09-03). Keyless four-column read-throughs of `entry` and
+        // `report`, and the project's name. NOT Entry/Media/Report themselves — those three still
+        // throw, which is the whole of layer 3.
+        nameof(EntryHealthRow),
         nameof(PasswordToken),
+        nameof(Project),
+        nameof(ReportHealthRow),
     ];
+
+    /// <summary>
+    /// The columns of the evidence tables the platform model can reach, pinned exactly.
+    ///
+    /// <para>
+    /// <b>This test is the price of the widening above, and it is the guard that replaces the
+    /// absolute claim.</b> "There is no <c>Entry</c> in the model" was a sentence a reader could
+    /// check in one line. "There is a four-column read-through of <c>entry</c>" is only as strong
+    /// as the four columns, so the four are written down here: a new property on
+    /// <c>EntryHealthRow</c> — <c>RawTranscript</c>, <c>Structure</c>, an object key — is mapped by
+    /// convention the moment it is declared, and it turns this red rather than shipping.
+    /// </para>
+    /// <para>
+    /// Read off the design-time model, and <b>keyed on the table name</b> rather than on the CLR
+    /// type, which is what makes it exhaustive: a <em>second</em> keyless type mapped to
+    /// <c>entry</c> next year is caught by the same assertion, because the question asked is "what
+    /// can this model select from the table <c>entry</c>", not "what does this one class hold".
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void The_platform_path_sees_four_columns_of_entry_and_four_of_report()
+    {
+        using var identity = App.CreateIdentityDbContext();
+        var designTimeModel = identity.GetService<IDesignTimeModel>().Model;
+
+        ColumnsOf(designTimeModel, "entry").ShouldBe(
+            ["company_id", "failure_reason", "project_id", "status"],
+            "the platform model's view of `entry` must stay counts and states. A transcript, a "
+            + "structure or an object key here is Teren staff reading a customer's diary, and the "
+            + "narrowed privacy claim (plan §6) would no longer be true.");
+
+        ColumnsOf(designTimeModel, "report").ShouldBe(
+            ["company_id", "failure_reason", "project_id", "status"],
+            "`delivery_detail` and `recipients` are the two that will look harmless: the first is "
+            + "the relay's own sentence about a named inbox and the second is the inbox.");
+
+        // And the project: its name is admitted, its address and coordinates are not.
+        ColumnsOf(designTimeModel, "project").ShouldBe(["company_id", "id", "name"]);
+    }
+
+    private static string[] ColumnsOf(IModel model, string table) =>
+        [.. model.GetEntityTypes()
+            .Where(t => t.GetTableName() == table)
+            .SelectMany(t => t.GetProperties())
+            .Select(p => p.GetColumnName())
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(name => name, StringComparer.Ordinal)];
+
+    /// <summary>
+    /// Anti-vacuity for the pin above: it has to be capable of seeing a column that is not on the
+    /// list. Proven against the <em>evidence</em> model's own mapping of the same table, which is
+    /// the full set — if <c>ColumnsOf</c> were returning nothing, or ignoring the table argument,
+    /// this would fail.
+    /// </summary>
+    [Fact]
+    public void The_column_pin_can_actually_see_a_column_it_would_reject()
+    {
+        using var db = App.CreateDbContext(TestIds.CompanyA);
+        var evidenceModel = db.GetService<IDesignTimeModel>().Model;
+
+        var columns = ColumnsOf(evidenceModel, "entry");
+
+        columns.ShouldContain("raw_transcript");
+        columns.ShouldContain("structure");
+        columns.Length.ShouldBeGreaterThan(4);
+    }
 
     private static readonly string[] EvidenceModelTypes =
     [
@@ -154,6 +241,20 @@ public sealed class IdentityModelTests(TerenTestApp app) : ApiTestBase(app)
 
         var device = designTimeModel.GetEntityTypes().Single(t => t.ClrType == typeof(Device));
         device.IsTableExcludedFromMigrations().ShouldBeFalse();
+
+        // The health page's three additions read tables TerenDbContext owns, so all three must be
+        // excluded too. Without this, the next `dotnet ef migrations add --context
+        // TerenIdentityDbContext` would emit CREATE TABLE for project and for two keyless copies
+        // of entry and report — and it would only be discovered on a box that had already
+        // migrated, which is every box.
+        foreach (var type in new[]
+        {
+            typeof(Project), typeof(EntryHealthRow), typeof(ReportHealthRow),
+        })
+        {
+            designTimeModel.GetEntityTypes().Single(t => t.ClrType == type)
+                .IsTableExcludedFromMigrations().ShouldBeTrue(type.Name);
+        }
     }
 
     [Fact]

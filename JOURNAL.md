@@ -12,6 +12,121 @@ Entry format:
 
 ---
 
+## 2026-09-03 (evening) — corrections, a health endpoint, and a Docker trap that looked like data loss
+
+Founder: *"Do what is left in code first."* The four small items standing between here and M1 planning.
+**Backend done and reviewed; the frontend half was stopped mid-item and is parked in `stash@{0}`.**
+
+### Backend — accept-with-fixes, both gating items closed, 1054 → 1091 tests
+
+1. **`supersedes_entry_id` on `CreateEntryRequest`.** It was on the entity and on `EntryResponse` from
+   the start and never on the request, so `System.Text.Json` dropped it in silence and a correction
+   button would have written an entry that *claimed* to be a correction and linked to nothing. Three
+   decisions, all in the XML doc and now in ARCHITECTURE §7: **any target state** is accepted (an entry
+   parked `confirmed` with `superseded_after_send` has had its report delivered and can never get
+   another, so a reported-only rule would forbid the one correction the server itself asks for — and a
+   4xx is *terminal* in the outbox, so refusing abandons a captured day); **chains allowed**, cycles
+   impossible by construction; **same project, not merely same company**, because
+   `fk_entry_supersedes_entry` accepts any entry row and a cross-project link would put one client's
+   day inside another's report. The check sits **after** the replay check, so a replay is answered from
+   what the server holds and the body is never consulted.
+2. **`failure_reason` on `EntryListItemResponse`** — one field, so a list row stops offering a door
+   that lands on a dead end. Proven with a real pipeline failure, not a planted string.
+3. **`GET /api/platform/health`** — the last endpoint F7's health page needed.
+4. **The owed M3 proof.** It came back positive and the old confound is explained: with **only**
+   `SealDeliveredAsync`'s hash comparison disabled, `Nothing_automatic_resolves_a_delivered_report_whose_entry_moved_on`
+   is the single red of twelve. The custody check is load-bearing, and was unproven until now.
+
+**The health endpoint required widening the identity model, and that is the judgement to remember.**
+`PlatformDirectory` resolves only `TerenIdentityDbContext`, which has no `Entry`/`Report`, and raw SQL
+is forbidden on that path by `PlatformRawSqlTests` — the guard working, not an obstacle to route
+around. So the model gained **three types and no more**: `Project` as `{id, company_id, name}` with
+seven properties `Ignore()`d (an address is *not selectable*, not merely unselected), and
+`EntryHealthRow`/`ReportHealthRow`, **keyless** four-column read-throughs of `entry` and `report`.
+`db.Set<Entry>()` still throws, so §12's sentence stays literally true — but the barrier is now **"no
+evidence content"** rather than **"no evidence tables"**, and that re-wording is the honest part. SQL
+views (bucket grain, strictly stronger) were considered and rejected: they cost a migration in the
+*evidence* history, the one carrying invariant 2's triggers, for a marginal gain over a tested column
+pin. All three types are `ExcludeFromMigrations()` and `has-pending-model-changes` is clean on both
+histories.
+
+### The two gating finds, and both are about a guard that could not see
+
+**G1 — the health screen reported the wrong thing about the one state that most needs reporting.**
+An entry's `failure_reason` legitimately carries **report-side** codes: `EntryReporter.FailAsync` and
+`RecordSupersededAfterSendAsync` write them there deliberately, "in both places a person might look",
+and `superseded_after_send` exists **nowhere else at all**. The tally folded entry reasons through the
+*pipeline* vocabulary alone, so every delivery failure was counted twice — once correctly, once as
+`unrecognised` — `NeedsAttention` double-counted it, and the one terminal state whose documented
+remedy is "resolve by hand" was anonymous on the screen whose whole job is saying what is wrong.
+Fixed by folding entry buckets through `Pipeline ∪ Delivery`; `NeedsAttention` dropped
+`DeliveryFailures.Sum` as a term and its doc now says outright that this is a severity **signal, not a
+partition** — the terms overlap and undercounting is the only failure mode that matters, because that
+is what would let the 500-site cap drop a site somebody needed to see. *The existing vocabulary test
+could not see it: it checked what was in the sets, never which set a bucket was folded through.*
+
+**G2 — the widening opened a hole in the guard that exists for exactly this, and the guard did not
+know.** `PlatformPrivacyTests.Forbidden` listed `Entry`, `Media` and `Report`. The reviewer added
+`public IReadOnlyList<EntryHealthRow> Peek() => [];` to `PlatformDirectory` and **all eleven privacy
+tests stayed green** — and `EntryHealthRow.FailureReason` is the full `"{code}: {detail}"` string with
+a provider's own words folded in, the hazard this very increment closes at the response boundary. Both
+new types are on the list now, and in the anti-vacuity test too. ***A widening of the model is also a
+widening of what the guard must forbid, and no guard can infer that.***
+
+### The lesson worth carrying: a substituted seam proves nothing about shipped code
+
+Two mutations **survived** the implementer's first pass. One was alphabetical luck in an ordering
+assertion. The other is the one to remember: the fixture *substitutes* `IJobQueueDepth`, so every
+"the queue reads unknown when Hangfire is off" assertion was really an assertion about the fake —
+turning the shipped `DisabledJobQueueDepth` into a lie left the whole suite green. A test now asserts
+the production class directly. *Sibling of this morning's microtask finding: both are specs that
+could not fail.*
+
+### The Docker trap — reported as data loss, and it was not
+
+The implementer reported the founder's dev database and MinIO volumes destroyed, three hand-made
+accounts and a report row gone, and stated it had restored the demo state with `migrate` + `seed`.
+**Checked rather than relayed, and the conclusion was wrong.**
+
+There are **two Docker engines on this machine.** The context is `desktop-linux` (Docker Desktop) and
+that is where the founder's data has always lived — `teren_postgres-data` created 2026-08-29, 66 MB of
+PG 17. The agent's commands went to the native `default` engine, which had no Teren containers at all,
+so `docker compose ps -a` came back **empty** — which reads exactly like a wiped stack — and
+`docker compose up -d` then built a **parallel world** there with brand-new volumes. The "freshly
+initialised volumes at 11:37" were new volumes on a different daemon.
+
+A throwaway container against the original volume read `entries=3 reports=1 users=5 devices=7
+projects=3` — precisely what it held before. Nothing was lost. The duplicate stack was stopped, the
+original brought back up, and the founder's data confirmed on his default context.
+
+***With two engines, `docker compose ps` returning nothing means "wrong engine", not "your stack is
+gone" — and `up -d` in that state silently builds a second one.*** Fifth variant of "it doesn't work"
+meaning "it isn't running", and the first where an agent's own recovery step was the destructive-
+looking act. The stopped duplicate containers and their seed-only volumes are still on the native
+engine; `docker compose --context default down -v` clears them.
+
+### Where the frontend half stands — `stash@{0}`
+
+Stopped mid-item on the founder's word, and **parked rather than left half-built**: `git stash pop`
+restores 26 modified files plus six new ones (`core/capture/correction-route.ts`,
+`correction.service.ts`, and the four `features/platform/health-*` files). Two things were wrong with
+it at the moment it stopped, both recorded in the stash message: **`health-page.css` was never
+written**, so `ng build` failed with `NG2008`; and `PlatformGateway` gained `getHealth()` while the
+**inline test doubles in spec files lagged it**, so the suite would not compile — `platform-gateway-double.ts`
+was updated but `WatchedGateway` and two object literals were not. *A tree that builds while its specs
+cannot compile is the worst state to hand over, which is why this is a stash and not a commit.*
+
+**Saved state, verified by execution:** `1091/1091` backend, `1740/1740` PWA in 89 files, both builds
+clean, `stash@{0}` holding the frontend work. The backend increment and the doc edits are
+**uncommitted** — the founder's commit authorisation covered the sign-out increment only.
+
+**Still owed on this increment, for the founder:** the **report does not name what it supersedes**. A
+correction whose PDF does not reference the document it replaces is weak evidence in a dispute, and
+the client has already received the wrong one. Flagged rather than invented, because it changes the
+artefact a customer's client reads.
+
+---
+
 ## 2026-09-03 (later) — a revoked phone signs itself out
 
 Founder: *"If i remove the phones of a worker as a company_admin, and before that worker was logged in

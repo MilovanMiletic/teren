@@ -142,6 +142,46 @@ before being presented as done; gating fixes go back to the implementer and are 
   **F10** (`/company/profile`, 2026-09-02, unreviewed). **F3's rejection is discharged.**
   **D5 and the log viewer are done (2026-09-02).** What is left of the identity work is F7's
   **health page**, and nothing now blocks it.
+- **`docker compose ps` returning nothing can mean "wrong engine", not "your stack is gone"
+  (2026-09-03) — and the recovery step is what destroys something.** This machine runs **two Docker
+  engines**: the context is `desktop-linux` (Docker Desktop), and that is where the founder's data
+  lives (`teren_postgres-data`, created 2026-08-29). An agent working against the native `default`
+  engine saw `docker compose ps -a` list **nothing**, read it as a wiped stack, ran `docker compose
+  up -d`, and **built a parallel stack with brand-new volumes on the other daemon** — then reported
+  the founder's database and MinIO destroyed, three accounts and a report row lost. **Nothing was
+  lost.** A throwaway container against the original volume read `entries=3 reports=1 users=5
+  devices=7 projects=3`, exactly its previous contents. **Check `docker context show` and
+  `docker volume inspect <v> --format '{{.CreatedAt}}'` before believing a loss report**, and prefer
+  `DOCKER_CONTEXT=` over changing the global context. *Fifth variant of "it doesn't work" meaning "it
+  isn't running", and the first where the agent's own fix looked like the damage.*
+- **A claim proven only through a substituted seam is not proven about the shipped code
+  (2026-09-03).** The test fixture substitutes `IJobQueueDepth`, so every "the queue reads unknown
+  when Hangfire is off" assertion was really an assertion about the fake: turning the **shipped**
+  `DisabledJobQueueDepth` into a lie left the whole suite green. A test now asserts the production
+  class directly. *Sibling of the same day's microtask finding — both are specs that could not fail.
+  When a seam is substituted in tests, something must also assert the real implementation.*
+- **A widening of the model is a widening of what the privacy guard must forbid, and the guard cannot
+  infer it (2026-09-03).** `GET /api/platform/health` needed entry and report aggregates, which
+  `TerenIdentityDbContext` could not see, so it gained `Project` (three columns, seven properties
+  `Ignore()`d) plus **keyless** four-column read-throughs `EntryHealthRow`/`ReportHealthRow`.
+  `db.Set<Entry>()` still throws, so §12's sentence stayed literally true — **the barrier is now "no
+  evidence content", not "no evidence tables"** — but `PlatformPrivacyTests.Forbidden` still listed
+  only `Entry`/`Media`/`Report`, so a `PlatformDirectory` member returning `EntryHealthRow` (whose
+  `FailureReason` carries the provider's own words) passed **all eleven privacy tests**. Both types
+  are on the list now. ARCHITECTURE §12 carries the reasoning, the rejected SQL-view alternative and
+  two residual risks: that context has **no query filters**, so `Projects` there is cross-tenant and a
+  future company-scoped handler could read it unnoticed; and a `Project` materialised from it has
+  `Address` reading as *absent* rather than *not loaded* — the F10 shape.
+- **`entry.failure_reason` carries codes from BOTH vocabularies, and forgetting it hid the one state
+  that matters (2026-09-03).** `EntryProcessor.ParkAsync` writes a `ProcessingFailure`;
+  `EntryReporter.FailAsync` and `RecordSupersededAfterSendAsync` write a **`ReportFailure`** to the
+  same column deliberately, and **`superseded_after_send` exists nowhere else at all**. The health
+  tally folded entry reasons through the pipeline vocabulary alone, so every delivery failure was
+  counted twice — once right, once as `unrecognised` — and that one terminal state was anonymous on
+  the screen whose job is saying what is wrong. Entry buckets fold through `Pipeline ∪ Delivery` now,
+  and `NeedsAttention` is documented as a severity **signal, not a partition**: the terms overlap on
+  purpose, and undercounting is the only failure mode that matters because it is what lets the
+  500-site cap drop a site somebody needed to see.
 - **A phone the server refuses now signs itself out (F14, 2026-09-03) — and this REVERSES a decision
   this file used to state as an invariant.** Plan §10.3 and F8 said revocation is "never a locked
   door"; the founder revoked a worker's phone, watched it carry on exactly as before, was shown that
@@ -324,14 +364,23 @@ before being presented as done; gating fixes go back to the implementer and are 
   the record**, sending `described_verbatim: true` with the transcript in `notes`; the report then
   renders the day as prose, marked as his words rather than extracted data. `extracted` stays null
   and `corrected` records approval-as-is, so the eval triple can still tell approval from typing.
-- **Next, in order** (D5 and the log viewer shipped 2026-09-02; this bullet named them as "next" for
-  a day after they existed): **`supersedes_entry_id` on `CreateEntryRequest`** — the field is on the
-  *response* and on the entity, so ARCHITECTURE §6's documented answer to a superseded record is
-  still not something a phone can do, and the frontend's honest dead-end screen is waiting on it —
-  plus `failure_reason` on `EntryListItemResponse`, which removes a wasted tap in the archive list.
-  Then **F7's last screen, the health page**, which nothing blocks. **Then B3a for real**: a VPS, a
-  domain, a stable **https** origin. That purchase is what unblocks the whole real-device debt and
-  both unmet clauses of M0's definition.
+- **Next, in order.** The **backend** halves of the last four code items are ☑ and reviewed
+  (`supersedes_entry_id` on the create request, `failure_reason` on the list row,
+  `GET /api/platform/health`, the M3 proof) — **uncommitted in the working tree**, verified at
+  1091/1091. What is left of them is the **frontend half, parked in `stash@{0}`**: the correction
+  gesture, the list row's use of `failure_reason`, and `/platform/health` (F7's last screen). Two
+  known faults in that stash — `health-page.css` was never written (`ng build` fails `NG2008`) and
+  the **inline** `PlatformGateway` doubles in spec files lag `getHealth()` so the suite will not
+  compile; `platform-gateway-double.ts` is already updated but `WatchedGateway` and two object
+  literals are not. *One constraint the review handed that work: the correction gesture must inherit
+  `project_id` from the original and never offer a site choice, because a cross-site target is a 404
+  and a 4xx is terminal in the outbox — it would abandon a captured day rather than bounce it.*
+  **Then B3a for real**: a VPS, a domain, a stable **https** origin. That purchase is what unblocks
+  the whole real-device debt and both unmet clauses of M0's definition.
+- **Open founder decision from 2026-09-03: the report does not name what it supersedes.** A
+  correction whose PDF does not reference the document it replaces is weak evidence in a dispute, and
+  the client has already received the wrong one. Flagged rather than invented, because it changes the
+  artefact a customer's client reads.
 - **Demo seed is now three sites** (`d3a0c1f0-5b8e-4f1a-9c62-` + `000000000002/3/4`), and those ids
   are a **contract** with `web/.../core/projects/project-source.ts`: if they drift, every
   `POST /api/entries` 404s and captured entries can never leave the phone. See ARCHITECTURE §6.
@@ -487,14 +536,16 @@ before being presented as done; gating fixes go back to the implementer and are 
   Linux shell.** `action-wiring.spec.ts` built its file map with `relative()`, which answers with
   backslashes here, so both hand-written checks failed at their first entry. `shortPath` normalises
   `sep` now. *If a spec fails only on one OS, suspect the path separator before the code.*
-- **Suites: 1740 PWA specs** (89 files) and **1054 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
+- **Suites: 1740 PWA specs** (89 files) and **1091 backend tests** (`tests/Teren.Api.Tests`, xunit.v3 + Shouldly
   + Testcontainers over real Postgres, ~66 s; PdfPig in tests only, so report assertions read text
   back out of the rendered PDF). `dotnet test` needs Docker running.
   *The figures here were stale before 2026-08-30 (403/447 recorded against an actual 436/476) —
   both were re-measured off the tree, not carried forward.*
-- **Check at session start:** the tree is green — **1740 PWA specs re-verified by execution
-  2026-09-03** (89 files, `ng build` with zero warning lines) and **1054 backend tests**, that figure
-  reported by the 2026-09-03 coordinator rather than measured again since. `dotnet build` succeeds
+- **Check at session start:** the tree is green — **1740 PWA specs and 1091 backend tests, both
+  re-verified by execution 2026-09-03** (89 spec files, `ng build` with zero warning lines,
+  `dotnet build -c Release` succeeding). **`git stash list` is not empty and that is deliberate:**
+  `stash@{0}` holds the unfinished frontend half of the corrections/health increment — see the
+  2026-09-03 (evening) JOURNAL entry before popping it. `dotnet build` succeeds
   with **one** warning: `CS9107` in `DemoIdentitySeedTests.cs:400`. **It is pre-existing** — confirmed by
   building a worktree at `a42adaf` — so the long-standing "0 warnings" claim in this file was simply
   wrong. Do not go hunting for it in your own diff.
