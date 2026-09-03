@@ -19,11 +19,17 @@
 # exists costs nothing. Secrets never touch the repository: `.env` is written into the runner's
 # checkout and the runner is destroyed after the job.
 #
-# KNOWN SEAM, must be fixed before the first real run (JOURNAL 2026-09-02): deploy/web.Dockerfile
-# still substitutes a device-token placeholder that the identity work removed from
-# environment.ts, and stops with FATAL when TEREN_DEVICE_TOKEN is anything but the committed
-# default. Until that is fixed, leave TEREN_DEVICE_TOKEN at the default in TEREN_DEV_ENV — the
-# token is now only the demo device's server-side credential and the bundle no longer carries one.
+# THAT SEAM IS CLOSED, and this block said the opposite for a day (fixed 2026-09-03).
+# deploy/web.Dockerfile no longer substitutes anything: since D7/F9 the bundle carries no device
+# token and there is deliberately no seam for one, so nothing here stops with FATAL.
+#
+# What replaced it is a live instruction rather than a warning: **leave TEREN_DEVICE_TOKEN EMPTY in
+# TEREN_DEV_ENV.** It is now one demo device's server-side credential, and the value committed in
+# this repository is published — `deploy.sh` warns that anyone who reads the repo would hold a
+# working credential to the demo company on that box. Empty means the host provisions no demo
+# device and every phone activates at `/auth/activate` with a username and a code, which is what
+# the product does anyway. (The advice this block used to give — leave it at the default — is
+# exactly what that warning is about.)
 
 name: Deploy dev
 
