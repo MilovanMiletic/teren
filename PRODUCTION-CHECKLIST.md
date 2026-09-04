@@ -14,7 +14,7 @@ Marking done: tick the box and append `✅ 2026-09-04 — how it was proven` to 
 An item is done when it is *proven*, not when it is written — see `CLAUDE.md` on what "proven"
 means (a green suite is not a proof; a substituted seam is not the shipped code).
 
-**Progress: 7 / 65** — **SECTION 2 (review debt) IS FULLY CLOSED, 2026-09-04**: P10, P11, P11b, P11c, P11d, P12, P13. Reviews *and* fixes, every fix mutation-proven. Backend **1157**, PWA **1911**. Next: **C11 before C9** (§3). *(P11b added 2026-09-04 — see the note above on never renumbering.)*
+**Progress: 8 / 65** — **SECTION 2 (review debt) IS FULLY CLOSED, 2026-09-04**: P10, P11, P11b, P11c, P11d, P12, P13. Reviews *and* fixes, every fix mutation-proven. Backend **1157**, PWA **1911**. Next: **C11 before C9** (§3). *(P11b added 2026-09-04 — see the note above on never renumbering.)*
 
 ---
 
@@ -179,10 +179,17 @@ is the one that changes what the product promises.
       photographs stay immutable; only the generated document is replaced. **A regeneration path that
       quietly re-opened a sealed day would undo invariant 2 through the back door** — write the test
       before the feature.
-- [ ] **P54** `[F]` **Founder's nod needed:** should the regenerated report **say on its face that a
-      photograph was removed, and when**? *"The client holds a document we can no longer reproduce and
-      nothing anywhere says why"* is the failure D9 was written to prevent; this would be a third
-      variant of that band. Not agreed — my proposal, his call.
+- [x] **P54** ✅ **CLOSED as NO, 2026-09-04 (founder):** *"We will remove it. We don't want any trace
+      on it if the company admin decides to remove it."* **The regenerated report says nothing about a
+      photograph having been removed** — no band, no line, no count, nothing a reader could infer it
+      from. Claude proposed the opposite and it was declined; recorded as the founder's call. It is
+      more defensible than it was this morning: the **contractor's** client is outside the product
+      entirely, so Teren is not the custodian of anything he holds, and the document is the owner's to
+      shape before he forwards it.
+      ***This does NOT touch P53.*** The **document** carries no trace; the **act** is still audited —
+      who removed a photo, from which entry, when, with nothing about what it showed. Two different
+      things, and the audit row is what protects the founder if an owner later claims Teren lost his
+      evidence. *Do not let a future session read "no trace" as covering both.*
 - [ ] **P55** Write the amendment into every place invariant 2 is claimed, and check the customer-
       facing wording. **The product now says: raw evidence is never *altered*, and a photograph may be
       *destroyed* by the company that owns it — never by Teren staff.** *Third time in three days a

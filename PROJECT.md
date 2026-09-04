@@ -235,11 +235,15 @@ positioned as *evidence, not the legal diary* (§7, §11).
   - **Report PDFs containing that photo are regenerated without it**, which **breaks the seal on
     purpose**: reports were immutable once sent. The copy already in the client's inbox cannot be
     recalled — nothing can do that — so from that moment the client's document and the server's differ.
-  - ***My open proposal, needing the founder's nod (not yet agreed):*** the regenerated report should
-    **say on its face that a photograph was removed, and when**, and the `report` row should keep both
-    hashes. Not to expose what the photo showed, but because *"the client holds a document we can no
-    longer reproduce, and nothing anywhere says why"* is the failure D9 was written to prevent. The
-    band exists; this is a third variant of it.
+  - ***Claude's proposal — that the regenerated report say on its face that a photograph was removed
+    — was DECLINED (2026-09-04, founder):*** *"We will remove it. We don't want any trace on it if the
+    company admin decides to remove it."* **The regenerated document says nothing** — no band, no
+    line, no count. It is more defensible than it looked when proposed: the **contractor's** client is
+    outside the product entirely, so Teren is not custodian of anything he holds, and the report is
+    the owner's document to shape before he forwards it.
+    ***The document carries no trace; the act is still audited*** (who, which entry, when — never
+    what it showed). Two different things, and a future reading must not collapse them: the audit row
+    is what protects the founder if an owner later claims Teren lost his evidence.
   - **The act is audited, the content is not.** Who removed a photo, from which entry, when — no
     filename, no description, nothing about what it showed. That row is what protects the founder if
     an owner later claims Teren lost his evidence.
