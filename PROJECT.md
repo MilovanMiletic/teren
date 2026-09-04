@@ -67,7 +67,7 @@ These settle future arguments. Changing one is a big deal.
 6. **AI is the mechanism, not the pitch.** The customer buys proof and saved time, not "AI".
 7. **Always demo-ready.** The distributor must be able to pull out his phone and show the app at
    any given moment. Consequences: a permanently seeded demo project with realistic data, the
-   core flow (speak → structured entry → PDF) never broken on the main branch, and demo polish
+   core flow (speak → written daily record → PDF) never broken on the main branch, and demo polish
    prioritized over internal niceties.
 
 ## 6. Constraints — confirmed
@@ -91,13 +91,22 @@ This product is **not**:
 - an ERP, project-management, or scheduling tool
 - a quoting/invoicing tool (reports support billing; we don't bill)
 - a chat app replacing WhatsApp
-- (initially) a legally certified građevinski dnevnik — it produces *evidence and reports*;
-  formal legal-diary compliance is a possible later upsell, pending research
+- **a client portal.** The client's only channel is the emailed daily report (§11, 2026-09-04).
+  There is no login, no link and no web view for anyone outside the contractor's company
+- **a self-serve product.** Every customer is provisioned by the founder or the distributor; there
+  is no signup form and no trial
+- **a billing system.** Invoicing is manual and stays manual — the reports support the
+  contractor's billing, and ours is a faktura and a bank transfer
+- **a native app.** The PWA is the product; a native shell is not a deferred plan, it is not planned
+- **not the legally certified građevinski dnevnik.** It produces *evidence and reports*. The
+  research that was going to decide whether to chase formal compliance is **dropped** (§11,
+  2026-09-04) and the positioning is settled: *evidence, not the legal diary*
 
 ## 8. Success measures
 
-- **Milestone 0 — demo-ready:** the distributor can demo the core flow (speak → structured entry
-  → PDF report) on his phone with seeded demo data.
+- **Milestone 0 — demo-ready:** the distributor can demo the core flow (speak → written daily
+  record → PDF report) on his phone with seeded demo data. *"Structured entry" was the wording until
+  2026-09-04; the record is now prose plus a problems line (§11).*
 - **Phase 1:** one foreman uses it for three weeks without being reminded. Nothing else counts.
 - **Phase 2 `[draft]`:** 3–5 paying pilot sites from the distributor's network; the archive gets
   used in at least one real dispute or client question.
@@ -115,9 +124,107 @@ This product is **not**:
 
 ## 10. Open questions
 
-1. Legal status of electronic site records in Serbia (research task, 1 day).
+None. The last one — the legal status of electronic site records in Serbia — was **closed by
+decision rather than by research** on 2026-09-04: the research is dropped and the product is
+positioned as *evidence, not the legal diary* (§7, §11).
 
 ## 11. Decided
+
+- **The report becomes a day's account, not a form (2026-09-04, founder — the largest product
+  change since the vision was written).** Asked whether the trade should decide the report's field
+  labels, the founder asked the better question back: *"Would it be okay to have everything inside
+  one text box that gets all that was prompted? We just use AI so he can correct and reorder the
+  audio words?"* Yes, and it is a **deletion**, not a build:
+  1. **The report body is AI-tidied prose, plus a highlighted problems line when the day had one.**
+     The model's whole job becomes *correct the words, order them sensibly, surface a problem if one
+     was spoken*. **No work items, no quantities, no materials, no headcount — no structured fields
+     at all**, and therefore no per-trade labels and no per-trade layouts to argue about.
+  2. **Nothing is extracted silently behind the prose.** Two reasons, and the second is the one that
+     settles it: *the transcript is kept forever as raw evidence, so numbers can always be extracted
+     later* — from the stored transcripts, with fresh eyes on what a customer actually wants counted;
+     and **fields nobody sees are numbers no human has confirmed**, which is worse than no numbers,
+     because someone eventually trusts them. Invariant 5 exists precisely because a person approves
+     what the report says.
+  3. **The confirmation screen becomes one editable paragraph** (plus the problem line). He reads
+     exactly what the client will read, fixes a misheard word, sends. Faster than per-field editing —
+     which serves invariant 1 — and the eval signal *improves*: the words he corrects are the words
+     the vocabulary needs, rather than a field mapping.
+  4. **Where the risk went.** Every accuracy failure in this product lived in extraction — the wrong
+     field, the dropped quantity, the invented number. Tidying a transcript is a task the model is
+     near-perfect at. The remaining exposure is unchanged and already known: **the STT mishearing a
+     trade word**, which is what the vocabulary (M2 E1) is for and what the confirmation screen
+     catches.
+  5. **What is honestly lost.** `hidden_work` stops being a structured concept, and ARCHITECTURE §6
+     calls it *"the highest-value evidence in the product — the thing that cannot be proven after the
+     wall closes"*. In prose it survives as words plus the photographs, which is what a court or a
+     client reads anyway; but it is no longer a field anything can key on. Recorded as accepted, not
+     overlooked.
+  6. **`schema_version` earns its keep on day one.** The v1 shape is not migrated: the seeded demo
+     entries and the founder's real ones stay v1 and the renderer keeps rendering them. The new shape
+     is v2. *This is exactly what that column was put there for, arriving sooner than expected.*
+  7. **Provenance stays a claim the document makes about itself.** `described_verbatim` does not go
+     away — it remains the *degraded* case (extraction unavailable, the foreman's raw transcript
+     confirmed as the record). The ordinary case is now AI-tidied prose, and **the report must not
+     let a reader confuse the two**: one is his words untouched, the other is his words rewritten by
+     a machine and approved by him. §6's care about that distinction applies unchanged.
+
+- **Four smaller rulings from the same session (2026-09-04, founder):**
+  1. **Recipient editing and re-sending a past report.** `project.recipients` is already
+     `[{name, email, role}]` and multi-recipient delivery already works — but **nothing in the
+     product can edit it**, because there is no project write route at all. C10's site form gains it,
+     and C9 gains "send this report again to its recipients", which is what the cut client portal was
+     really for: the client's need is *get me that day*, not *let me browse*.
+  2. **iPhone recording is supported.** So the native-shell cut is **conditional, not settled**: the
+     iOS debt stays in M1 (HEIC, what an iPhone actually records — ARCHITECTURE §14 decision 4 — and
+     the offline queue surviving Safari), and iOS is the one place where the PWA bet could still force
+     a native shell. Recorded as the live risk it is.
+  3. **No billing record in the app at all** — not even a paid-until date. Money lives in a
+     spreadsheet; suspension is the `/platform` button that already exists.
+  4. **The founder provisions every customer, and adds the distributor himself.** The seeded first
+     `super_admin` creates the others — so his father gets an account if and when the founder makes
+     one, from inside the product, with no code and no new role.
+
+- **The M2/M3 scope cut (2026-09-04, founder).** The founder walked every remaining milestone item
+  and cut most of them. Nine rulings, authoritative over anything the earlier roadmap said:
+  1. **There is no client-facing web view, and the thing that replaces it points inward.** The
+     outward channel stays exactly what B6 built — **one PDF a day, by email, in the project's
+     language**, unchanged. What was planned as "the client-facing diary" becomes an **internal**
+     surface: **the company admin reads every entry from every worker on every site of his
+     company, in full evidence** — structure, transcript, photos, audio, GPS, weather and the
+     report PDF, not a list of attachments. *The gap this closes is not the client's; it is the
+     owner's. The man who pays could not see his own company's diary at all.*
+  2. **That view is M1, not M2.** The pilot has a foreman *and* an owner, and an owner who cannot
+     read what his man recorded gets nothing out of three weeks.
+  3. **Workers are assigned to sites, and the assignment is a restriction, not a label.** The
+     project picker shows a foreman only his own sites, and the server refuses an entry for any
+     other one. "Which worker works on which site" is then answered by construction rather than by
+     a report, and a day filed against the wrong site stops being possible.
+  4. **The company admin creates and edits his own sites, and assigns workers to them.** This
+     closes a gap nobody had named: **there is no create-project route in the API at all** — sites
+     exist only because `DemoSeeder` writes three fixed rows, so a customer provisioned today could
+     not add the job he wins next week.
+  5. **Staff visibility stays metadata-only; decision 2 stands unchanged.** The founder's first
+     phrasing was "the super admin has view-only access to everything the company has"; shown that
+     this reverses decision 2, deletes eleven privacy tests and changes the sentence the product can
+     say to a customer, he chose the existing barrier. `/platform` keeps counts, dates, names,
+     failures and health, and **no diary content**.
+  6. **No in-app billing.** Manual invoicing — a faktura, a bank transfer, and suspension by hand
+     when someone stops paying. No payment processor, no webhooks, and the processor question is
+     closed rather than open.
+  7. **No self-serve signup and no trial.** Every customer is provisioned by the founder or the
+     distributor: `create-super-admin`, then the company and its `company_admin` from `/platform`,
+     then the invite email.
+  8. **One report layout for every trade; the trade lives in the vocabulary, not in the layout.**
+     The product covers **all trades from the start** — a per-trade canonical word list feeds the
+     Claude extraction call (ARCHITECTURE §9.2) so that *faza* and *tačke* are understood the way
+     *PPR cev 25* is, while a single layout serves plumbing, electrical and general building alike.
+     **The quality loop folds into this and stops being an increment**: the correction triples
+     already being stored are the source of those word lists, reviewed periodically by the founder.
+     No eval harness, no prompt-versioning machinery, and **no "second vertical" milestone** — a new
+     trade is a word list.
+  9. **Dropped outright:** the legal-diary research (the positioning is settled instead — see §7),
+     and the native shell. **Kept:** Serbian onboarding material for the distributor. **M3 is
+     deleted**; two milestones remain, M1 pilot-ready and M2 sellable.
 
 - **The four decisions that were blocking B3a** (2026-09-03, founder):
   1. **SMTP relay: Resend.** Free tier covers the dev environment; ~€20/month when volume needs it.

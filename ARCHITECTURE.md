@@ -497,7 +497,40 @@ The two destructive seams — `IDemoObjectPurge` and `IDemoJobPurge` — are reg
 container **only** when the process was started with `reset-demo`. The running API therefore has
 no injectable way to erase an object or cancel a job at all: no endpoint, no job, no accident.
 
-### Entry structure JSONB (v1)
+### Entry structure JSONB — v2 is prose (2026-09-04), v1 is kept and still rendered
+
+**The founder cut structured extraction out of the product** (PROJECT.md §11, top entry; ROADMAP
+C11). What the model answers with, from v2 onward, is a day's account in words:
+
+```json
+{
+  "schema_version": 2,
+  "narrative": "Nastavljen razvod od kotla do kupatila na drugom spratu, zapadno krilo. Postavljeno oko 40 m PPR cevi 25. Na gradilištu tri vodoinstalatera.",
+  "problems": [
+    { "description": "Čeka se štemovanje od električara" }
+  ]
+}
+```
+
+That is the whole shape. **No `work_done`, no `quantity`, no `materials`, no `headcount`** — the
+model's job is to correct and order the spoken words and to surface a problem if one was spoken.
+The reasoning, and what it costs, is in PROJECT.md §11; the three things to hold on to here:
+
+- **Nothing is extracted silently behind the narrative.** Numbers can always be extracted *later*
+  from the stored transcripts, and a field nobody sees is a number no human has confirmed.
+- **`hidden_work` stops being a structured concept.** The paragraph above once called it the
+  highest-value evidence in the product; in v2 it survives as words plus the photographs. Accepted,
+  not overlooked.
+- **v1 is not migrated.** The seeded demo days and the founder's own real entries stay v1, and the
+  report renderer keeps both paths keyed on `schema_version` — which is precisely what that column
+  was put there for, arriving a good deal sooner than expected.
+
+**Provenance is still a claim the document makes about itself.** There are now *three* kinds of
+body and a reader must never confuse them: **his words tidied by a machine and approved by him**
+(v2, the ordinary case), **his words untouched** (`described_verbatim`, the degraded case below),
+and **v1's sections**. The care the `described_verbatim` notes take about this applies unchanged.
+
+### Entry structure JSONB (v1 — historical, still rendered)
 
 ```json
 {
@@ -980,16 +1013,37 @@ Decisions embedded above, and why:
 - **Canonical-name mapping happens inside this call**: the project vocabulary is passed as
   context and the model is instructed to normalise variants to canonical names. A separate mapping
   stage is only worth building if the evals show the single call failing.
+- **The vocabulary is now per-trade, and it is the *only* place a trade is modelled**
+  (2026-09-04 founder decision, PROJECT.md §11). The product covers all trades from the start, and
+  it does so here rather than in the schema or the report: the word list teaches the call that
+  *faza* and *tačke* are real words in the way *PPR cev 25* is. **There are no per-trade JSONB
+  shapes, no per-trade PDF layouts and no per-trade field labels** — adding a trade is adding a
+  list, and if that ever stops being true the decision is being reversed, not extended.
+- **What this call produces changed the same day (C11): prose, not fields.** The schema it answers
+  in is the v2 shape in §6 — a `narrative` and an optional `problems` list — so the instruction is
+  *correct the words, order them sensibly, surface a problem if one was spoken*, and **never invent,
+  summarise away, or reorganise into categories**. `OutputConfig`/structured outputs stay exactly as
+  above: the shape is smaller, not looser, and the pipeline still never parses hopeful JSON.
+  *Where the accuracy risk went:* it lived in extraction — the wrong field, the dropped quantity, the
+  invented number — and tidying a transcript is a task this model generation is near-perfect at. The
+  exposure that remains is unchanged and already known: **the STT mishearing a trade word**, which is
+  what the vocabulary is for and what the confirmation screen catches.
 - **Failure is never data loss.** If extraction fails after retries, the entry moves to
   `needs_review` with the raw transcript intact and visible. The human still gets his evidence.
 
-### 9.3 The quality loop (free, if we do not throw the data away)
+### 9.3 The quality loop — now a word list, not a harness
 
-Every confirmation produces a **(transcript, extracted, corrected)** triple. Stored in
-`entry.raw_transcript` / `structure` / `corrected`, these become fixtures in `evals/`. Before any
-prompt or model change ships, a console runner replays the fixtures and reports where extraction
-got better or worse. This costs one JSONB column now and is the only thing that makes prompt
-changes safe later.
+Every confirmation produces a **(transcript, extracted, corrected)** triple, stored in
+`entry.raw_transcript` / `structure` / `corrected`. **Scoped down on 2026-09-04** (PROJECT.md §11
+ruling 8): those triples feed §9.2's per-trade vocabulary through a founder-reviewable report of
+what foremen keep correcting — and that is all. **C11 makes the signal cleaner rather than weaker**:
+a foreman now corrects *words in a paragraph*, which is exactly the shape a vocabulary needs, where
+before he corrected a field mapping. One **hand-run** replay script — replay the stored transcripts,
+print what changed against what foremen confirmed — is allowed and is expressly not an increment. **The `evals/` fixture directory, the replay runner
+and prompt versioning are explicitly not being built.** The storage stays exactly as it is, because
+it costs one JSONB column and it is what makes the word list possible at all; what was dropped is
+the machinery on top of it. *If a prompt change ever needs to be proven rather than reasoned about,
+this is where to reopen — the data will be there.*
 
 ---
 
@@ -1362,7 +1416,11 @@ that file has the detail.
 | 8 | ~~Transcript script~~ **Decided 2026-08-29: Latin everywhere.** Azure returns Cyrillic, so the pipeline transliterates once at ingestion and stores `raw_transcript` in Latin | — | Cyrillic→Latin is lossless and deterministic **in that direction** (the reverse is not — `nadživeti` is ambiguous). One tested pure function, idempotent on text that is already Latin, correct on the digraphs љ→lj, њ→nj, џ→dž. **The audio remains the untouched raw evidence** and the transcript can always be regenerated from it, which is what keeps principle 2 honest |
 | 2 | ~~Email provider~~ **Decided 2026-08-29: SMTP (MailKit) behind `IReportDelivery`**; built at B6. ~~Which relay~~ **Decided 2026-09-03: Resend** (free tier for dev, ~€20/month later; Postmark the fallback). `deploy/.env.example` carries the exact settings and the two traps — the FROM domain must be **verified** before anything sends, and Resend's sandbox address delivers only to the account owner, silently no-ops for anyone else | — | Was: the remaining sub-decision. B6 no longer blocks on it — Mailpit locally proves the path, and swapping in a relay is `Reporting:Smtp:*` only. Needed for real before staging sends anything to a real address. Not direct-from-VPS — see §10 |
 | 3 | ~~Extraction model (Sonnet 5 vs Opus 5)~~ **Now a config switch, not an open question (B4)** | after first evals | `Anthropic:Model`, never hardcoded. Ships on `claude-sonnet-5`; moving to Opus 5 is one environment variable and no code. What remains open is only *which* — decided by measured quality on the correction triples (§9.3), never by price |
-| 4 | Audio container on iOS | B2 | Verify what a real iPhone actually records; server-side normalisation if needed |
+| 4 | Audio container on iOS | B2 | Verify what a real iPhone actually records; server-side normalisation if needed. **Raised in weight on 2026-09-04:** the founder chose to support **iPhone recording**, and the native shell is cut *conditionally on this working*. So this row, HEIC, and the offline queue surviving Safari are together the one route by which the PWA bet could still force a native app |
+| 12 | **How the report shows which kind of body it has** | C11 | Three provenances now exist — v2 tidied prose, `described_verbatim` raw transcript, v1 sections (§6) — and a reader must not confuse *his words* with *his words rewritten by a machine and approved by him*. §6's `described_verbatim` notes already print a `Vrsta zapisa` line; v2 needs its own honest sentence, and it is customer-visible copy in the founder's voice |
 | 5 | ~~QuestPDF licence tier~~ **Decided 2026-08-29 (B6): Community**, declared in code (`QuestPDF.Settings.License`) | revisit before USD 1M revenue | Terms re-read at adoption and the old note here was wrong in kind — it is a source-available *commercial* licence, not MIT. Free under USD 1M annual gross revenue, consolidated. See §1 |
 | 6 | ~~PDF typography~~ **Decided 2026-08-29 (B6): Lato**, which ships inside the QuestPDF package and therefore travels with the app | — | Covers Serbian Latin in full and serves the English template unchanged. `UseEnvironmentFonts` is **off** so the founder's Windows machine and a Hetzner container render identically, and `CheckIfAllTextGlyphsAreAvailable` is forced **on** (QuestPDF enables it only under a debugger) so a glyph the font cannot draw throws instead of becoming a placeholder box in a PDF already in an investor's inbox |
 | 7 | Serbian copy review | B5 | Translations are written by Claude and **must be reviewed by the founder** — a native check on trade vocabulary, not just grammar |
+| 9 | **Worker↔project assignment** — join table, or a column on `app_user`? | C10 | A worker can be on several sites at once (that is the normal case on a small crew), so it is a **join**, not a column. Open sub-questions: whether an assignment is soft-deletable or hard, and what happens to a worker's **existing** entries on a site he is unassigned from — the answer must be *nothing*, because entries are evidence (principle 2), so the assignment gates **writing** and never **reading history** |
+| 10 | **Who may read a company's entries and media** | C9 | Both `GET /api/entries` and the media read path (§8) authenticate a **device** bearer today. C9 needs a `company_admin` bearer to read everything in his company. This widens the read surface but not the tenancy model — the query filters already scope by company. **Do not solve it by handing the admin a device token**, and do not reach for presigned GETs: §8 refused those for site photographs on purpose |
+| 11 | **Where the trade is recorded** | M2 E1 | The trade selects a vocabulary (§9.2) and nothing else. Company-level is one value per customer and wrong for a firm that does both plumbing and electrics; project-level is one more field on the site form C10 is building anyway. **Leaning project-level, defaulting from the company.** Decide when E1 starts, not before |

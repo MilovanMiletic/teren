@@ -6,7 +6,7 @@ Technical detail lives in `ARCHITECTURE.md`.
 Status legend: ☐ not started · ◐ in progress · ☑ done · ⏸ blocked (reason given)
 `[F]` = requires founder hours (nobody else can do it).
 
-Last updated: 2026-09-03.
+Last updated: 2026-09-04.
 
 ---
 
@@ -26,7 +26,8 @@ Last updated: 2026-09-03.
 
 ## Milestone 0 — Demo-ready (the money path)
 
-**Goal:** the distributor can pull out his phone and show: speak → structured entry → PDF report.
+**Goal:** the distributor can pull out his phone and show: speak → written daily record → PDF report.
+*("structured entry" until 2026-09-04 — the record is now prose plus a problems line, PROJECT.md §11.)*
 **Done when:** M0 demo runs end to end on a real phone, with seeded Serbian demo data, without
 the founder touching a terminal.
 
@@ -101,6 +102,9 @@ can be judged from a laptop. See `ARCHITECTURE.md` §13 for the three environmen
 | C6  | ☐ Weekly recap               | Weekly PDF summarising the week's entries                                                                                                         |
 | C7  | ☐ Production deploy          | Running on Hetzner with TLS, automated Postgres backups, error alerting                                                                           |
 | C8  | ☐ `[F]` Pilot onboarding     | A foreman from the distributor's network has it installed, understands it in under five minutes, and the founder has a channel for his complaints |
+| C9  | ☐ The owner's company-wide diary | **Pulled into M1 on 2026-09-04 (founder), and it is the largest remaining piece of app work.** A `company_admin` reads **every entry by every worker on every site of his company**, in full evidence — structure, transcript, photos, audio, GPS, weather and the report PDF — filterable by site, worker and date, at all three device classes. *This is what the "client-facing diary view" became: it points inward, at the man who pays.* Server work: the entry list and the media read path (`GET /api/entries/{id}/media/{mediaId}`) currently answer a **device** bearer only; both need the admin bearer and company scope. Client work: C3's archive and entry-record screens reused behind an admin session, not rebuilt. **Also carries "send this report again to its recipients"** (2026-09-04) — the cut client portal's real purpose was *get me that day*, not *let me browse* |
+| C10 | ☐ Sites and assignments, by the owner | The `company_admin` **creates and edits his company's sites** and **assigns workers to them**. There is **no create-project route in the API at all** today — sites exist only because `DemoSeeder` writes three fixed rows, so a provisioned customer cannot add the job he wins next week. The assignment is a **restriction**: the phone's project picker shows a foreman only his own sites and `POST /api/entries` refuses any other. Touches the data model (a worker↔project join), the project picker's seeded-id contract (`core/projects/project-source.ts`, ARCHITECTURE §6), and the demo seed. **The site form also edits `project.recipients`** — already `[{name, email, role}]` with multi-recipient delivery working, and today **nothing in the product can change it**, so a client who changes email cannot be reached |
+| C11 | ☐ The report becomes a day's account | **Do this before C9 — it changes the shape C9 renders, and it deletes more code than it adds.** The extraction call answers prose + an optional problems line (`schema_version: 2`); the report body renders that instead of sections; the confirmation screen becomes **one editable paragraph** plus the problem line. **v1 entries are not migrated** — the seeded demo days and the founder's real ones stay v1 and the renderer keeps both paths. `described_verbatim` survives as the *degraded* case, and the report must never let a reader confuse *his words untouched* with *his words tidied by a machine* (PROJECT.md §11, ARCHITECTURE §6/§9.2) |
 
 ### Identity and profiles (started 2026-08-30)
 
@@ -185,31 +189,57 @@ claim is restated to the sentence the product can defend — see the D4 row and 
 
 ## Milestone 2 — Sellable
 
-**Goal:** it can be sold to someone the founder has never met.
+**Goal:** it can be sold to someone the founder has never met — sold, not self-served.
+**Done when:** the distributor can close a contractor the founder has never spoken to, and the
+founder's only involvement is provisioning the company and issuing an invoice.
 
-- ☐ Accounts, companies, roles (owner / foreman), multi-project
-- ☐ Client-facing web view of a project's diary (the thing that stops the client phoning)
-- ☐ Billing and subscription per site
-- ☐ Per-trade entry templates and report layouts (plumbing/heating first)
-- ☐ Legal-diary research outcome applied (compliance mode or explicit "evidence, not the legal diary" positioning)
-- ☐ Serbian-language onboarding material for the distributor
+> **Scope cut 2026-09-04 (founder).** Most of what stood here is gone: no client-facing web view
+> (the client's channel is the emailed report, and the company-wide view it turned into is **M1**),
+> no in-app billing, no self-serve signup, no second-vertical increment, no legal research, no
+> native shell. **M3 is deleted and what survived of it is here.** PROJECT.md §11 (top entry) is
+> authoritative; §7 carries the boundaries.
 
----
-
-## Milestone 3 — Repeatable
-
-- ☐ Second vertical (electricians, then general builders)
-- ☐ Self-serve signup and trial
-- ☐ Quality loop from correction triples driving prompt and vocabulary improvements
-- ☐ Native shell — only if PWA limits actually block real users
+| #   | Increment                          | Done when                                                                                                                                                                                 |
+| --- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| E1  | ☐ Trade vocabulary, all trades     | A canonical word list per trade feeds the extraction call (ARCHITECTURE §9.2) so the tidying step **gets the words right** — *pipr cevi dvaes 5* → *PPR cev 25*, *faza* and *tačke* recognised rather than smoothed away. Plumbing/heating, electrical and general building each covered. **Since C11 there are no field labels and no layouts to vary**, so this is now purely about vocabulary: a new trade is a word list and no code |
+| E2  | ☐ Vocabulary from the corrections  | The triples the confirmation screen stores are the *source* of E1's lists — a founder-reviewable report of what foremen keep correcting, feeding straight back into the word list. **C11 makes this signal cleaner**: a foreman now corrects *words in a paragraph*, which is exactly what a vocabulary needs, rather than a field mapping. **No eval harness, no prompt versioning** (folded in from the deleted M3). One hand-run replay script is allowed and is not an increment |
+| E3  | ☐ Company provisioning without a shell | The founder creates a customer's company, its `company_admin` and its first sites entirely from `/platform` — no `psql`, no `create-super-admin` beyond his own account. What exists today gets him most of the way; the gap is sites (see C10) and the last manual steps |
+| E4  | ☐ `[F]` Serbian onboarding material for the distributor | He can set a contractor and a foreman up without the founder on the phone. Not code — a short written and visual guide (the surviving non-code item; the legal research is dropped) |
 
 ---
 
 ## Deliberately not building yet
 
 Scheduling, quoting/invoicing, chat, worker time-tracking, BIM/drawing integration, an offline map,
-Android/iOS native apps, anything multi-language beyond Serbian. Each one is a real product on its
-own; none of them is why a contractor would pay in month one.
+anything multi-language beyond Serbian. Each one is a real product on its own; none of them is why
+a contractor would pay in month one.
+
+**Moved here by the 2026-09-04 scope cut** (PROJECT.md §11, §7 — these are not deferred plans, they
+are decisions not to build):
+
+- **A client-facing web view or client portal.** The client's only channel is the emailed daily
+  report. No login, no link, no web view for anyone outside the contractor's company.
+- **In-app billing and subscriptions — and no billing *record* either** (2026-09-04): not even a
+  paid-until date on a company row. Money lives in a spreadsheet; suspension is the `/platform`
+  button that already exists. No payment processor, and the "which processor works for a Serbian
+  company" question is closed rather than open.
+- **Self-serve signup and trials.** Every customer is provisioned by **the founder**; the seeded
+  first `super_admin` creates any other staff account, so the distributor gets one if and when the
+  founder makes him one — from inside the product, no code and no new role (2026-09-04).
+- **Per-trade report layouts, per-trade JSONB shapes, per-trade field labels, a "second vertical"
+  increment.** Since C11 there are no fields and no labels to vary at all; the trade lives only in
+  the vocabulary (M2 E1).
+- **Structured extraction itself** (2026-09-04, C11): no work items, quantities, materials or
+  headcount, and **nothing extracted silently behind the prose**. The transcripts are kept forever,
+  so numbers can be extracted later if a customer ever asks for them.
+- **An eval harness and prompt versioning.** The quality loop survives as a founder-reviewed word
+  list fed by the correction triples (M2 E2), not as tooling.
+- **The native shell.** The PWA is the product. **Conditional on one thing only** (2026-09-04): the
+  founder chose to support **iPhone recording**, so if iOS capture cannot be made to work — HEIC, the
+  audio container (ARCHITECTURE §14 decision 4), the offline queue surviving Safari — this reopens.
+  That is the live risk of the cut, and it is in M1's real-device debt, not here.
+- **The Serbian legal-diary research.** Dropped; the positioning is settled as *evidence, not the
+  legal diary*.
 
 ---
 
@@ -233,8 +263,7 @@ B0 ──► B1 ──► B3 ──────┘
 | ----------------------------------------------- | --------- | --------------------------------------------------------------------- |
 | ~~Email delivery provider~~ **Decided: SMTP (MailKit)** | —         | Open sub-decision: which SMTP relay. Avoid direct-from-VPS — port 25 blocks and IP reputation |
 | STT provider                                    | B4        | Decided by A3, not by opinion                                         |
-| Legal status of electronic site diary in Serbia | M2        | Research task, ~1 day, Claude can do it                               |
 | **A VPS and a domain**                          | **B3a, and therefore M0** | The one purchase the whole milestone waits on. Hetzner + a name; the deploy machinery is built, reviewed and locally proven |
 | **Which SMTP relay**                            | production | Transport decided (MailKit) and D6 proven against Mailpit. Do not send direct from the VPS — port 25 blocks and IP reputation, and the report is the product's face |
-| **The invite/reset impersonation path** (plan §13.6) | before the privacy claim is made to a customer | D4's rejection. Teren staff can mint a working set-password link for a company admin and read his diaries. Decision 2 says that is impossible; today it is impossible everywhere except one deliberate door |
+| ~~**The invite/reset impersonation path**~~ **CLOSED 2026-09-03** (plan §13.6, PROJECT.md §11), and **reaffirmed 2026-09-04**: staff visibility stays metadata-only, so decision 2 stands and the eleven privacy tests stay | — | Was D4's rejection. Teren staff can mint a working set-password link for a company admin and read his diaries. Decision 2 says that is impossible; today it is impossible everywhere except one deliberate door |
 | **1280 artboards for the three auth screens**   | before B3a is shown to anyone | The only screens in the product with no expanded artboard |

@@ -1,7 +1,7 @@
 # Teren — instructions for Claude
 
 Teren is a digital site diary for small Serbian contractors: a foreman takes photos and records a
-voice note (~30 s), the system turns it into a structured, evidence-grade daily record and a PDF
+voice note (~30 s), the system turns it into a written, evidence-grade daily record and a PDF
 report emailed to the client. Solo-founder project, AI-driven development: Claude builds, the
 founder decides and reviews.
 
@@ -30,7 +30,9 @@ or `ROADMAP.md`) — undocumented decisions are lost between sessions.
 - **Storage:** S3-compatible object storage; media uploads go direct via presigned URLs, never
   through the API.
 - **AI:** server-side transcription (provider TBD by real-audio spike); Claude API (Sonnet 5,
-  structured outputs) for transcript → structured entry extraction.
+  structured outputs) for transcript → the day's written record. **Since 2026-09-04 that record is
+  prose plus an optional problems line (`schema_version: 2`), not extracted fields** — see PROJECT.md
+  §11 and ROADMAP C11. The v1 field shape is kept and still rendered, never migrated.
 - **Hosting:** Hetzner VPS + Postgres + object storage.
 - **Dev environment:** docker-compose with Postgres + MinIO.
 
@@ -48,7 +50,7 @@ Product invariants (from PROJECT.md §5 — changing one requires an explicit fo
 5. The confirmation screen is mandatory before any report is sent. Store the user's corrections
    (transcript, extracted, corrected triples) — they are the eval set and training signal.
 6. **Main branch is always demo-ready.** The distributor demos from his phone at any moment:
-   seeded demo project with realistic Serbian data, core flow (speak → structured entry → PDF)
+   seeded demo project with realistic Serbian data, core flow (speak → written daily record → PDF)
    never broken. Do not merge half-finished states of the money path.
 
 Engineering conventions:
@@ -68,7 +70,9 @@ Engineering conventions:
 - Photos: compress client-side (1600 px long edge, JPEG ~80) — extract GPS/metadata **before**
   compressing. Web capture has no EXIF; read GPS via Geolocation API separately.
 - Audio: Opus in OGG, mono, 16 kHz.
-- Entry structure lives in a JSONB column, not rigid schema — fields differ per trade.
+- Entry structure lives in a JSONB column, not rigid schema. *The original reason was "fields
+  differ per trade"; since 2026-09-04 there are no fields — the trade lives only in the extraction
+  vocabulary, and the column now holds prose. `schema_version` is what lets v1 and v2 coexist.*
 - Pick AI models for quality, not cost — AI COGS are negligible vs. subscription price
   (~€0.30/site/month against €30–80 revenue). No cost-optimization machinery.
 - Prefer boring solutions: polling over SignalR, one process over services, until proven needed.
@@ -127,6 +131,25 @@ and `teren-screen-design` (Fable). **Every implementation increment goes through
 before being presented as done; gating fixes go back to the implementer and are re-proven.**
 
 ## Current state (update as it changes)
+
+- **THE SCOPE WAS CUT HARD ON 2026-09-04, and the biggest change is that THE REPORT IS NO LONGER A
+  FORM.** PROJECT.md §11's two top entries are authoritative. The report body becomes AI-tidied prose
+  plus a highlighted problems line; **structured extraction is gone and nothing is extracted silently
+  behind the prose** (the transcripts are kept forever, so numbers can be extracted later, and a
+  field nobody sees is a number no human confirmed). The confirmation screen becomes one editable
+  paragraph. **v1 entries are never migrated** — the demo days and the founder's real ones stay v1 and
+  the renderer keeps both paths on `schema_version`. `described_verbatim` survives as the *degraded*
+  case, so three provenances now exist and the report must not let a reader confuse *his words* with
+  *his words rewritten by a machine and approved by him* (ARCHITECTURE §6, §14 decision 12). This is
+  **ROADMAP C11, and it goes before C9.**
+  *Also cut, each now a decision and not a deferral: no client-facing web view (the client's channel
+  stays the emailed PDF; what it became points inward at the owner — **C9**), no in-app billing and
+  no billing record at all, no self-serve signup, no per-trade layouts or labels, no eval harness, no
+  second-vertical increment, no legal-diary research, and **M3 is deleted**. The native shell is cut
+  **conditionally**: the founder chose to support iPhone recording, so iOS capture is the one route
+  that could reopen it. Two gaps found while answering him: **there is no create-project route in the
+  API at all** (sites exist only because `DemoSeeder` writes three rows) and **nothing can edit
+  `project.recipients`** — both are **C10**.*
 
 - **THE FOUNDER MOVED MACHINES AT THE END OF 2026-09-03, to bring up the dev server from home.**
   Several notes in this file are facts about **that Linux laptop** and are not true anywhere else:

@@ -12,6 +12,119 @@ Entry format:
 
 ---
 
+## 2026-09-04 — the scope cut: half of what was planned is now decided against
+
+**Talked about**
+- What is actually left before M1, and what M2/M3 contain — asked as *"in m2 and m3 do we have any
+  code work regarding the app, that is what is not clear to me"*, then *"why do we need that code
+  work, i want a practical example"*.
+- Then the real request: *"i dont want to implement all things"* — four rounds of questions across
+  every M2 and M3 item, so the docs could be cut down to what the founder will actually build.
+- A finding that came out of answering the first question rather than from any roadmap item: **there
+  is no create-project route in the API at all.** Sites exist only because `DemoSeeder` writes three
+  fixed rows. A customer provisioned today cannot add the job he wins next week, and nobody had
+  written that down.
+
+**Decided** (all nine in PROJECT.md §11, top entry — authoritative)
+1. **No client-facing web view, ever.** The client's channel stays the emailed daily PDF that B6
+   built. What the roadmap called "the client-facing diary" **turns inward**: the company admin reads
+   every entry by every worker on every site of his company, in full evidence. *The gap was never the
+   client's — it was the owner's, and the owner is who pays.*
+2. **That view is M1** (new increment **C9**), not M2: the pilot has a foreman *and* an owner.
+3. **Workers are assigned to sites, and the assignment restricts** — the picker shows a foreman only
+   his sites, the server refuses the rest (new increment **C10**, with the missing project routes).
+4. **The company admin creates and edits his own sites** and assigns workers to them.
+5. **Staff visibility stays metadata-only.** The founder's first phrasing was "the super admin has
+   view-only access to everything the company has"; shown that this reverses decision 2, deletes
+   eleven privacy tests and changes the sentence the product can say to a customer, he chose the
+   existing barrier. *This is the second time in two days that the privacy guard has been the thing
+   that made a decision legible instead of accidental.*
+6. **No in-app billing** — manual faktura, bank transfer, suspension by hand. The processor question
+   is closed, not open.
+7. **No self-serve signup, no trial.** Every customer is provisioned by the founder or the distributor.
+8. **One report layout for every trade; the trade lives in the vocabulary, not the layout** — and the
+   product covers **all trades from the start** (M2 **E1**). **The quality loop folds into this**
+   (**E2**): the correction triples become the word list, and the eval harness and prompt versioning
+   are not being built. No "second vertical" increment — a new trade is a list.
+9. **Dropped:** the Serbian legal-diary research (positioning settled as *evidence, not the legal
+   diary*) and the native shell. **Kept:** the distributor's onboarding material (**E4**).
+   **M3 is deleted**; two milestones remain.
+
+**Built** — documentation only, no code touched:
+- `PROJECT.md`: §11 gains the nine rulings; §7 rewritten (five things the product **is not**, each
+  now a decision rather than a deferral); §10 **Open questions is empty for the first time**.
+- `ROADMAP.md`: **C9** and **C10** added to M1; M2 rewritten to four increments (**E1–E4**); **M3
+  deleted**; the not-building list gains seven entries with the reason each was cut; the legal-status
+  row removed from the open-decisions table.
+- `ARCHITECTURE.md`: §9.2 records that the vocabulary is per-trade and is **the only place a trade is
+  modelled** (with the tripwire: if per-trade layouts ever appear, the decision is being reversed);
+  §9.3 cut down to the word list, with the note that the *storage* stays untouched because it is what
+  makes reopening possible; §14 gains three real open technical decisions (worker↔project as a join
+  and what an unassignment does to existing entries — nothing, because entries are evidence; who may
+  read a company's entries and media, with two wrong answers named; and where the trade is recorded).
+
+**Founder actions**
+- Unchanged and still the only hard blocker: **buy the VPS and the domain** (`teren.rs`, `dev.teren.rs`).
+- A2 (real site audio) still the highest-value hour available.
+- New: the customer-visible `AdminAccessNoticeJob` mail is in his voice and unreviewed by him.
+
+### Later the same session — pressure-testing the cuts, and the report stopped being a form
+
+The founder asked for the cuts to be re-examined against concrete cases (*"talk more about these,
+ask me a couple more questions with practical examples just so we can be sure that we are cutting
+in"*). Four of the six survived unchanged. Two moved, and one of those is the largest product change
+since the vision was written.
+
+**The big one: the report body is prose.** Asked whether the *trade* should decide the report's field
+labels, he asked a better question back — *"Would it be okay to have everything inside one text box
+that gets all that was prompted? We just use AI so he can correct and reorder the audio words?"* It
+was accepted, and it is a **deletion**:
+- The extraction call answers a `narrative` and an optional `problems` list (`schema_version: 2`).
+  **No work items, quantities, materials or headcount, and nothing extracted silently behind the
+  prose.**
+- Two arguments settled it. *The transcripts are kept forever, so numbers can always be extracted
+  later* — with fresh eyes on what a customer actually wants counted. And **a field nobody sees is a
+  number no human has confirmed**, which is worse than no number, because someone eventually trusts
+  it; invariant 5 exists for exactly that reason.
+- **Every accuracy risk in the product lived in extraction.** Tidying a transcript is a task this
+  model generation is near-perfect at. What remains is the STT mishearing a trade word — already the
+  known top risk, already the vocabulary's job, already caught by the confirmation screen.
+- The confirmation screen becomes **one editable paragraph** plus the problem line: faster than
+  per-field editing (invariant 1), and the eval signal gets *cleaner* — he corrects words, which is
+  what a vocabulary needs, instead of a field mapping.
+- Honestly lost: **`hidden_work` stops being a structured concept**, the very thing §6 calls the
+  highest-value evidence in the product. In prose it survives as words plus photographs. Written down
+  as accepted, not overlooked.
+- **`schema_version` earns its keep on day one.** v1 is not migrated — the demo days and the
+  founder's real entries stay v1 and the renderer keeps both paths.
+- New increment **C11**, and it goes **before C9**, because C9 renders whatever shape entries have.
+
+**The other move: iPhone recording is supported**, so the native-shell cut is now *conditional*
+rather than settled — iOS capture (HEIC, the audio container, the offline queue on Safari) is the one
+route by which the PWA bet could still force a native app. ARCHITECTURE §14 decision 4 was raised in
+weight to say so.
+
+**Held, with one small addition each:** the client portal stays cut, but C10's site form gains
+**recipient editing** and C9 gains **re-send this report** — because `project.recipients` already
+supports several addresses and **nothing in the product can edit it**, so a client who changes email
+cannot be reached today. Billing stays out entirely — *"nothing in the app — a spreadsheet"*, not
+even a paid-until date. Provisioning stays with the founder, who will add his father himself: *"I
+will add him (first super admin seeded adds the rest)"* — no new role, no code.
+
+**Also written down:** §14 gains decision 12 — how a report shows *which kind* of body it has, now
+that there are three provenances (v2 tidied prose, `described_verbatim` raw transcript, v1 sections)
+and a reader must never confuse his own words with his words rewritten by a machine.
+
+**Next**
+1. **The review debt, in order — D9 (`3716283`) first**, which has never been reviewed and has no
+   mutation proofs. Then `/platform/health`, D10, D6, D8, F10, F13's four screenshot rounds.
+2. Then **a specific case from a potential client**, which the founder will describe — it may land in
+   C9, since C9 is now where an owner's questions get answered.
+3. Then the blockers that need him.
+4. **C11 before C9** when M1 work starts.
+
+---
+
 ## 2026-09-03 (close) — state saved, and the machine changes under it
 
 Founder: *"I am switching to another machine and that is it for today here"* — he continues from
