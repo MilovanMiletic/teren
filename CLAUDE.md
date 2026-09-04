@@ -208,12 +208,14 @@ before being presented as done; gating fixes go back to the implementer and are 
   F1, D1, F2, **D2 (accept)**, **D3 (accept-with-fixes)**, **F4 / F4b (accept-with-fixes, both
   gating items closed)**, **F5, F6, F8, D7/F9 (all accept-with-fixes, 2026-09-01)**, **D8**,
   **D4** (`/api/platform/*`, **REJECT** — see below), **D6** (invite email, 2026-09-01) and
-  **F10** (`/company/profile`, 2026-09-02, unreviewed). **F3's rejection is discharged.**
+  **F10** (`/company/profile`, 2026-09-02). **F3's rejection is discharged.**
   **D5 and the log viewer are done (2026-09-02).** **F7 is complete** — `/platform/health` shipped
   2026-09-03 — and so are **D9** (the report's supersedes band + D4's closure) and **D10**
   (`DEM0-TEST` Development-only). **Every increment in the ROADMAP table is built and green.**
-  Unreviewed: **D9** (no mutation proofs — its implementer was killed before reporting; **start
-  here**), F7's health page, D6, D8, F10, D10, and F13's four founder-screenshot rounds.
+  **Nothing is unreviewed any more (2026-09-04):** D9 accept-with-fixes, `a78cc05`
+  accept-with-fixes, D6 accept-with-fixes, D10 accept, D8 accept, and the frontend delta accept —
+  every gating fix in and mutation-proven. *This line used to list seven unreviewed increments; do
+  not resurrect it.*
 - **`docker compose ps` returning nothing can mean "wrong engine", not "your stack is gone"
   (2026-09-03) — and the recovery step is what destroys something.** *Machine-local: this is about
   the founder's Linux laptop, not any machine you happen to be on — check `docker context ls`
@@ -235,7 +237,7 @@ before being presented as done; gating fixes go back to the implementer and are 
   When a seam is substituted in tests, something must also assert the real implementation.*
 - **A widening of the model is a widening of what the privacy guard must forbid, and the guard cannot
   infer it (2026-09-03).** `GET /api/platform/health` needed entry and report aggregates, which
-  `TerenIdentityDbContext` could not see, so it gained `Project` (three columns, seven properties
+  `TerenIdentityDbContext` could not see, so it gained `Project` (three columns, **eight** properties
   `Ignore()`d) plus **keyless** four-column read-throughs `EntryHealthRow`/`ReportHealthRow`.
   `db.Set<Entry>()` still throws, so §12's sentence stayed literally true — **the barrier is now "no
   evidence content", not "no evidence tables"** — but `PlatformPrivacyTests.Forbidden` still listed
@@ -487,9 +489,10 @@ before being presented as done; gating fixes go back to the implementer and are 
   1. **D9 (`3716283`) has never been reviewed** — the report's supersedes band, D4's
      `AdminAccessNoticeJob`, the credential guard. Its implementer was killed before reporting, so
      there are no mutation proofs on it. **Start here.**
-  2. **F7's `/platform/health` is unreviewed**, and so is **D10** (`DEM0-TEST`, green at 1142, and
-     its implementer *did* report, with proofs).
-  3. **Never reviewed at all: D6, D8, F10, and F13's four founder-screenshot rounds.**
+  2. ~~F7's health page / D10~~ **both reviewed 2026-09-04.** *And the old wording here was wrong in
+     both directions: the health page **frontend** shipped in `fc5737f`, which had already been
+     reviewed; it was the **backend** half in `a78cc05` that nobody had read.*
+  3. ~~Never reviewed at all: D6, D8, F10, F13's rounds~~ **all reviewed 2026-09-04.**
   4. **A replaced day's record screen does not say it was replaced** and offers a *second*
      correction — the archive list marks both ends, the evidence screen does not. **My commit
      message for `fc5737f` claimed otherwise; that claim was wrong.** Needs the archive page's
@@ -724,8 +727,7 @@ before being presented as done; gating fixes go back to the implementer and are 
   accept-with-fixes, 2026-09-01). **F3's rejection is discharged**: its two gating defects were the
   route bugs F4b fixed, its third is a founder action, and the screens themselves were re-read in the
   2026-09-01 pass and found sound. **D4 was REJECTED and its finding is now an open founder decision**
-  (§13.6), not a code fix. **Never reviewed at all: D6, D8 and F10** — built, green, and unseen by a
-  reviewer. **D1, F1+F2 and D3 had no delta review
+  (§13.6), not a code fix. ~~**Never reviewed at all: D6, D8 and F10**~~ — **all reviewed 2026-09-04.** **D1, F1+F2 and D3 had no delta review
   after their gating fixes** — and D3's implementer was *stopped before reporting its mutation
   proofs*, so that increment's fixes are verified only by a clean build and green tests plus a
   reading of the diff. Treat "mutation-proven" as unproven for D3.

@@ -358,9 +358,13 @@ entry (id uuid PRIMARY KEY,            -- generated on the phone; the idempotenc
        gps_accuracy_m double precision null,
        supersedes_entry_id uuid null → entry,
        device_id uuid null,
+       created_by_user_id uuid null,   -- D8: from the bearer only; no request names a person
+       confirmed_by_user_id uuid null, -- D8: stamped on the branch that changes the entry
        created_at, received_at, confirmed_at, reported_at,   -- all timestamptz, UTC
        processing_started_at timestamptz null,  -- B4: when the pipeline claimed this entry
-       failure_reason text null)
+       failure_reason text null)       -- carries codes from BOTH vocabularies: ProcessingFailure
+                                       -- (EntryProcessor) and ReportFailure (EntryReporter),
+                                       -- deliberately. superseded_after_send exists nowhere else.
 
 media (id uuid PRIMARY KEY,            -- generated on the phone, like entry.id
        company_id → company,           -- every tenant-owned table carries it (see §12)
