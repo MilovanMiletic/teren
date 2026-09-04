@@ -53,8 +53,10 @@ Product invariants (from PROJECT.md §5 — changing one requires an explicit fo
 5. The confirmation screen is mandatory before any report is sent. Store the user's corrections
    (transcript, extracted, corrected triples) — they are the eval set and training signal.
 6. **Main branch is always demo-ready.** The distributor demos from his phone at any moment:
-   seeded demo project with realistic Serbian data, core flow (speak → written daily record → PDF)
-   never broken. Do not merge half-finished states of the money path.
+   core flow (speak → written daily record → PDF) never broken. **Amended 2026-09-04:** the demo is
+   **a real company created through the product**, not a seeded fixture — `DemoSeeder` and
+   `reset-demo` are **Development-only** and nothing is seeded onto a deployed host but the founder's
+   own `super_admin` (PROJECT.md §11 ruling 3). The seeded Serbian demo company still exists locally. Do not merge half-finished states of the money path.
 
 Engineering conventions:
 

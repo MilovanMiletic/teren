@@ -66,7 +66,9 @@ These settle future arguments. Changing one is a big deal.
    corrections are stored as the product's learning signal.
 6. **AI is the mechanism, not the pitch.** The customer buys proof and saved time, not "AI".
 7. **Always demo-ready.** The distributor must be able to pull out his phone and show the app at
-   any given moment. Consequences: a permanently seeded demo project with realistic data, the
+   any given moment. **Amended 2026-09-04 (§11 ruling 3): the demo is a real company created through
+   the product, not a seeded fixture, and nothing is seeded onto a deployed host but the founder's own
+   `super_admin`.** The seeded demo project survives in **Development only**. Consequences: the
    core flow (speak → written daily record → PDF) never broken on the main branch, and demo polish
    prioritized over internal niceties.
 
@@ -129,6 +131,39 @@ decision rather than by research** on 2026-09-04: the research is dropped and th
 positioned as *evidence, not the legal diary* (§7, §11).
 
 ## 11. Decided
+
+- **Four rulings that close the review round (2026-09-04, founder).**
+  1. **Disabling an administrator is notified too.** Staff could disable every administrator of a
+     company and *then* mint a new one — the access notice reaches only *enabled* admins, so it went
+     nowhere and left an audit row nobody reads. Now the administrator **being disabled** is emailed,
+     as well as the company's others. Disabling already locks a real person out of his own screens,
+     so the mail costs nothing and it closes the loop the narrowed wording had only described. **The
+     claim is whole again**: minting or resetting an administrator's credential is possible, audited,
+     and *told to the customer* — with no "unless they were all disabled first" attached.
+  2. **A day that a reported correction replaces is never reported again.** A `confirmed` entry
+     stayed reportable for ever, so: original confirmed → relay rejects → a correction goes out
+     naming it → the foreman re-confirms the original → **the client ends up holding both**, and the
+     correction says the original was never sent to him. D9 removed the false sentence; this stops
+     the second document. `EntryReporter` parks such an entry instead of delivering.
+     *Named risk, deliberately accepted for now: a parked entry the phone cannot explain is exactly
+     the dead end `superseded_after_send` was — so **the phone-side sentence is a tracked follow-up,
+     not an afterthought.***
+  3. **No demo seed on any deployed environment — the only seeded account is the founder's
+     `super_admin`.** *"That demo seed should be removed before we deploy anything. Only first seeded
+     super admin and that is me."* `DemoSeeder` and `reset-demo` become Development-only, like
+     `DEM0-TEST` before them, and **no company, no site, no worker and no activation code is ever
+     seeded onto a public host.**
+     **This changes invariant 6 and M0's definition of done, and the replacement is better.** The
+     distributor demos **a real company created through the product** — `/platform`, an admin, sites,
+     a foreman, and a few real Serbian entries recorded into it. Nothing exists on a demo-only path;
+     the demo *is* the product. It also dogfoods the exact provisioning a customer gets (M2 E3).
+     The cost, accepted: it is an evening of the founder's time and it is **not re-creatable with one
+     command** — so it must be backed up like real data, because that is what it is.
+  4. **Otkaži asks before deleting — but only after a failed save.** While recording, a man pressing
+     Otkaži means it; he started a moment ago, and a confirmation tax on the busiest path works
+     against invariant 1. After a **failed save** he may be tapping to dismiss what looks like an
+     error, and what he loses is a finished take already on disk. Different moments, different risk.
+     *(The back gesture and a destroyed component still never discard.)*
 
 - **The report becomes a day's account, not a form (2026-09-04, founder — the largest product
   change since the vision was written).** Asked whether the trade should decide the report's field

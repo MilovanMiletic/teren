@@ -32,7 +32,9 @@ and a product on a real phone on a real domain. This file stays the source of tr
 
 **Goal:** the distributor can pull out his phone and show: speak → written daily record → PDF report.
 *("structured entry" until 2026-09-04 — the record is now prose plus a problems line, PROJECT.md §11.)*
-**Done when:** M0 demo runs end to end on a real phone, with seeded Serbian demo data, without
+**Done when:** M0 demo runs end to end on a real phone, on **a real company the founder created
+through the product** (PROJECT.md §11 ruling 3, 2026-09-04 — *no demo seed on any deployed
+environment; the only seeded account is his own `super_admin`*), without
 the founder touching a terminal.
 
 > **State, 2026-09-03: every increment is built. M0 is not done, and the gap is not code.**

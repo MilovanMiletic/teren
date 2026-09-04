@@ -14,7 +14,7 @@ Marking done: tick the box and append `✅ 2026-09-04 — how it was proven` to 
 An item is done when it is *proven*, not when it is written — see `CLAUDE.md` on what "proven"
 means (a green suite is not a proof; a substituted seam is not the shipped code).
 
-**Progress: 7 / 42** — **SECTION 2 (review debt) IS FULLY CLOSED, 2026-09-04**: P10, P11, P11b, P11c, P11d, P12, P13. Reviews *and* fixes, every fix mutation-proven. Backend **1157**, PWA **1911**. Next: **C11 before C9** (§3). *(P11b added 2026-09-04 — see the note above on never renumbering.)*
+**Progress: 7 / 48** — **SECTION 2 (review debt) IS FULLY CLOSED, 2026-09-04**: P10, P11, P11b, P11c, P11d, P12, P13. Reviews *and* fixes, every fix mutation-proven. Backend **1157**, PWA **1911**. Next: **C11 before C9** (§3). *(P11b added 2026-09-04 — see the note above on never renumbering.)*
 
 ---
 
@@ -91,6 +91,39 @@ means (a green suite is not a proof; a substituted seam is not the shipped code)
 - [x] ~~**P13** (original)~~ Three items carried from the 2026-09-02 fix round: `superseded_after_send` is a dead
       end on the phone; no tappable route to `/login` after a 401 on a browser that also holds a
       device session; Otkaži during `saving()` discards a kept take.
+
+## 2b. The four rulings of 2026-09-04 (PROJECT.md §11)
+
+Decided in one sitting after the review round; each closes something a review found. **P43 gates the
+first deploy** — it is not polish.
+
+- [ ] **P40** Notify the administrator **being disabled**, as well as the company's others
+      (`AdminAccessNoticeJob`). Closes the hole the narrowed wording only described: staff could
+      disable every admin and *then* mint one, and the notice reached nobody. **The customer-facing
+      claim becomes whole again** — audited *and told*, with no "unless they were all disabled first".
+- [ ] **P41** `EntryReporter` **parks an entry that a *reported* correction supersedes** instead of
+      delivering it. Stops one work day producing two documents that contradict each other: original
+      confirmed → relay rejects → correction sent naming it → foreman re-confirms → the client holds
+      both, while the correction says the original never reached him.
+- [ ] **P42** **The phone must say why that entry is parked.** *Do not let P41 ship without this on
+      the list* — a parked entry the phone cannot explain is exactly what `superseded_after_send` was,
+      and that dead end took two rounds to find and close.
+- [ ] **P43** **`[deploy-gating]` No demo seed on any deployed environment.** `DemoSeeder` and
+      `reset-demo` become Development-only, like `DEM0-TEST` before them: **no company, no site, no
+      worker, no activation code** is ever seeded onto a public host. The only seeded account is the
+      founder's own `super_admin` via `create-super-admin`. *Check what this breaks before finishing:
+      `docs/demo-script.md`, `tools/demo-video/`, and the three seeded project ids that
+      `core/projects/project-source.ts` treats as a contract — all of which become Development-only
+      facts.*
+- [ ] **P44** `[F]` **Build the demo as a real company through the product** on the deployed host —
+      `/platform`, an admin, sites, a foreman, a few real Serbian entries. This *replaces* the seeded
+      fixture in invariant 6 and in M0's definition of done. **It is not re-creatable with one
+      command, so it must be backed up like real data — because that is what it is.**
+- [ ] **P45** Otkaži **asks before deleting only after a failed save**, never while recording (a man
+      pressing it mid-take means it, and a confirmation tax on the busiest path works against
+      invariant 1). The back gesture and a destroyed component still never discard.
+
+---
 
 ## 3. C11 — the report becomes a day's account *(before C9)*
 
