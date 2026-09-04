@@ -44,7 +44,10 @@ or `ROADMAP.md`) — undocumented decisions are lost between sessions.
 Product invariants (from PROJECT.md §5 — changing one requires an explicit founder decision):
 
 1. Entry must be faster than the paper notebook (~30 s on site).
-2. Raw evidence (transcript, photos) is never altered. Entries are immutable once their report
+2. Raw evidence (transcript, photos) is never altered — **but a photograph may be DESTROYED by the
+   company that owns it (2026-09-04, PROJECT.md §11 B), never by Teren staff, and report PDFs
+   containing it are regenerated, which breaks the seal on those documents by design. The act is
+   audited; the content is not.** Entries are immutable once their report
    is sent; corrections are new entries referencing the original (`supersedes_entry_id`).
 3. The phone is the source of truth until the server confirms receipt. Client-generated UUID is
    the idempotency key. Nothing is deleted locally before server confirmation.

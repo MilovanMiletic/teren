@@ -58,7 +58,10 @@ These settle future arguments. Changing one is a big deal.
 1. **Entry must be faster than the notebook.** Faster, not richer. ~30 seconds on site.
 2. **Raw evidence is never altered.** Transcript and photos are kept as captured; the structured
    version is only an interpretation. Entries are immutable once reported; corrections are new
-   entries.
+   entries. **Amended 2026-09-04 (§11 B): a photograph may be *destroyed* — never altered, never
+   edited — by the company that owns it, through the owner's review path, and never by Teren staff.
+   Report PDFs containing it are regenerated, which breaks the seal on those documents by design.
+   The act is audited; what the photograph showed is not.**
 3. **The phone is the source of truth until the server confirms.** Nothing is lost to bad signal;
    sync status is always visible.
 4. **External services never block the phone.** Accept immediately, process in background.
@@ -131,6 +134,44 @@ decision rather than by research** on 2026-09-04: the research is dropped and th
 positioned as *evidence, not the legal diary* (§7, §11).
 
 ## 11. Decided
+
+- **Two additions, 2026-09-04 (founder) — and the second one amends invariant 2.**
+
+  **A. The owner gets a projects page, and a project has a status.** `/company/projects`: every site
+  his company has, the ability to add one, and a status — **`in_progress` / `done` / `cancelled`**.
+  - **"Remove" means a status change. Nothing is ever deleted.** A finished job is precisely the one
+    a dispute arrives about, often months later, so its diary, photos and reports stay untouched and
+    **fully readable** — by the owner and by staff — for ever.
+  - A `done` or `cancelled` site **disappears from the foreman's picker** *and* **the server refuses
+    new entries for it**. Both, deliberately: the picker is the normal path and the server refusal is
+    the backstop for an offline phone holding a stale project list.
+  - ***Design constraint that falls out of that pair, and it is not optional:*** the refusal must key
+    on **when the day was recorded, not when it arrived**. A foreman who captured a legitimate day and
+    then lost signal for a week must not have it refused because the office closed the site meanwhile
+    — that is the outbox stranding real evidence, the exact failure invariant 3 exists to prevent. The
+    server refuses an entry whose **work date falls after** the site was closed, never one that merely
+    *arrives* after.
+
+  **B. The owner can destroy a photograph, and this is an explicit exception to invariant 2.**
+  Founder: *"there is one extreme situation where some photos shouldn't be shown in the reports."*
+  - **An exception path, not a gate.** Reports keep going out the moment the foreman confirms; the
+    daily email does not wait for anyone. The owner reaches back into a past day and removes a photo.
+  - **The bytes are destroyed and no tombstone is left on the record** — the founder chose this over
+    a visible gap, with the argument against it in front of him. *Written down as his call:* a diary
+    that can silently lose a photograph is worth less as evidence than one that cannot, and after this
+    nobody can prove what was removed. **Invariant 2 now reads: raw evidence is never *altered*, and
+    may only be *destroyed* by the company that owns it, through this path.**
+  - **Report PDFs containing that photo are regenerated without it**, which **breaks the seal on
+    purpose**: reports were immutable once sent. The copy already in the client's inbox cannot be
+    recalled — nothing can do that — so from that moment the client's document and the server's differ.
+  - ***My open proposal, needing the founder's nod (not yet agreed):*** the regenerated report should
+    **say on its face that a photograph was removed, and when**, and the `report` row should keep both
+    hashes. Not to expose what the photo showed, but because *"the client holds a document we can no
+    longer reproduce, and nothing anywhere says why"* is the failure D9 was written to prevent. The
+    band exists; this is a third variant of it.
+  - **The act is audited, the content is not.** Who removed a photo, from which entry, when — no
+    filename, no description, nothing about what it showed. That row is what protects the founder if
+    an owner later claims Teren lost his evidence.
 
 - **Four rulings that close the review round (2026-09-04, founder).**
   1. **Disabling an administrator is notified too.** Staff could disable every administrator of a

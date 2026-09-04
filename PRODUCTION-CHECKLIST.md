@@ -14,7 +14,7 @@ Marking done: tick the box and append `✅ 2026-09-04 — how it was proven` to 
 An item is done when it is *proven*, not when it is written — see `CLAUDE.md` on what "proven"
 means (a green suite is not a proof; a substituted seam is not the shipped code).
 
-**Progress: 7 / 48** — **SECTION 2 (review debt) IS FULLY CLOSED, 2026-09-04**: P10, P11, P11b, P11c, P11d, P12, P13. Reviews *and* fixes, every fix mutation-proven. Backend **1157**, PWA **1911**. Next: **C11 before C9** (§3). *(P11b added 2026-09-04 — see the note above on never renumbering.)*
+**Progress: 7 / 58** — **SECTION 2 (review debt) IS FULLY CLOSED, 2026-09-04**: P10, P11, P11b, P11c, P11d, P12, P13. Reviews *and* fixes, every fix mutation-proven. Backend **1157**, PWA **1911**. Next: **C11 before C9** (§3). *(P11b added 2026-09-04 — see the note above on never renumbering.)*
 
 ---
 
@@ -122,6 +122,44 @@ first deploy** — it is not polish.
 - [ ] **P45** Otkaži **asks before deleting only after a failed save**, never while recording (a man
       pressing it mid-take means it, and a confirmation tax on the busiest path works against
       invariant 1). The back gesture and a destroyed component still never discard.
+
+---
+
+## 2c. Two additions of 2026-09-04 — the projects page, and destroying a photograph
+
+Both are **M1** (ROADMAP C12, C13). C12 extends C10 and should be built with it; C13 stands alone and
+is the one that changes what the product promises.
+
+- [ ] **P46** `project.status` — `in_progress` / `done` / `cancelled`. Migration, demo seed, and the
+      status on the C10 site form. **"Remove" is a status change; nothing is ever deleted.**
+- [ ] **P47** A closed site **leaves the foreman's picker** *and* **the server refuses new entries for
+      it** — both, because the picker is the normal path and the refusal is the backstop for an
+      offline phone holding a stale project list.
+- [ ] **P48** **The refusal keys on the entry's WORK DATE, never on arrival time.** A foreman who
+      captured a legitimate day and then lost signal for a week must not have it refused because the
+      office closed the site meanwhile. *That is the outbox stranding real evidence — the exact
+      failure invariant 3 exists to prevent, and it is one `>=` away from happening.*
+- [ ] **P49** `/company/projects` — the owner's list of every site, add, and set status. Three device
+      classes. A closed site stays **fully readable**: archive, photos, reports, for ever.
+- [ ] **P50** The photo review surface — the owner opens a past day's photographs and can remove one.
+- [ ] **P51** **Destroy the object.** Bytes gone from storage permanently, **no tombstone on the
+      record** (founder's call, made with the argument against it in front of him: after this nobody
+      can prove what was removed, including Teren).
+- [ ] **P52** **Regenerate every stored report PDF containing that photo, without it.** *This breaks
+      the seal on purpose* — reports were immutable once sent. The copy already in the client's inbox
+      cannot be recalled, so from that moment his document and ours differ.
+- [ ] **P53** **Audit the act, never the content** — who removed a photo, from which entry, when. No
+      filename, no description, nothing about what it showed. *This row is what protects the founder
+      if an owner later claims Teren lost his evidence.*
+- [ ] **P54** `[F]` **Founder's nod needed:** should the regenerated report **say on its face that a
+      photograph was removed, and when**? *"The client holds a document we can no longer reproduce and
+      nothing anywhere says why"* is the failure D9 was written to prevent; this would be a third
+      variant of that band. Not agreed — my proposal, his call.
+- [ ] **P55** Write the amendment into every place invariant 2 is claimed, and check the customer-
+      facing wording. **The product now says: raw evidence is never *altered*, and a photograph may be
+      *destroyed* by the company that owns it — never by Teren staff.** *Third time in three days a
+      written claim has needed narrowing to match the code; do this one while the code is being
+      written, not after.*
 
 ---
 
