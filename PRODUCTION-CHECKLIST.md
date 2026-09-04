@@ -14,7 +14,7 @@ Marking done: tick the box and append `✅ 2026-09-04 — how it was proven` to 
 An item is done when it is *proven*, not when it is written — see `CLAUDE.md` on what "proven"
 means (a green suite is not a proof; a substituted seam is not the shipped code).
 
-**Progress: 7 / 58** — **SECTION 2 (review debt) IS FULLY CLOSED, 2026-09-04**: P10, P11, P11b, P11c, P11d, P12, P13. Reviews *and* fixes, every fix mutation-proven. Backend **1157**, PWA **1911**. Next: **C11 before C9** (§3). *(P11b added 2026-09-04 — see the note above on never renumbering.)*
+**Progress: 7 / 63** — **SECTION 2 (review debt) IS FULLY CLOSED, 2026-09-04**: P10, P11, P11b, P11c, P11d, P12, P13. Reviews *and* fixes, every fix mutation-proven. Backend **1157**, PWA **1911**. Next: **C11 before C9** (§3). *(P11b added 2026-09-04 — see the note above on never renumbering.)*
 
 ---
 
@@ -151,6 +151,23 @@ is the one that changes what the product promises.
 - [ ] **P53** **Audit the act, never the content** — who removed a photo, from which entry, when. No
       filename, no description, nothing about what it showed. *This row is what protects the founder
       if an owner later claims Teren lost his evidence.*
+- [ ] **P56** `[deploy-gating-ish]` **Delivery stops at the owner** (C14). `project.recipients` means
+      the owner's address; **Teren never emails a customer's client**. Check every place that assumed
+      otherwise: `ProjectRecipients`, `SmtpReportDelivery`, the report's covering mail, C9's "send this
+      report again", C10's recipient editing, and the demo/seed data. *The report stays in the
+      **project's** language — he forwards it to his client, so the document is still the client's.*
+- [ ] **P57** `[F]` Rewrite §1's promise and the M2 pitch around the owner — *"you hold a record and
+      control what leaves your office"*, not *"your client stops phoning you"*. Founder-visible copy.
+- [ ] **P58** **Edit a report: photographs only** (C15). He picks which photos appear; words, work
+      date, site, weather and GPS regenerate untouched. *The foreman's account stays the foreman's
+      account — the owner must never become the author of his own diary.*
+- [ ] **P59** **Replace the report: new document, old one deleted completely, row and all.** Only
+      defensible because of P56 — Teren never sent to the client, so the record of what the client
+      holds is the owner's to keep. *Founder's call, made against my argument.*
+- [ ] **P60** ***Deleting a report row must NOT unseal the entry.*** Transcript, audio and remaining
+      photographs stay immutable; only the generated document is replaced. **A regeneration path that
+      quietly re-opened a sealed day would undo invariant 2 through the back door** — write the test
+      before the feature.
 - [ ] **P54** `[F]` **Founder's nod needed:** should the regenerated report **say on its face that a
       photograph was removed, and when**? *"The client holds a document we can no longer reproduce and
       nothing anywhere says why"* is the failure D9 was written to prevent; this would be a third

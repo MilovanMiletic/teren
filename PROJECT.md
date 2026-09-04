@@ -29,7 +29,9 @@ contractors, sold per site per month, expanding trade by trade.
 - **User:** the foreman / worker on site. Muddy hands, one hand free, bad signal. The product
   lives or dies on whether *he* keeps using it unprompted.
 - **Buyer:** the contractor-owner running ~3–20 active sites. He pays because the archive wins
-  disputes and the daily report keeps his client off his phone.
+  disputes and the daily report keeps his client off his phone. **Amended 2026-09-04: the report
+  reaches the client only when the owner forwards it — Teren sends nothing outside the contractor's
+  company (§11).**
 - These are different people with different needs. Foreman needs speed; owner needs proof and
   presentability. Both must win or the product churns.
 
@@ -96,7 +98,9 @@ This product is **not**:
 - an ERP, project-management, or scheduling tool
 - a quoting/invoicing tool (reports support billing; we don't bill)
 - a chat app replacing WhatsApp
-- **a client portal.** The client's only channel is the emailed daily report (§11, 2026-09-04).
+- **a client portal — and as of 2026-09-04 no client channel at all.** Teren emails the **owner**;
+  he forwards what he chooses. Teren never contacts a customer's client (§11, top entry). *This line
+  used to say the client's only channel is the emailed daily report; that was true for one day.*
   There is no login, no link and no web view for anyone outside the contractor's company
 - **a self-serve product.** Every customer is provisioned by the founder or the distributor; there
   is no signup form and no trial
@@ -134,6 +138,42 @@ decision rather than by research** on 2026-09-04: the research is dropped and th
 positioned as *evidence, not the legal diary* (§7, §11).
 
 ## 11. Decided
+
+- **The report goes to the OWNER, not to the client (2026-09-04, founder) — and this reverses a
+  ruling taken earlier the same day.** *"The report that is sent is sent actually to the company
+  admin. He then send wherever he wants later than that."*
+  - **Nothing leaves the contractor's company automatically.** Teren emails the owner; `project.
+    recipients` becomes **his** address, not the client's. **Teren never contacts a customer's client
+    at all.**
+  - **The promise is rewritten around the owner** (his answer, explicitly): the product turns thirty
+    seconds of speech into a professional daily record **for the contractor**, who decides what his
+    client sees. *That is a different sale from the one written in §1: not "your client stops phoning
+    you", but "you hold a record, and you control what leaves your office."*
+  - **What this reverses.** Earlier today ruling 1 of the scope cut said the outward channel stays
+    exactly what B6 built — one PDF a day, by email, to the client. It does not. §7's line that "the
+    client's only channel is the emailed daily report" is now wrong in the other direction: **the
+    client has no automatic channel from Teren whatsoever.**
+  - **What it costs, stated plainly:** "the client stops phoning" now depends on the owner remembering
+    to forward, every day. The one thing the contractor was buying is now a manual step he takes.
+  - **What it buys, and it is not small:** it makes the photograph problem nearly disappear. A photo
+    the owner does not want never reaches the client, because he reviews before forwarding. It also
+    makes destroying an old report defensible — Teren never sent anything to the client, so Teren was
+    never the custodian of what the client holds.
+  - **Unchanged: the report is still written in the project's language, not the foreman's.** The owner
+    forwards it to *his* client, so the document must still be in the client's language.
+
+- **The owner may edit a report and replace it (2026-09-04, founder), extending §11 B.**
+  - **Photographs only.** He picks which photos appear. The words, the work date, the site, the
+    weather and the GPS regenerate exactly as before — **the foreman's account of the day stays the
+    foreman's account**, and the owner never becomes the author of his own diary.
+  - **The old report is deleted completely, row and all** — his call, made against my argument. With
+    delivery now stopping at the owner this is far more defensible than it was an hour ago: the
+    question "what did the client receive?" is the *owner's* record to keep, not Teren's, because
+    Teren never sent it to the client.
+  - ***Design constraint that must not be got wrong:*** deleting the report row must **not unseal the
+    entry**. The evidence — transcript, audio, the remaining photographs — stays immutable; only the
+    generated document is replaced. A regeneration path that quietly re-opened a sealed day would
+    undo invariant 2 through the back door.
 
 - **Two additions, 2026-09-04 (founder) — and the second one amends invariant 2.**
 

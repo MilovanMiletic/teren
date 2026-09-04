@@ -2,7 +2,8 @@
 
 Teren is a digital site diary for small Serbian contractors: a foreman takes photos and records a
 voice note (~30 s), the system turns it into a written, evidence-grade daily record and a PDF
-report emailed to the client. Solo-founder project, AI-driven development: Claude builds, the
+report emailed to **the owner**, who forwards it to his client if he chooses — **Teren sends nothing
+outside the contractor's company** (2026-09-04, PROJECT.md §11). Solo-founder project, AI-driven development: Claude builds, the
 founder decides and reviews.
 
 ## Documents (read order, higher wins on conflict)
@@ -68,7 +69,9 @@ Engineering conventions:
   starting with the first component. **Serbian is the default runtime locale**; the users are
   Serbian tradesmen. Code, comments, commit messages, docs: English.
 - Reports and emails go out in the **project's** language (Serbian by default) — the client's
-  language, not the foreman's phone setting.
+  language, not the foreman's phone setting. **Still true after 2026-09-04's delivery change**: the
+  owner forwards the document to *his* client, so it must be in the client's language even though
+  Teren mails only the owner.
 - Never translate content: transcripts and extracted values stay in the language spoken. Only
   the UI chrome is localised.
 - **Every screen ships with a deliberate layout for all three device classes** (compact <768,
