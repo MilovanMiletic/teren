@@ -40,6 +40,17 @@ or `ROADMAP.md`) — undocumented decisions are lost between sessions.
 - **Hosting:** Hetzner VPS + Postgres + object storage.
 - **Dev environment:** docker-compose with Postgres + MinIO.
 
+## Vocabulary — get this right before writing a line (corrected 2026-09-04)
+
+- **customer / owner / company admin** = **Teren's client**, the contractor who pays. ***When the
+  founder says "client", this is who he means.***
+- **the contractor's client** = the investor or building owner. **Outside the product entirely** —
+  no account, no email from us, not in the data model. What the contractor does with his report
+  afterwards is his business.
+- **Never write "client" unqualified.** Say *the owner* or *the contractor's client*. These documents
+  carried the wrong reading for a day and two rounds of decisions were taken inside it; the decisions
+  survived, the reasoning written around them did not.
+
 ## Non-negotiable rules
 
 Product invariants (from PROJECT.md §5 — changing one requires an explicit founder decision):

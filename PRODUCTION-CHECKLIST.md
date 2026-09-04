@@ -14,7 +14,7 @@ Marking done: tick the box and append `✅ 2026-09-04 — how it was proven` to 
 An item is done when it is *proven*, not when it is written — see `CLAUDE.md` on what "proven"
 means (a green suite is not a proof; a substituted seam is not the shipped code).
 
-**Progress: 7 / 63** — **SECTION 2 (review debt) IS FULLY CLOSED, 2026-09-04**: P10, P11, P11b, P11c, P11d, P12, P13. Reviews *and* fixes, every fix mutation-proven. Backend **1157**, PWA **1911**. Next: **C11 before C9** (§3). *(P11b added 2026-09-04 — see the note above on never renumbering.)*
+**Progress: 7 / 65** — **SECTION 2 (review debt) IS FULLY CLOSED, 2026-09-04**: P10, P11, P11b, P11c, P11d, P12, P13. Reviews *and* fixes, every fix mutation-proven. Backend **1157**, PWA **1911**. Next: **C11 before C9** (§3). *(P11b added 2026-09-04 — see the note above on never renumbering.)*
 
 ---
 
@@ -151,6 +151,17 @@ is the one that changes what the product promises.
 - [ ] **P53** **Audit the act, never the content** — who removed a photo, from which entry, when. No
       filename, no description, nothing about what it showed. *This row is what protects the founder
       if an owner later claims Teren lost his evidence.*
+- [ ] **P61** **Sweep "client" out of every document and string.** Corrected 2026-09-04: the founder's
+      "client" is **Teren's** client — the contractor who pays — and the **contractor's** client (the
+      investor) is **outside the product entirely**: no account, no email, not in the data model.
+      Claude wrote a day of docs in the wrong frame. Check PROJECT.md §1/§7, ROADMAP, ARCHITECTURE,
+      and every `en`/`sr` string that says *klijent*. **Never write "client" unqualified again** — say
+      *the owner* or *the contractor's client*.
+- [ ] **P62** **C11's prose is written for a stranger's eyes.** The founder's ruling: the report is a
+      document the owner can **forward unedited** — professional, no internal shorthand, complete on
+      its own — even though Teren only ever mails it to him. *Binding on P14–P17: this is not a note
+      to the boss.* It is also why the project-language rule survives — the document is written in the
+      project's language precisely because it may travel further than us.
 - [ ] **P56** `[deploy-gating-ish]` **Delivery stops at the owner** (C14). `project.recipients` means
       the owner's address; **Teren never emails a customer's client**. Check every place that assumed
       otherwise: `ProjectRecipients`, `SmtpReportDelivery`, the report's covering mail, C9's "send this

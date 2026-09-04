@@ -139,6 +139,37 @@ positioned as *evidence, not the legal diary* (§7, §11).
 
 ## 11. Decided
 
+- **WHO "CLIENT" MEANS — a vocabulary correction, 2026-09-04, and it had been wrong in these
+  documents for a day.** The founder: *"When I was saying client I was thinking of Teren's client,
+  the company owner."* Claude had been reading it as the contractor's client — the investor or
+  building owner — and wrote a good deal of §7, §11 and ROADMAP in that misreading. **The words, from
+  here on:**
+  - **customer / owner / company admin** — *Teren's* client. The contractor who pays us. When the
+    founder says "client", this is who he means.
+  - **the contractor's client** — the investor or building owner. **Outside the product entirely**
+    (his ruling): Teren models no such party, holds no account for him, and never contacts him. What
+    the contractor does with his report afterwards is his business.
+  - **Never write "client" unqualified again.** Say *the owner* or *the contractor's client*.
+
+  ***What this corrects, and what it does not.*** The decision recorded an hour earlier — the report
+  goes to the owner, Teren mails nobody else — **stands and is right**. But it was written up as
+  *"reversing a ruling taken the same day"*, and that is wrong: this morning's ruling was recorded
+  under Claude's misreading, so there was no reversal, only a misunderstanding surfacing. *Two
+  separate rounds of questions were answered inside a wrong frame before it did; the founder
+  answered as asked, and the frame was mine.*
+
+- **The report is a document the owner can forward unedited (2026-09-04, founder).** Written to be
+  read by someone outside the company — professional, no internal shorthand, complete on its own —
+  **even though Teren only ever mails it to the owner**. He forwards it as-is, or keeps it, or edits
+  its photographs (§11 C15) and forwards that. *This is binding on C11: the prose the model writes is
+  for a stranger's eyes, not a note to the boss.* It also keeps the project-language rule intact —
+  the document is written in the project's language precisely because it may travel further than us.
+
+- **`project.recipients` stays an array** (2026-09-04): *"We will decide that. For now leave it like
+  this — an array."* It now means people **inside the contractor's company** — owner, office manager,
+  a second director — not outsiders. Whether it needs to hold more than one is an open question,
+  deliberately deferred; the shape costs nothing and multi-recipient delivery already works.
+
 - **The report goes to the OWNER, not to the client (2026-09-04, founder) — and this reverses a
   ruling taken earlier the same day.** *"The report that is sent is sent actually to the company
   admin. He then send wherever he wants later than that."*
