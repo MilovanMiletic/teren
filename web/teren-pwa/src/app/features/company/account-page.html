@@ -101,6 +101,25 @@
           <h2 class="t-h2">{{ t('company.account.unavailable.title') }}</h2>
           <p class="t-body state__body">{{ t(reasonKey() ?? 'company.reason.unavailable') }}</p>
           <p class="t-meta state__body">{{ t('company.account.unavailable.body') }}</p>
+          <!--
+            **The control the two sentences above name, on the branch that actually shows them.**
+
+            Both of them say "sign in again" — `company.reason.signedOut` in so many words — and
+            this is the only branch a 401 can land on: `CompanyService.classify` signs the admin
+            out, `remote` is null, so `known()` is false and the warn notice above (which is
+            gated on `known()`) is never drawn. The `<app-sign-in-again />` in it was therefore
+            unreachable in the one state it exists for.
+
+            The chrome does not rescue it either, and that is what makes this the ordinary case
+            rather than an edge: `session-link.ts` renders **nothing** for a browser that holds a
+            device session, which is exactly the owner-foreman's own phone. Measured at 390 with a
+            device session and a 401 answer: zero sign-in controls on the whole screen (review,
+            2026-09-04).
+
+            It renders itself away whenever an admin credential really is there, so it cannot
+            appear on the empty state that merely means "this company has nothing on file".
+          -->
+          <app-sign-in-again />
         </div>
       } @else {
         <!--

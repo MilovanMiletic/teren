@@ -179,6 +179,43 @@ public sealed class ReportCorrectionTests : IDisposable
         PdfText.Contains(pdf, $"{s.Site}: Zgrada B").ShouldBeTrue(PdfText.Of(pdf));
     }
 
+    [Theory]
+    [InlineData("sr")]
+    [InlineData("en")]
+    public void The_unsent_variant_states_the_fact_and_claims_nothing_beyond_it(string language)
+    {
+        // The D9 review's first gating find. This variant used to end "— ovo je jedini izveštaj za
+        // taj dan" / "so this is the only report for that day": the first clause is a fact read off
+        // the `report` row, the second was a promise about the future that nothing in the money
+        // path keeps. Re-confirming the predecessor re-queues it and `ReportAsync` never asks
+        // whether it has been superseded, so a second document for the same day can follow; and in
+        // a chain (proven end to end below) a delivered report for that day already exists.
+        //
+        // Asserted as a vocabulary check on the rendered page rather than against the constant,
+        // because a test that formats `CorrectionOfUnsentRecord` and looks for it would pass with
+        // the clause put back — the claim would be in both halves of the comparison.
+        var pdf = Renderer.RenderDaily(Correction(language) with
+        {
+            Correction = new ReportCorrection(SupersededDay, null, null),
+        });
+        var s = ReportStrings.For(language);
+        var text = PdfText.Of(pdf);
+
+        PdfText.Contains(
+                pdf,
+                string.Format(
+                    s.NumberCulture, s.CorrectionOfUnsentRecord, s.FormatDate(SupersededDay)))
+            .ShouldBeTrue(text);
+
+        foreach (var claim in ExclusivityClaims(language))
+        {
+            PdfText.Contains(pdf, claim).ShouldBeFalse(
+                $"an evidence document must not promise \"{claim}\" — nothing enforces it, and "
+                + "PROJECT.md §5 invariant 2 makes a second record of a day the normal remedy\n\n"
+                + text);
+        }
+    }
+
     // ------------------------------------------------------------- what a correction never prints
 
     [Fact]
@@ -260,6 +297,18 @@ public sealed class ReportCorrectionTests : IDisposable
     }
 
     // ------------------------------------------------------------------ helpers
+
+    /// <summary>
+    /// The words the unsent variant is forbidden to print, per language — the clause the D9 review
+    /// took off it, plus the obvious paraphrase somebody would reach for putting it back.
+    /// <para>
+    /// Literal copy on purpose: this is the one assertion in the file that must not be derived
+    /// from <see cref="ReportStrings"/>, or restoring the clause would satisfy it.
+    /// </para>
+    /// </summary>
+    internal static string[] ExclusivityClaims(string language) => language == "sr"
+        ? ["jedini izveštaj", "jedini zapis", "samo ovaj izveštaj"]
+        : ["the only report", "the only record", "this is the only"];
 
     private static TimeZoneInfo Belgrade => ReportTimeZone.Resolve(ReportTimeZone.Default);
 
@@ -411,6 +460,124 @@ public sealed class ReportCorrectionEndToEndTests(TerenTestApp app) : ApiTestBas
 
         PdfText.Contains(attachment, s.FormatDate(TwoDaysAgo)).ShouldBeFalse(
             "the head of the chain is two revisions old and naming it would hide the real one");
+    }
+
+    [Fact]
+    public async Task A_chain_over_one_work_day_never_claims_to_be_the_only_report_for_that_day()
+    {
+        // The D9 review's first gating find, from the wire. Three records of ONE work day: A went
+        // out, B superseded A and the relay refused it, C supersedes B. C prints the unsent variant
+        // — truthfully, B never left the building — and while that variant ended "ovo je jedini
+        // izveštaj za taj dan", it said so with A's report for that same day already delivered.
+        //
+        // The date is deliberately the same on all three, which is what a correction is: another
+        // record of one day of work. Nothing in the schema forbids it (there is no unique index on
+        // (project_id, entry_date)) and `POST /entries` does not either.
+        var day = Yesterday;
+
+        var a = await GivenConfirmedEntryAsync(entryDate: day);
+        (await ReportAsync(a)).ShouldBe(ReportOutcome.Sent);
+
+        var b = await GivenConfirmedEntryAsync(entryDate: day, supersedes: a);
+        App.Delivery.Fails = () => new ReportDeliveryException(
+            "fake-smtp", "the relay refused", ReportDeliveryFailureKind.Rejected);
+        (await ReportAsync(b)).ShouldBe(ReportOutcome.Failed);
+        App.Delivery.Fails = null;
+
+        (await LoadReportAsync(b))!.SentAt.ShouldBeNull("the arrange did deliver B after all");
+
+        var c = await GivenConfirmedEntryAsync(entryDate: day, supersedes: b);
+        (await ReportAsync(c)).ShouldBe(ReportOutcome.Sent);
+
+        // Two documents for that one work day are now in the client's inbox, which is precisely
+        // what the removed clause denied.
+        App.Delivery.Sent.Count.ShouldBe(2, "A and C both went out, for the same work day");
+
+        var attachment = App.Delivery.Sent[^1].Attachment;
+        var s = ReportStrings.Serbian;
+        var text = PdfText.Of(attachment);
+
+        // The fact it may state, and does: B never reached him.
+        PdfText.Contains(
+                attachment,
+                string.Format(s.NumberCulture, s.CorrectionOfUnsentRecord, s.FormatDate(day)))
+            .ShouldBeTrue(text);
+
+        foreach (var claim in ReportCorrectionTests.ExclusivityClaims("sr"))
+        {
+            PdfText.Contains(attachment, claim).ShouldBeFalse(
+                $"A's report for {s.FormatDate(day)} is already with the client, so \"{claim}\" "
+                + "would be a false statement on an evidence document\n\n" + text);
+        }
+    }
+
+    [Fact]
+    public async Task A_delivered_report_on_an_unsealed_entry_is_still_named_as_sent()
+    {
+        // The D9 review's second gating find. `ReadCorrectionAsync` reads `report.sent_at` and not
+        // `entry.reported_at`, deliberately — and mutation M5 (swapping the two) left all six tests
+        // in this class green, because every other arrangement has both columns set or both null.
+        //
+        // This is the one shape where they disagree, and it is not exotic: `superseded_after_send`
+        // is a document the relay took followed by an entry that changed, so the entry is left
+        // `confirmed` and unsealed on purpose — and the remedy the server itself asks for is a new
+        // entry superseding it, which is exactly this correction. Keying on the seal would print
+        // "never sent" over a report the client is holding.
+        var original = await GivenConfirmedEntryAsync(entryDate: Yesterday);
+
+        var raced = DefaultCorrected();
+        raced["notes"] = "Ispravka koja je stigla dok je izveštaj već bio kod relaya.";
+
+        App.Delivery.WhileSending = async () =>
+        {
+            App.Delivery.WhileSending = null;
+            await using var db = App.CreateDbContext(TestIds.CompanyA);
+            await db.Entries.Where(e => e.Id == original)
+                .ExecuteUpdateAsync(
+                    u => u.SetProperty(e => e.Corrected, raced.ToJsonString()), Ct);
+        };
+
+        (await ReportAsync(original)).ShouldBe(ReportOutcome.Sent);
+
+        var superseded = (await LoadEntryAsync(original))!;
+        superseded.Status.ShouldBe(EntryStatus.Confirmed);
+        superseded.ReportedAt.ShouldBeNull(
+            "the arrange did not reach superseded_after_send, so it proves nothing about M5");
+        ReportFailure.CodeOf(superseded.FailureReason)
+            .ShouldBe(ReportFailure.SupersededAfterSend);
+
+        var sentAt = (await LoadReportAsync(original))!.SentAt.ShouldNotBeNull(
+            "the relay did take that message; that is the whole point of this state");
+
+        var correction = await GivenConfirmedEntryAsync(
+            entryDate: Today, supersedes: original);
+
+        (await ReportAsync(correction)).ShouldBe(ReportOutcome.Sent);
+
+        var attachment = App.Delivery.Sent[^1].Attachment;
+        var s = ReportStrings.Serbian;
+        var text = PdfText.Of(attachment);
+
+        PdfText.Contains(
+                attachment,
+                string.Format(
+                    s.NumberCulture,
+                    s.CorrectionOfSentReport,
+                    s.FormatDate(Yesterday),
+                    s.FormatTimestamp(
+                        UtcStamp.Of(sentAt),
+                        ReportTimeZone.Resolve(ReportTimeZone.Default))))
+            .ShouldBeTrue(
+                "the entry is unsealed but the document went out; the client is holding it\n\n"
+                + text);
+
+        PdfText.Contains(
+                attachment,
+                string.Format(
+                    s.NumberCulture, s.CorrectionOfUnsentRecord, s.FormatDate(Yesterday)))
+            .ShouldBeFalse(
+                "sending him hunting for a report he already has is the worst thing this line "
+                + "could say\n\n" + text);
     }
 
     [Fact]

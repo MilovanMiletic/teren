@@ -225,7 +225,11 @@ describe('CaptureRecordingPage', () => {
     // on a loaded one: every spec below starts from a settled store, not a probable one.
     // Only when a recording really was started: without a site the screen refuses to record, and
     // with a denied microphone there is nothing to write.
-    if ((options.outcome ?? 'ok') === 'ok' && options.projects !== false && !options.expectSilence) {
+    if (
+      (options.outcome ?? 'ok') === 'ok' &&
+      options.projects !== false &&
+      !options.expectSilence
+    ) {
       await waitUntil(async () => (await db.chunks.count()) === 2, {
         onTick: () => fixture.detectChanges(),
         describe: 'the recorded chunks to reach the store',
@@ -717,9 +721,17 @@ describe('CaptureRecordingPage recording a correction', () => {
 
   let remote: RemoteEntry;
 
-  async function configure(
-    options: { correction: string; seedTarget?: boolean; expectSilence?: boolean },
-  ): Promise<HTMLElement> {
+  async function configure(options: {
+    correction: string;
+    seedTarget?: boolean;
+    expectSilence?: boolean;
+    /**
+     * What the archive answers about the day being corrected. Defaults to *the server could not
+     * be reached*, which is the retryable refusal; a spec passing `{ status: 'ok', missing: true }`
+     * gets the other one, where the server has answered and no retry can change it.
+     */
+    serverSays?: RemoteEntry;
+  }): Promise<HTMLElement> {
     localStorage.setItem(
       SESSION_STORAGE_KEY,
       JSON.stringify({
@@ -735,7 +747,7 @@ describe('CaptureRecordingPage recording a correction', () => {
     );
 
     db = new TerenDb(`teren-test-${crypto.randomUUID()}`);
-    remote = { status: 'offline', entry: null, missing: false };
+    remote = options.serverSays ?? { status: 'offline', entry: null, missing: false };
 
     TestBed.configureTestingModule({
       imports: [
@@ -756,7 +768,9 @@ describe('CaptureRecordingPage recording a correction', () => {
         { provide: GeolocationService, useValue: { currentFix: async () => null } },
         {
           provide: ArchiveService,
-          useValue: { getEntry: async (): Promise<RemoteEntry> => remote } as unknown as ArchiveService,
+          useValue: {
+            getEntry: async (): Promise<RemoteEntry> => remote,
+          } as unknown as ArchiveService,
         },
         {
           provide: ActivatedRoute,
@@ -877,6 +891,42 @@ describe('CaptureRecordingPage recording a correction', () => {
     expect(text(element)).not.toContain(sr.capture.blocked.project.title);
     // Nothing has been lost, and the copy says so.
     expect(text(element)).toContain('ništa nije izgubljeno');
+  });
+
+  /**
+   * **…and the other refusal, where the copy must not send him looking for a signal.**
+   *
+   * The server *answered*: it has never heard of that entry (a 404), or it named a site this
+   * phone cannot see. `capture.blocked.correction.body` blamed the network in all three refusal
+   * cases and offered "Pokušaj ponovo" under every one of them — so a foreman with four bars was
+   * told to wait for reception and given a button that asks the same question for ever (review,
+   * 2026-09-04). Two blockers now, two sentences, and a retry only where one can work.
+   */
+  it('does not blame the network when the server has answered', async () => {
+    const element = await configure({
+      correction: 'a-day-the-server-does-not-know',
+      seedTarget: false,
+      expectSilence: true,
+      serverSays: { status: 'ok', entry: null, missing: true },
+    });
+
+    // Nothing recorded, exactly as in the offline case: the refusal is what matters, not its cause.
+    expect(await db.captures.count()).toBe(0);
+    expect(await db.entries.count()).toBe(0);
+
+    expect(text(element)).toContain(sr.capture.blocked.correctionUnknown.title);
+    expect(text(element)).not.toContain(sr.capture.blocked.correction.title);
+    // The two sentences the old copy got wrong: not the network, and not "wait for a signal".
+    expect(text(element)).not.toContain('server nije dostupan');
+    expect(text(element)).not.toContain('kada budete imali signal');
+
+    // …and no retry, because pressing it asks the same question and gets the same answer.
+    const retry = [...element.querySelectorAll<HTMLButtonElement>('button')].find((candidate) =>
+      candidate.textContent?.includes(sr.capture.record.retry),
+    );
+    expect(retry, 'a retry was offered where retrying can never help').toBeFalsy();
+    // The way out is still there — he is not trapped on the screen.
+    expect(text(element)).toContain(sr.common.back);
   });
 
   /**

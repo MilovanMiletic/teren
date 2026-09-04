@@ -5,6 +5,7 @@ import { TranslocoTestingModule } from '@jsverse/transloco';
 import { COMPANY_GATEWAY } from '../../core/company/company-gateway';
 import { MockCompanyGateway } from '../../core/company/mock-company-gateway';
 import { ADMIN_SESSION_STORAGE_KEY, AdminSession } from '../../core/session/admin-session';
+import { SESSION_STORAGE_KEY, Session } from '../../core/session/session';
 import { KnobbedGateway, deferred, httpError } from '../../testing/company-gateway-double';
 import { routeUrlFor } from '../../testing/route-table';
 import en from '../../../../public/i18n/en.json';
@@ -22,6 +23,24 @@ const ADMIN: AdminSession = {
   companyId: '33333333-3333-3333-3333-333333333333',
   companyName: 'Firma iz sesije d.o.o.',
   signedInAt: '2026-08-31T08:00:00.000Z',
+};
+
+/**
+ * **The founder's own browser**: a phone activated as a device *and* signed in as an owner.
+ *
+ * `company-link.ts` names this population as the one this whole surface is built for, and it is
+ * the population `session-link.ts` deliberately renders nothing for — a foreman has no password.
+ * That combination is what made the 401 state on this screen a dead end, so it is a fixture.
+ */
+const DEVICE: Session = {
+  token: 'trn_d_a-real-device-token',
+  deviceId: '11111111-1111-1111-1111-111111111111',
+  userId: '22222222-2222-2222-2222-222222222222',
+  username: 'zoran.jovanovic',
+  displayName: 'Zoran Jovanović',
+  companyId: '33333333-3333-3333-3333-333333333333',
+  companyName: 'Firma iz sesije d.o.o.',
+  activatedAt: '2026-08-30T06:00:00.000Z',
 };
 
 /**
@@ -53,10 +72,18 @@ describe('AccountPage', () => {
 
   afterEach(() => localStorage.clear());
 
-  async function render(signedIn = true): Promise<void> {
+  /**
+   * @param signedIn whether this browser holds an admin credential.
+   * @param onADevice whether it *also* holds a device session — the founder's own browser, and
+   *   the case in which the chrome offers no sign-in control of its own.
+   */
+  async function render(signedIn = true, onADevice = false): Promise<void> {
     localStorage.clear();
     if (signedIn) {
       localStorage.setItem(ADMIN_SESSION_STORAGE_KEY, JSON.stringify(ADMIN));
+    }
+    if (onADevice) {
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(DEVICE));
     }
 
     TestBed.resetTestingModule();
@@ -252,6 +279,64 @@ describe('AccountPage', () => {
     expect(row?.textContent).toContain('Ova adresa i vaša lozinka');
   });
 
+  /**
+   * **A 401 must leave a door, and on the founder's own browser this screen was the only place
+   * one could be.**
+   *
+   * `CompanyService.classify` signs the admin out on a 401 — one `localStorage` row — so `remote`
+   * is null, `known()` is false, and the screen takes the empty-state branch. Both sentences it
+   * prints there say *sign in again* (`company.reason.signedOut` in so many words), and the only
+   * `<app-sign-in-again />` on the screen used to sit in the *other* branch, gated on
+   * `unconfirmed() && known()`, which a 401 can never satisfy.
+   *
+   * The chrome cannot stand in for it: `session-link.ts` renders **nothing** when a device session
+   * exists, by design. So the failing population is exactly the owner-foreman on his phone — the
+   * founder's own browser, which is the demo phone and the office console at once — and what he
+   * got was an instruction with nothing to press, then Home with no admin chrome one reload later.
+   */
+  it('leaves a way back to the form after a 401, on the browser whose chrome offers none', async () => {
+    gateway.meError = httpError(401);
+    await render(true, true);
+
+    // The state the finding is about: nothing was confirmed, the credential is gone, and the
+    // chrome is silent because this browser is also a phone.
+    expect(text()).toContain(sr.company.account.unavailable.title);
+    expect(text()).toContain(sr.company.reason.signedOut);
+    expect(element.querySelectorAll('app-session-link button')).toHaveLength(0);
+
+    // …and the control the copy names is on screen, inside the card that named it.
+    const empty = element.querySelector('.state--empty');
+    expect(empty?.querySelector('.sign-in'), 'no way back to the sign-in form').not.toBeNull();
+    expect(empty?.textContent).toContain(sr.common.signIn);
+  });
+
+  /** And it really goes there, rather than being a second dead control beside a dead sentence. */
+  it('sends him to the sign-in form when he presses it', async () => {
+    gateway.meError = httpError(401);
+    await render(true, true);
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    (element.querySelector('.state--empty .sign-in') as HTMLButtonElement).click();
+
+    expect(navigate).toHaveBeenCalledWith(['/login']);
+  });
+
+  /**
+   * The other half of the same property: the empty state is **not** always a sign-in prompt.
+   *
+   * A 503 leaves the credential alone, so there is nothing to sign in again with and offering it
+   * would send him round a loop. `SignInAgain` decides that for itself — this pins that the
+   * decision is still being made rather than replaced by an unconditional control.
+   */
+  it('offers no sign-in when the credential is intact and only the server was unreachable', async () => {
+    gateway.meError = httpError(503);
+    await render(true, true);
+
+    expect(element.querySelector('.state--empty')).toBeNull();
+    expect(element.querySelector('.sign-in')).toBeNull();
+  });
+
   it('offers no re-activation and no code entry — those belong to a phone', async () => {
     await render();
 
@@ -270,6 +355,48 @@ describe('AccountPage', () => {
     button('Vrati se na ljude').click();
 
     expect(navigate).toHaveBeenCalledWith([people]);
+  });
+
+  /**
+   * **An older answer must not overwrite a newer question** (`ui/latest-request.ts`).
+   *
+   * The symptom on this screen: the reload is pressed twice, the slower attempt fails, and it
+   * lands *after* the faster one succeeded — so "Nije provereno na serveru" is painted over the
+   * account the server had just confirmed. The screen ends up less truthful than if it had never
+   * been reloaded at all.
+   */
+  it('ignores a failed read that lands after a good one', async () => {
+    await render();
+
+    let call = 0;
+    const slow = deferred();
+    vi.spyOn(gateway, 'me').mockImplementation(async () => {
+      call += 1;
+      if (call === 1) {
+        await slow.promise;
+        throw httpError(503);
+      }
+      return gateway.real.me();
+    });
+
+    // Reload once — held open — then again, which answers straight away.
+    button('Osveži').click();
+    await settle();
+    button('Osveži').click();
+    await settle();
+    expect(text()).toContain('Petar Petrović');
+    expect(text()).not.toContain('Nije provereno na serveru');
+
+    // The stale failure lands. It must change nothing.
+    slow.release();
+    await settle();
+
+    expect(text(), 'a stale failure painted "not confirmed" over data that was').not.toContain(
+      'Nije provereno na serveru',
+    );
+    expect(text()).toContain('Petar Petrović');
+    // …and the screen is not stuck saying it is loading either: the newer read owns that flag.
+    expect(text()).not.toContain('Učitavanje naloga…');
   });
 
   it('re-reads the account when the reload control is pressed', async () => {

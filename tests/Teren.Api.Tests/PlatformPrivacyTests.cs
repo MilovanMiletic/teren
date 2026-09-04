@@ -35,12 +35,24 @@ public sealed class PlatformPrivacyTests(TerenTestApp app) : ApiTestBase(app)
     /// <summary>
     /// The types no platform DTO may transitively mention.
     /// <para>
-    /// <b><see cref="Project"/> is deliberately absent from this list</b>, and that is a founder
-    /// decision dated 2026-08-30, not an oversight. The privacy claim narrowed when the health page
-    /// and the log viewer were accepted: Teren staff can see <em>which companies and sites exist
-    /// and what is failing</em>, so a project's <em>name</em> is admitted while its address,
-    /// coordinates, recipients and vocabulary are not. It is written down here because the next
-    /// person to widen this list will otherwise assume the previous widening was casual too.
+    /// <b>What the founder admitted on 2026-08-30 was a <em>projection</em>, not
+    /// <see cref="Project"/>.</b> The privacy claim narrowed when the health page and the log
+    /// viewer were accepted: Teren staff can see <em>which companies and sites exist and what is
+    /// failing</em>, so a site's <em>name</em> is admitted while its address, coordinates,
+    /// recipients and vocabulary are not. That admission is carried by
+    /// <see cref="Contracts.PlatformSiteHealthResponse"/>, which is
+    /// <c>{id, company_id, name}</c> and cannot be anything else. The <em>entity</em> is a
+    /// different shape and was never admitted — it is on this list since 2026-09-04, because it
+    /// was absent for a day and the absence read as a decision.
+    /// </para>
+    /// <para>
+    /// <b>The failure it prevents is not a leak; it is a lie.</b> A member here returning
+    /// <see cref="Project"/> rows read through <c>TerenIdentityDbContext</c> serialises
+    /// <c>address: null</c>, <c>recipients: null</c> and <c>latitude: null</c> for every customer,
+    /// because <c>PlatformProjectConfiguration</c> <c>Ignore()</c>s them — <b>"absent" is
+    /// indistinguishable from "not loaded"</b>, which is precisely the F10 defect, and the next
+    /// person to "fix the nulls" does it by removing an <c>Ignore()</c>. Nothing went red at any
+    /// step of that, in eleven privacy tests and <c>IdentityModelTests</c>, until this line.
     /// </para>
     /// </summary>
     private static readonly Type[] Forbidden =
@@ -55,6 +67,9 @@ public sealed class PlatformPrivacyTests(TerenTestApp app) : ApiTestBase(app)
         // that simply RETURNED them would carry the raw text past both structural walks, and
         // before this line all eleven of these tests stayed green when one did.
         typeof(EntryHealthRow), typeof(ReportHealthRow),
+        // Added 2026-09-04. Nothing on the surface returns it, which is exactly why it costs
+        // nothing to forbid now and would cost an argument later.
+        typeof(Project),
     ];
 
     [Fact]
@@ -500,6 +515,15 @@ public sealed class PlatformPrivacyTests(TerenTestApp app) : ApiTestBase(app)
             .ShouldBe(typeof(ReportHealthRow));
         FirstForbidden(typeof(HealthBait), []).ShouldBe(typeof(EntryHealthRow));
 
+        // The site entity, proven the same way. `PlatformSiteHealthResponse` — the shape the
+        // founder actually admitted — must keep passing, and does: it names a site by id and name
+        // and carries counts, never a row.
+        FirstForbidden(typeof(Project), []).ShouldBe(typeof(Project));
+        FirstForbidden(typeof(IReadOnlyList<Project>), []).ShouldBe(typeof(Project));
+        FirstForbidden(typeof(SiteBait), []).ShouldBe(typeof(Project));
+        FirstForbidden(typeof(Contracts.PlatformSiteHealthResponse), []).ShouldBeNull(
+            "the admitted shape names a site and counts its days; it must stay readable");
+
         // And a type that does not, so the walk is not simply answering "yes" to everything.
         FirstForbidden(typeof(Teren.Api.Contracts.PlatformCompanyResponse), []).ShouldBeNull();
     }
@@ -513,6 +537,12 @@ public sealed class PlatformPrivacyTests(TerenTestApp app) : ApiTestBase(app)
     /// stored string, detail included.
     /// </summary>
     private sealed record HealthBait(Guid ProjectId, IReadOnlyList<EntryHealthRow> Buckets);
+
+    /// <summary>
+    /// And the one C10 is about to make tempting: a sites list that hands over the entity instead
+    /// of the three columns this surface is allowed to know. Must keep failing.
+    /// </summary>
+    private sealed record SiteBait(Guid CompanyId, IReadOnlyList<Project> Sites);
 
     private static IEnumerable<(Type Type, string Where)> SignatureTypes(MemberInfo member)
     {

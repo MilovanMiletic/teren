@@ -288,7 +288,20 @@ positioned as *evidence, not the legal diary* (§7, §11).
 
   > Teren staff cannot read a customer's diary with their own credentials. Minting or resetting an
   > administrator's credential in a customer's company is possible, is audited, and emails every
-  > other administrator of that company — so it cannot be done without the customer being told.
+  > **other administrator of that company who is not disabled**.
+
+  **The last clause was narrowed on 2026-09-04, by the D9 review.** It used to end *"— so it cannot
+  be done without the customer being told"*, and that was **wider than the mechanism**: recipients are
+  the company's *enabled* administrators (`AdminAccessNoticeJob`, `DisabledAt == null`), so staff who
+  first **disable** every administrator of a company and then mint a new one send the notice to an
+  empty list, leaving only an audit row. It is a noisy attack — disabling locks real people out of
+  their own screens, which is exactly what they complain about — and it is consistent with the
+  decision's own reasoning that the capability stays and the *silence* goes. But the sentence claimed
+  more than the code delivers, so the sentence moved rather than the claim.
+  ***Open, and the founder's call:*** either notify on the disabling of a `company_admin` too — which
+  closes it properly — or leave the narrowed wording as the honest limit. *Second time in two days
+  that a privacy sentence has been found wider than its mechanism; the pattern is that the defensible
+  claim is always the one derived from the code, never the one written first.*
 
 - **A phone the server refuses signs itself out** (2026-09-03, founder). He removed a worker's phone
   from the office screen, went back to that phone, and found it working exactly as before — Home, the

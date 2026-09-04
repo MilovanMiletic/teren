@@ -114,6 +114,16 @@ public sealed record ReportStrings
     /// told he was sent a report that never left the building, and he should not be left hunting
     /// his inbox for it.
     /// </para>
+    /// <para>
+    /// <b>It states the fact and stops — it must never claim to be the only report for that
+    /// day.</b> It said exactly that until the D9 review, and nothing in the money path kept the
+    /// promise: re-confirming the predecessor re-queues it and <c>ReportAsync</c> never asks
+    /// whether it has been superseded, so a second document for the same day can go out
+    /// afterwards; and in a chain (A sent, B failed at the relay, C correcting B) the sent report
+    /// for that day is <em>already</em> in the client's inbox while this variant is the one C
+    /// prints. The first clause is read from the <c>report</c> row and is a fact; exclusivity was
+    /// a promise about the future, on an evidence document.
+    /// </para>
     /// </summary>
     public required string CorrectionOfUnsentRecord { get; init; }
 
@@ -307,8 +317,7 @@ public sealed record ReportStrings
         // 02.09.2026.." — two dots on a client's document. Found by reading a rendered PDF rather
         // than by reading the template, exactly as the email's missing period was.
         CorrectionOfUnsentRecord =
-            "Ovaj izveštaj ispravlja i zamenjuje raniji zapis za {0}, koji Vam nije poslat — ovo "
-            + "je jedini izveštaj za taj dan.",
+            "Ovaj izveštaj ispravlja i zamenjuje raniji zapis za {0}, koji Vam nije poslat.",
         Corrects = "Ispravlja zapis za",
 
         RecordKind = "Vrsta zapisa",
@@ -386,7 +395,7 @@ public sealed record ReportStrings
             + "{1}. The details in this document are the correct ones and supersede that report.",
         CorrectionOfUnsentRecord =
             "This report corrects and replaces an earlier record for {0}. That record was never "
-            + "sent to you, so this is the only report for that day.",
+            + "sent to you.",
         Corrects = "Corrects the record for",
 
         RecordKind = "Record type",

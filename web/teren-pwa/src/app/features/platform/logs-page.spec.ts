@@ -8,7 +8,12 @@ import { PlatformLogResponse } from '../../core/platform/platform-types';
 import { PLATFORM_GATEWAY } from '../../core/platform/platform-gateway';
 import { FileSaver } from '../../core/report/file-saver';
 import { ADMIN_SESSION_STORAGE_KEY, AdminSession } from '../../core/session/admin-session';
-import { KnobbedPlatformGateway, platformHttpError } from '../../testing/platform-gateway-double';
+import {
+  KnobbedPlatformGateway,
+  PlatformDeferred,
+  platformDeferred,
+  platformHttpError,
+} from '../../testing/platform-gateway-double';
 import { guardedRoutes } from '../../testing/route-harness';
 import { routeUrlFor } from '../../testing/route-table';
 import { ViewportService } from '../../ui/viewport.service';
@@ -55,10 +60,17 @@ describe('LogsPage', () => {
    *   screen reads it. The gateway is minted here, so a spec that seeded one of its own before
    *   calling this would be seeding the instance the last spec threw away.
    */
+  /**
+   * @param holdFirstRead leave the **first** read of the stream in flight, so the screen can be
+   *   observed in the one state where it has no rows and no answer at all. A reload cannot stand
+   *   in for it: `load` keeps the previous rows until the new answer lands, so during a refresh
+   *   `rows()` is not empty and the empty-stream sentence is unreachable either way.
+   */
   async function render(
     medium = true,
     expanded = true,
     logs: PlatformLogResponse[] | null = null,
+    holdFirstRead = false,
   ): Promise<void> {
     localStorage.clear();
     localStorage.setItem(ADMIN_SESSION_STORAGE_KEY, JSON.stringify(STAFF));
@@ -68,6 +80,9 @@ describe('LogsPage', () => {
       gateway.real.useLogs(logs);
     }
     saved = [];
+    if (holdFirstRead) {
+      gateway.logsGate = platformDeferred();
+    }
     viewport = { atLeastMedium: () => medium, expanded: () => expanded };
 
     TestBed.resetTestingModule();
@@ -748,6 +763,254 @@ describe('LogsPage', () => {
 
       expect(element.querySelectorAll('tbody tr.line').length).toBe(before);
       expect(text()).toContain(sr.platform.stale.title);
+    });
+  });
+
+  // ---- A control may never be removed by the request it fires ----------------------------------
+
+  describe('while a request is in flight', () => {
+    /**
+     * **The property the file already claimed, re-proven against a loading frame that renders.**
+     *
+     * The spec above it — *"keeps the control that emptied the list"* — passed against the shipped
+     * defect, and that was part of the finding rather than incidental: the mock resolves inside a
+     * microtask, so `loading()` was never `true` at a `detectChanges()` and the assertion described
+     * a frame the test never drew. Same pathology as the substituted `IJobQueueDepth` seam and the
+     * microtask-settled navigation specs (CLAUDE.md, 2026-09-03): a spec that could not fail.
+     *
+     * So the gateway is held open here, and the first assertion is that the screen really is in the
+     * state under test. Without that line the rest of this is decoration again.
+     */
+    it('keeps the filter box a keystroke destroyed, at 1024 where it lives in the table head', async () => {
+      await render(true, true);
+
+      // Open the message funnel and type, exactly as the founder does.
+      const funnel = buttons().find((candidate) =>
+        candidate.getAttribute('aria-label')?.includes(sr.logs.column.message),
+      ) as HTMLButtonElement;
+      funnel.click();
+      await settle();
+
+      const box = element.querySelector('.menu__input') as HTMLInputElement;
+      expect(box, 'the filter box did not open').not.toBeNull();
+      box.value = 'Ent';
+      box.dispatchEvent(new Event('input'));
+
+      // Held open *before* the debounce fires, so the refilter's `load()` is still in flight when
+      // the screen is read.
+      gateway.logsGate = platformDeferred();
+      await settle(AFTER_TYPING_MS);
+
+      // **The non-vacuity check, and it is deliberately not the fix's own marker.** `logs.loading`
+      // is the screen reader's sentence, which both the old skeleton card and the new in-card
+      // skeleton carry — so reverting the fix makes this spec fail on the *property* rather than
+      // on the probe. Without this line the assertions below describe a frame nobody drew.
+      expect(
+        text(),
+        'the loading frame never rendered — this spec would pass against the defect',
+      ).toContain(sr.logs.loading);
+      expect(element.querySelectorAll('tbody tr.line')).toHaveLength(0);
+
+      // …and the header, the funnel and the focused box he is typing into are all still there.
+      expect(element.querySelector('thead')).not.toBeNull();
+      const live = element.querySelector('.menu__input') as HTMLInputElement | null;
+      expect(live, 'the request destroyed the box that fired it').not.toBeNull();
+      expect(live?.value).toBe('Ent');
+      expect(document.activeElement, 'the box lost focus mid-word').toBe(live);
+
+      // The next keystrokes go somewhere: the word is finished while the first answer is still out.
+      (live as HTMLInputElement).value = 'Report';
+      (live as HTMLInputElement).dispatchEvent(new Event('input'));
+      gateway.logsGate.release();
+      gateway.logsGate = null;
+      await settle(AFTER_TYPING_MS);
+
+      expect(gateway.logQueries.at(-1)?.q).toBe('Report');
+      expect(element.querySelectorAll('tbody tr.line').length).toBeGreaterThan(0);
+    });
+
+    /** The same at 834 and 390, where the pills live in the filter card and always survived. */
+    it('keeps the filter pill below 1024 too', async () => {
+      await render(false, false);
+
+      const funnel = buttons().find((candidate) =>
+        candidate.getAttribute('aria-label')?.includes(sr.logs.column.message),
+      );
+      expect(funnel, 'the filter card is shut — open it first').toBeUndefined();
+
+      await press(sr.logs.filters.title);
+      const pill = buttons().find((candidate) =>
+        candidate.getAttribute('aria-label')?.includes(sr.logs.column.message),
+      ) as HTMLButtonElement;
+      pill.click();
+      await settle();
+
+      const box = element.querySelector('.menu__input') as HTMLInputElement;
+      box.value = 'Ent';
+      box.dispatchEvent(new Event('input'));
+      gateway.logsGate = platformDeferred();
+      await settle(AFTER_TYPING_MS);
+
+      expect(text()).toContain(sr.logs.loading);
+      expect((element.querySelector('.menu__input') as HTMLInputElement | null)?.value).toBe('Ent');
+
+      gateway.logsGate.release();
+      gateway.logsGate = null;
+      await settle();
+    });
+
+    /**
+     * Where the bars now are, which is the fix stated as a shape: **inside** the card, with the
+     * header above them. `aria-busy` on the card is what a screen reader gets for the same fact.
+     */
+    it('draws the skeleton in the card rather than in place of it', async () => {
+      await render(true, true);
+
+      gateway.logsGate = platformDeferred();
+      button(sr.logs.reload).click();
+      await settle();
+
+      const card = element.querySelector('.stream');
+      expect(card, 'the stream card was replaced whole').not.toBeNull();
+      expect(card?.getAttribute('aria-busy')).toBe('true');
+      expect(card?.querySelector('thead')).not.toBeNull();
+      expect(card?.querySelector('.card--loading')).not.toBeNull();
+
+      gateway.logsGate.release();
+      gateway.logsGate = null;
+      await settle();
+      expect(element.querySelector('.stream')?.getAttribute('aria-busy')).toBe('false');
+    });
+
+    /**
+     * **Nothing may claim the stream is empty while it is unknown.**
+     *
+     * `logs.empty.none` — *"nothing has happened"* — over rows that have not come back is the same
+     * false claim the summary tiles are withheld for, on the screen whose whole job is saying
+     * whether anything is wrong.
+     */
+    it('says nothing about an empty stream while the rows are still coming', async () => {
+      // The **first** read, held open: no rows, no answer, nothing known. A reload cannot show
+      // this — `load` keeps the previous rows until the new answer lands.
+      await render(true, true, null, true);
+
+      expect(text()).toContain(sr.logs.loading);
+      expect(element.querySelectorAll('tbody tr.line')).toHaveLength(0);
+      // *"Ništa se nije dogodilo"* over rows that have not come back is the same false claim the
+      // summary tiles are withheld for, on the screen whose whole job is saying whether anything
+      // is wrong — and a pager numbering pages of a list nobody has is the same mistake.
+      expect(text(), 'the screen claimed the stream is empty').not.toContain(sr.logs.empty.none);
+      expect(text()).not.toContain(sr.logs.empty.filtered);
+      expect(element.querySelector('.pager'), 'a pager for a list nobody has').toBeNull();
+
+      gateway.logsGate?.release();
+      gateway.logsGate = null;
+      await settle();
+      expect(element.querySelectorAll('tbody tr.line').length).toBeGreaterThan(0);
+    });
+  });
+
+  // ---- An older answer must never overwrite a newer question ------------------------------------
+
+  describe('request generation', () => {
+    /**
+     * **The measured defect** (review, 2026-09-04): `q=a` stubbed at 2 s and `q=ab` at 100 ms;
+     * type `a`, pause, type `b`; three seconds later the screen showed the rows for `a`.
+     *
+     * And the ordering is the ordinary one, not a contrived one: `ILIKE '%a%'` over a large
+     * `app_log` is slower than `'%ab%'`, so the broader question a man types first is exactly the
+     * one that comes back last.
+     *
+     * Driven with two gates rather than two timers, which is the same ordering without the wall
+     * clock: hold the first question open, ask the second, let it answer, then release the first.
+     */
+    it('discards an answer to a question that is no longer being asked', async () => {
+      await render(true, true);
+
+      // Two questions, driven through the **level and period chips** rather than a filter box.
+      // Those live in the filter card, which is outside the loading branch in every build — so
+      // this spec is about `load`'s generation guard and nothing else, and reverting the template
+      // fix cannot make it red for the wrong reason.
+      const first = platformDeferred();
+      gateway.logsGate = first;
+      button(sr.logs.level.error).click();
+      await settle();
+      expect(gateway.logQueries.at(-1)?.levels).toEqual(['Error']);
+
+      // The second question — the same chip, pressed again, which is *every* level — answers
+      // immediately and paints. The narrow question coming back last is exactly the ordering a
+      // large `app_log` produces on its own: `ILIKE '%a%'` is slower than `'%ab%'`.
+      gateway.logsGate = null;
+      await press(sr.logs.level.error);
+      expect(gateway.logQueries.at(-1)?.levels).toEqual([]);
+      const afterSecond = element.querySelectorAll('tbody tr.line').length;
+      // More than the one line the first question would have left behind, so the two answers are
+      // genuinely distinguishable on the glass.
+      expect(afterSecond).toBeGreaterThan(1);
+
+      // Now the slow first answer lands. It must change nothing at all.
+      first.release();
+      await settle();
+
+      expect(
+        element.querySelectorAll('tbody tr.line').length,
+        'the old answer repainted the new question',
+      ).toBe(afterSecond);
+      // The information lines the current question asks for are still there: the stale answer
+      // held one error row and nothing else.
+      expect(text()).toContain('Report 3f2a1c delivery failed after 3 attempts');
+      // …and the screen is not left saying it is still loading, which is the other way this
+      // could go wrong: the newer request owns `loading` and cleared it.
+      expect(text()).not.toContain(sr.logs.loading);
+    });
+
+    /**
+     * **The second path, and the worse one.** `loadMore`'s `this.loading()` check runs *before* the
+     * await, so a batch already in flight is not stopped by a filter change — it resolved and
+     * appended fifty lines of the old query, and the old cursor, to the new filtered stream.
+     */
+    it('never appends a batch of the old query to a newly filtered stream', async () => {
+      await render(true, true);
+
+      // `pageInto` cannot be used here: its stub does not honour `logsGate`, and this spec needs
+      // one batch held open while another question is asked. Same arithmetic, one gate.
+      const real = gateway.real;
+      let gate: PlatformDeferred | null = null;
+      vi.spyOn(gateway, 'listLogs').mockImplementation(async (query = {}) => {
+        gateway.logQueries.push(query);
+        await gate?.promise;
+        return real.listLogs({ ...query, limit: FIRST_PAGE });
+      });
+      await press(sr.logs.reload);
+      expect(element.querySelectorAll('tbody tr.line')).toHaveLength(FIRST_PAGE);
+
+      // "Učitaj još" against a slow server…
+      const slow = platformDeferred();
+      gate = slow;
+      button(sr.logs.more.action).click();
+      await settle();
+
+      // …then a level chip, which is a different question and replaces the list.
+      gate = null;
+      await press(sr.logs.level.error);
+      const filtered = element.querySelectorAll('tbody tr.line').length;
+      expect(gateway.logQueries.at(-1)?.levels).toEqual(['Error']);
+
+      // The late batch lands. Nothing of it may reach the screen.
+      slow.release();
+      await settle();
+
+      expect(
+        element.querySelectorAll('tbody tr.line').length,
+        'the old batch was appended to the filtered stream',
+      ).toBe(filtered);
+      // Every row on screen still belongs to the question being asked.
+      expect(
+        [...element.querySelectorAll('tbody tr.line .chip')].every((chip) =>
+          chip.textContent?.includes(sr.logs.level.error),
+        ),
+        'a row that is not an error survived on an error-filtered stream',
+      ).toBe(true);
     });
   });
 

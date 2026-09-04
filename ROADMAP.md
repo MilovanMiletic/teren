@@ -12,6 +12,10 @@ Last updated: 2026-09-04.
 
 ## How we work
 
+**The live tick list is `PRODUCTION-CHECKLIST.md`** (ids `P1`…`P39`) — everything between here
+and a product on a real phone on a real domain. This file stays the source of truth for *why* and
+*in what order*; that one is only the ticking, and is stale if the two disagree.
+
 - **Increment = one reviewable unit.** Each has a "done when" the founder can verify in one
   evening without reading every line of code. Nothing merges half-finished.
 - **Two tracks run in parallel:** Track A de-risks the product (transcription), Track B builds

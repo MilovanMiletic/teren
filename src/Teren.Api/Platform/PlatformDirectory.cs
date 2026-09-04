@@ -47,14 +47,19 @@ public sealed partial class PlatformDirectory(
     TerenIdentityDbContext db,
     IMailSender mail,
     IInviteQueue invites,
+    // Auth:AppUrl, and only to answer "could a link exist?" — never to build one. Nothing here
+    // holds a token (see InviteAsync), so there is nothing to put a URL round; what this class
+    // needs is the second half of the invite's precondition, so `emailed` can be false at the
+    // request instead of being contradicted by a warning in a job log an hour later.
+    Microsoft.Extensions.Options.IOptions<Teren.Api.Auth.AuthOptions> authOptions,
     // The health page's queue depth (PlatformDirectory.Health.cs). A seam and not `JobStorage`,
     // because Hangfire:Enabled=false registers no Hangfire services and the container validates
     // dependencies at start-up — the first cut of IInviteQueue injected IBackgroundJobClient here
     // and took the whole host down, 611 tests failing at once, none of them about invites.
     IJobQueueDepth queue)
 {
-    // The link's lifetime moved to AdminInviteJob with the minting. This class no longer builds
-    // a URL or holds a token, so it needs neither Auth:AppUrl nor a TimeSpan.
+    // The link's lifetime moved to AdminInviteJob with the minting. This class still never builds
+    // a URL and never holds a token; it reads Auth:AppUrl only as a precondition (see Invite).
 
     // ------------------------------------------------------------------------------ companies
 
@@ -581,10 +586,21 @@ public sealed partial class PlatformDirectory(
     /// administrator who believes an email is on its way and a customer who waits for it. Standing
     /// policy: visible failure, never silent invention.
     /// </para>
+    /// <para>
+    /// <b>Two preconditions, not one, and the second was missing until 2026-09-04.</b> A relay is
+    /// half of "there is somewhere to send him"; the other half is <c>Auth:AppUrl</c>, because the
+    /// mail's whole content is a link and <c>AdminInviteJob</c> will not post a bare token nobody
+    /// can use. That variable defaults to empty, is not validated, and appeared in no compose file
+    /// or env template — so on the dev host as configured, this method returned <b>true</b>, the
+    /// screen said <em>emailed</em>, and the job logged a warning and sent nothing. Pressing "send
+    /// again" said <em>emailed</em> a second time and, worse, retired the previous attempt's token
+    /// on the way. Both halves are checked here so the answer the screen gets is the answer the
+    /// job will act on.
+    /// </para>
     /// </summary>
     private bool Invite(Guid userId, Guid actorUserId, AdminAccessNotice notice)
     {
-        if (!mail.IsConfigured)
+        if (!mail.IsConfigured || !PasswordTokens.CanLink(authOptions.Value.AppUrl))
         {
             return false;
         }

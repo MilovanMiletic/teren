@@ -641,6 +641,24 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", defaultValue: true))
             reportingOptions.FromAddress);
     }
 
+    // Auth:AppUrl, said here because a relay without it is the half-configured host that cost a
+    // customer his only way in. Every mail this product sends to a human is a link — the admin
+    // invite and the worker's activation code both — so with a relay and no app URL, an invite is
+    // refused before it is minted (PlatformDirectory.Invite, AdminInviteJob) and `emailed` is
+    // false on the screen. That is honest and it is still a host that cannot onboard anybody, so
+    // it is worth one loud line. deploy.sh refuses to deploy without TEREN_APP_URL; this is the
+    // net under a host brought up some other way.
+    var authOptions = app.Services.GetRequiredService<IOptions<AuthOptions>>().Value;
+
+    if (reportDelivery.IsConfigured && string.IsNullOrWhiteSpace(authOptions.AppUrl))
+    {
+        jobsLogger.LogWarning(
+            "A mail relay is configured but Auth:AppUrl is not, so every message this product "
+            + "sends is a link with nowhere to point: admin invites are refused before a token is "
+            + "minted and the platform screen reports them as not emailed. Set Auth:AppUrl "
+            + "(TEREN_APP_URL) to the origin the PWA is served from.");
+    }
+
     // The cron string, not the configured interval: this line states what the scheduler was
     // actually given, so it cannot assert a cadence that is not running.
     jobsLogger.LogInformation(

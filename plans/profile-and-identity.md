@@ -33,7 +33,7 @@ This work **absorbs C5 (device binding)** — no longer a separate roadmap item 
 | # | Decision |
 | --- | --- |
 | 1 | Three roles: **super_admin** (Teren staff), **company_admin** (the customer), **worker** (the foreman who records). |
-| 2 | A super admin **can never read entries, transcripts, photos or reports**. He *may* see company and project **names**, and the application log stream. See §6 for exactly where the line now falls. |
+| 2 | A super admin **can never read entries, transcripts, photos or reports**. He *may* see company and project **names**, and the application log stream. See §6 for exactly where the line now falls. **This row's literal wording was retired by D9 (2026-09-03) and narrowed again 2026-09-04** — the sentence the product actually defends is in §13.6 and PROJECT.md §11, and it is about *credentials*, not only about reading. **Reaffirmed 2026-09-04 (founder): staff visibility stays metadata-only**, so the barrier and its eleven privacy tests stand. |
 | 3 | A company admin sees **everything his company does** — company-wide, not per-project. |
 | 4 | **Both** admin roles sign in with **email + password**. Same mechanism, different role gate and a shorter session for super admin. |
 | 5 | A worker activates a phone with his **username plus a one-time code**, once. Afterwards the app opens **straight to the record button** — no sign-in step, no identity tap, **no network call**. |
@@ -930,7 +930,14 @@ code, re-activate, watch the queue drain unattended.
 
    > Teren staff cannot read a customer's diary with their own credentials. Minting or resetting an
    > administrator's credential in a customer's company is possible, is audited, and emails every
-   > other administrator of that company — so it cannot be done without the customer being told.
+   > **other administrator of that company who is not disabled**.
+
+   **Narrowed 2026-09-04 by the D9 review** — it used to end *"so it cannot be done without the
+   customer being told"*, which was wider than the mechanism: recipients are the company's *enabled*
+   administrators (`AdminAccessNoticeJob`, `DisabledAt == null`), so disabling every administrator
+   first and then minting one sends the notice to an empty list. Noisy (disabling locks real people
+   out) but real. **Open, founder's call:** notify on the disabling of a `company_admin` too, or keep
+   the narrowed wording as the honest limit. See PROJECT.md §11.
 
    *The three options as they stood, kept so the next person to widen this can see what was
    considered: accept it and reword decision 2; narrow the route to `invite` only (which would have

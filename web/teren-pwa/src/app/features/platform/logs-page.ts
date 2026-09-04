@@ -18,6 +18,7 @@ import { AppHeader } from '../../ui/app-header';
 import { ColumnMenu } from '../../ui/column-menu';
 import { Icon } from '../../ui/icon';
 import { InfoPopover } from '../../ui/info-popover';
+import { LatestRequest } from '../../ui/latest-request';
 import { LanguageSwitcher } from '../../ui/language-switcher';
 import { SessionLink } from '../../ui/session-link';
 import { SignInAgain } from '../../ui/sign-in-again';
@@ -344,6 +345,23 @@ export class LogsPage {
   /** The timer a filter box is waiting on, so a second keystroke replaces the first request. */
   private typing: ReturnType<typeof setTimeout> | null = null;
 
+  /**
+   * **Which question is currently being asked** — the guard against an older answer painting over
+   * a newer one. `ui/latest-request.ts` carries the reasoning and the two rules.
+   *
+   * This screen is where it was measured (review, 2026-09-04): `q=a` stubbed at 2 s and `q=ab` at
+   * 100 ms, type `a`, pause, type `b`, and three seconds later the rows for `a` were on screen
+   * under a filter box reading `ab`. `ILIKE '%a%'` over a large `app_log` is genuinely slower than
+   * `'%ab%'`, so the broader question typed first is exactly the one that lands last — and this is
+   * the one screen an owner opens *because* he does not trust what he is being told.
+   *
+   * {@link loadMore} needs it for the second, worse path: press "Učitaj još" against a slow server
+   * and then tap a level chip. Its `this.loading()` check has already run — that is the point, it
+   * ran *before* the await — so the late batch appended fifty lines of the **old** query, and its
+   * cursor, to the **new** filtered stream.
+   */
+  private readonly reads = new LatestRequest();
+
   constructor() {
     this.actions.record(ACTIONS.logsOpen);
     void this.load();
@@ -358,9 +376,20 @@ export class LogsPage {
    * to the previous one would produce a list that is neither.
    */
   protected async load(): Promise<void> {
+    const read = this.reads.claim();
     this.loading.set(true);
+    // A batch that was in flight for the previous question is no longer wanted, and the control
+    // it belongs to has to stop saying "loading" whether that batch is discarded or not.
+    this.loadingMore.set(false);
 
     const result = await this.platform.listLogs(this.batch());
+
+    if (!this.reads.holds(read)) {
+      // A newer question was asked while this one was in flight. Everything below would overwrite
+      // it — the rows, the cursor, the status and the page — so nothing below runs, and `loading`
+      // is deliberately left alone: it belongs to the newer request now, which will clear it.
+      return;
+    }
 
     this.records.set(result.logs);
     this.cursor.set(result.nextCursor);
@@ -387,8 +416,21 @@ export class LogsPage {
       return;
     }
 
+    // **Captured before the await, never after** — and `current()` rather than `claim()`, because
+    // a batch is part of the question already outstanding and claiming would cancel the very list
+    // it is extending (`ui/latest-request.ts`).
+    const read = this.reads.current();
+
     this.loadingMore.set(true);
     const result = await this.platform.listLogs(this.batch(cursor));
+
+    if (!this.reads.holds(read)) {
+      // The stream was replaced under this batch. Appending it would put fifty lines of the old
+      // query, and the old cursor, on the end of the new one. `loadingMore` is already false —
+      // `load` cleared it — so there is nothing to undo either.
+      return;
+    }
+
     this.loadingMore.set(false);
 
     if (result.status !== 'ok') {

@@ -111,18 +111,33 @@ function rules(css: string): Rule[] {
       continue;
     }
     found.push({
-      selectors: selector.split(',').map((one) => one.trim()).filter(Boolean),
+      selectors: selector
+        .split(',')
+        .map((one) => one.trim())
+        .filter(Boolean),
       body: match[2],
     });
   }
   return found;
 }
 
-/** Every `height` / `width` (or `min-`) in the block that is under the floor, in px. */
+/**
+ * Every `height` / `width` (or `min-`) in the block that is under the floor, in px.
+ *
+ * **`calc(var(--tap-min) - …)` counts as under it too**, and that clause is not decoration: it is
+ * how `ui/column-menu.ts`'s sort label is written, and without it this guard read a literal-px
+ * regex over a rule with no literal px in it and passed in silence over the very control the
+ * pattern was invented for (review, 2026-09-04). Anything that *subtracts* from the floor is
+ * below the floor by construction, so the arithmetic does not need doing — the hit area does.
+ */
 function undersized(body: string): number[] {
-  return [...body.matchAll(/(?:^|;)\s*(?:min-)?(?:height|width)\s*:\s*(\d+)px/g)]
+  const literal = [...body.matchAll(/(?:^|;)\s*(?:min-)?(?:height|width)\s*:\s*(\d+)px/g)]
     .map((match) => Number(match[1]))
     .filter((px) => px < TAP_MIN);
+  const derived = [
+    ...body.matchAll(/(?:^|;)\s*(?:min-)?(?:height|width)\s*:\s*calc\(\s*var\(--tap-min\)\s*-/g),
+  ].map(() => TAP_MIN - 1);
+  return [...literal, ...derived];
 }
 
 /**
@@ -136,9 +151,8 @@ function undersized(body: string): number[] {
 function hitAreaFor(selector: string, all: Rule[]): boolean {
   return all.some(
     (rule) =>
-      rule.selectors.some(
-        (one) => one === `${selector}::after` || one === `${selector}::before`,
-      ) && /inset\s*:\s*[^;]*-\d/.test(rule.body),
+      rule.selectors.some((one) => one === `${selector}::after` || one === `${selector}::before`) &&
+      /inset\s*:\s*[^;]*-\d/.test(rule.body),
   );
 }
 
@@ -176,6 +190,31 @@ describe('tap targets', () => {
     }
 
     expect([...new Set(offenders)]).toEqual([]);
+  });
+
+  /**
+   * **The column label, by name**, because it is the control this whole pattern was written for
+   * and the one the sweep above could not see until `undersized` learned to read a `calc`.
+   *
+   * A column heading is drawn as a word — 16 px for "Od" at 360, measured — and sorted with one
+   * tap, which makes it the most-pressed small control in the product. It is drawn at 36 and hit
+   * at 44, leftwards into the component's own padding: the funnel is its next sibling and owns
+   * the 8 px on the other side.
+   */
+  it('extends the column label’s target, which is drawn as narrow as its word', () => {
+    const sheet = sheets.find((one) => one.file === 'app/ui/column-menu.ts');
+    expect(sheet, 'ui/column-menu.ts is no longer read as a stylesheet').toBeTruthy();
+    const all = rules(sheet!.css);
+
+    const sort = all.find((rule) => rule.selectors.includes('.sort'));
+    expect(sort, 'the .sort rule has moved or been renamed').toBeTruthy();
+    expect(undersized(sort!.body).length, '.sort no longer draws under the floor').toBeGreaterThan(
+      0,
+    );
+    expect(hitAreaFor('.sort', all), '.sort is drawn small and hit small').toBe(true);
+    // Leftwards only: an overhang the other way sits on the funnel's own 44 px area.
+    const after = all.find((rule) => rule.selectors.includes('.sort::after'));
+    expect(after!.body).toMatch(/inset\s*:\s*0 0 0 calc\(-1 \* var\(--space-2\)\)/);
   });
 
   it('keeps the exemption list honest — every entry still names a real rule', () => {

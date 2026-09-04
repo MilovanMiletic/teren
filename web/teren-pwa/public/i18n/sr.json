@@ -487,6 +487,10 @@
       "correction": {
         "title": "Ne znamo kom gradilištu pripada taj dan",
         "body": "Unos koji ispravljate nije na ovom telefonu, a server nije dostupan. Ispravka mora da ide na isto gradilište kao i unos koji menja, pa snimanje ne počinje dok se to ne zna. Probajte ponovo kada budete imali signal — ništa nije izgubljeno."
+      },
+      "correctionUnknown": {
+        "title": "Taj dan ne može da se ispravi sa ovog telefona",
+        "body": "Server je odgovorio, ali taj unos ne pokazuje gradilište na koje ovaj telefon može da snima. Ponovni pokušaj daje isti odgovor, pa nema smisla čekati signal — javite se kancelariji da provere zapis. Originalni unos nije dirnut."
       }
     },
     "correction": {
@@ -1162,7 +1166,7 @@
       "reports": "Izveštaji",
       "reportsValue": "{{sent}} od {{total}}",
       "omitted": {
-        "title": "Prikazano {{shown}} od {{total}} gradilišta",
+        "title": "Server je poslao {{shown}} od {{total}} gradilišta",
         "body": "Server šalje najviše 500 gradilišta i prvo stavlja ona kojima nešto treba, pa je izostavljeno samo ono gde nema problema. Svi brojevi gore ipak broje ceo sistem."
       }
     },
@@ -1207,7 +1211,7 @@
       "superseded": "Zamenjen novijim izveštajem",
       "supersededAfterSend": "Unos je izmenjen posle nego što je izveštaj otišao",
       "unexpected": "Neočekivana greška",
-      "unrecognised": "Razlog koji ova verzija aplikacije ne poznaje"
+      "unrecognised": "Nepoznat razlog greške"
     }
   },
   "logs": {

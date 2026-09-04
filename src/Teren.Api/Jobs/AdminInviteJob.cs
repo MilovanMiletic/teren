@@ -101,6 +101,32 @@ public sealed class AdminInviteJob(
             return;
         }
 
+        // **Read once, and checked BEFORE anything is written.** Both halves of that sentence are
+        // the fix of 2026-09-04. `IssueAsync` supersedes every live token for this user on its way
+        // past, and this branch used to sit *after* it and after `SaveChangesAsync` — so a host
+        // with a relay and no `Auth:AppUrl` (every deployed host: the variable was in no compose
+        // file and no env template) answered "emailed" on the screen, sent nothing, and retired
+        // the previous attempt's link each time somebody pressed send again. If a real link had
+        // ever gone out, a later invite from a host that had lost the setting would silently
+        // retire it, and the customer's administrator could never get in.
+        //
+        // The local is what makes "read once" true: `authOptions.Value` is re-read on every
+        // access, so checking the property and later formatting it could see two different
+        // values, and the one thing this method must not do is mint against a precondition that
+        // was true a moment ago.
+        var appUrl = authOptions.Value.AppUrl;
+
+        if (!PasswordTokens.CanLink(appUrl))
+        {
+            // No address to send him to. Saying so beats mailing a bare token nobody can use —
+            // and now beats it without spending his existing one to find out.
+            logger.LogWarning(
+                "Invite mail skipped for {UserId}: Auth:AppUrl is not configured, so there is no "
+                + "link to send. Nothing was minted and no live link was retired.",
+                userId);
+            return;
+        }
+
         var companyName = user.CompanyId is Guid companyId
             ? await db.Companies.Where(c => c.Id == companyId).Select(c => c.Name)
                 .FirstOrDefaultAsync(ct)
@@ -110,17 +136,12 @@ public sealed class AdminInviteJob(
             db, user, actorUserId, "invite_mail", Lifetime, ct);
         await db.SaveChangesAsync(ct);
 
-        var link = PasswordTokens.LinkFor(authOptions.Value.AppUrl, issued.Token);
-        if (link is null)
-        {
-            // Auth:AppUrl is not set, so there is no address to send him to. Saying so beats
-            // mailing a bare token nobody can use, and the token just expires unused.
-            logger.LogWarning(
-                "Invite mail skipped for {UserId}: Auth:AppUrl is not configured, so there is no "
-                + "link to send.",
-                userId);
-            return;
-        }
+        // Cannot be null: `CanLink` above is the same predicate `LinkFor` applies, against the
+        // same local. The throw is here so that if the two ever come apart, this job fails loudly
+        // rather than mailing something shaped like a link.
+        var link = PasswordTokens.LinkFor(appUrl, issued.Token)
+            ?? throw new InvalidOperationException(
+                "Auth:AppUrl passed PasswordTokens.CanLink and then produced no link.");
 
         // His language, not the company's and not the project's: a report speaks the project's
         // language because the client reads it; an invite speaks the recipient's, because he does.

@@ -21,6 +21,28 @@ export interface CorrectionTarget {
 }
 
 /**
+ * **Why the lookup could not answer** — and the distinction is the difference between a screen
+ * that invites a retry and one that lies about it.
+ *
+ * - `unreachable` — the server was not asked, or was asked and did not answer. A signal coming
+ *   back is exactly what makes another attempt succeed, so the screen offers one.
+ * - `unresolvable` — the server **did** answer, and its answer names no site this device can
+ *   record against: it has never heard of that entry, or it named a project the phone cannot see.
+ *   Pressing "try again" here asks the same question and gets the same answer, for ever.
+ *
+ * Both used to be one `null` under one sentence blaming the network ("*server nije dostupan …
+ * probajte ponovo kada budete imali signal*"), which in the second case is both wrong about the
+ * cause and wrong about the remedy — a foreman standing in a field being told to find a signal he
+ * already has (review, 2026-09-04).
+ */
+export type CorrectionRefusal = 'unreachable' | 'unresolvable';
+
+/** What {@link CorrectionService.resolve} answers: a target, or why there is none. */
+export type CorrectionLookup =
+  | { readonly target: CorrectionTarget; readonly refusal?: undefined }
+  | { readonly target: null; readonly refusal: CorrectionRefusal };
+
+/**
  * Resolving a correction target — the one place in the app that decides which site a correction
  * belongs to.
  *
@@ -46,12 +68,13 @@ export interface CorrectionTarget {
  * foreman's, or one from before this phone was activated. Those exist in the archive because the
  * list is a merge (`core/archive/archive-rows.ts`).
  *
- * ## Refusing is a real answer
+ * ## Refusing is a real answer, and there are two of them
  *
- * `null` means *this build cannot say which site that day belongs to* — the phone does not hold
- * it and the server could not be asked. The screen then says so and records nothing. **It must
- * never fall back to the selected site**: that is precisely the substitution that turns a
- * correction into an abandoned day, and it would be invisible until an entry stopped uploading.
+ * A null target means *this build cannot say which site that day belongs to*, and the
+ * {@link CorrectionRefusal} beside it says whether asking again could ever help. The screen then
+ * says so and records nothing. **It must never fall back to the selected site**: that is precisely
+ * the substitution that turns a correction into an abandoned day, and it would be invisible until
+ * an entry stopped uploading.
  */
 @Injectable({ providedIn: 'root' })
 export class CorrectionService {
@@ -60,30 +83,33 @@ export class CorrectionService {
   private readonly projects = inject(ProjectService);
 
   /**
-   * What is known about the day `entryId` names, or null when the site cannot be established.
+   * What is known about the day `entryId` names, or **why** the site could not be established.
    *
    * Never throws: a rejected read here would tear down the recording screen's own start-up, and
    * "I could not find out" is a state that screen has to render anyway.
    */
-  async resolve(entryId: string): Promise<CorrectionTarget | null> {
+  async resolve(entryId: string): Promise<CorrectionLookup> {
     if (entryId.trim() === '') {
-      return null;
+      // An empty id in the URL. Nothing to ask anybody about, and a signal will not produce one.
+      return { target: null, refusal: 'unresolvable' };
     }
 
     const local = await this.entries.getEntry(entryId).catch(() => undefined);
     if (local) {
       return {
-        entryId,
-        // The full project record when the list holds it — it carries the address the recording
-        // screen prints. The row's own denormalised name is the fallback rather than a failure:
-        // it was copied onto the entry at capture time for exactly this, and an entry always
-        // renders even when the project list has changed underneath it (`core/db/models.ts`).
-        project: this.knownProject(local.projectId) ?? {
-          id: local.projectId,
-          name: local.projectName,
-          address: '',
+        target: {
+          entryId,
+          // The full project record when the list holds it — it carries the address the recording
+          // screen prints. The row's own denormalised name is the fallback rather than a failure:
+          // it was copied onto the entry at capture time for exactly this, and an entry always
+          // renders even when the project list has changed underneath it (`core/db/models.ts`).
+          project: this.knownProject(local.projectId) ?? {
+            id: local.projectId,
+            name: local.projectName,
+            address: '',
+          },
+          day: local.localDay,
         },
-        day: local.localDay,
       };
     }
 
@@ -92,13 +118,18 @@ export class CorrectionService {
     const remote = await this.archive.getEntry(entryId);
     const project = this.knownProject(remote.entry?.project_id ?? null);
     if (!project) {
-      // Three cases, one answer, and the answer is right for all three: the server could not be
-      // asked, the server has never heard of that entry, or it named a site this device cannot
-      // see. Guessing in any of them writes a day that can never be sent.
-      return null;
+      // Three cases, one refusal — and **two different remedies**, which is why the reason comes
+      // back with it. Guessing in any of them writes a day that can never be sent.
+      //
+      // `status !== 'ok'` is the only one a signal fixes. `missing` is a 404: the server answered
+      // and has never heard of that entry. And a project this device cannot see is the same shape
+      // — the server named a site, the phone's list does not hold it, and asking again returns
+      // the same pair. Only the first invites a retry.
+      const refusal: CorrectionRefusal = remote.status === 'ok' ? 'unresolvable' : 'unreachable';
+      return { target: null, refusal };
     }
 
-    return { entryId, project, day: remote.entry?.entry_date ?? null };
+    return { target: { entryId, project, day: remote.entry?.entry_date ?? null } };
   }
 
   /** The project list's own record for an id, or null — never a synthesised one. */

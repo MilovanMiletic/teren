@@ -110,6 +110,7 @@ export class KnobbedPlatformGateway implements PlatformGateway {
   enableError: unknown = null;
 
   /** Held open, a call lets a spec look at the screen while the request is still in flight. */
+  companiesGate: PlatformDeferred | null = null;
   usersGate: PlatformDeferred | null = null;
   logsGate: PlatformDeferred | null = null;
   healthGate: PlatformDeferred | null = null;
@@ -156,6 +157,7 @@ export class KnobbedPlatformGateway implements PlatformGateway {
 
   async listCompanies(query: { q?: string; cursor?: string } = {}): Promise<PlatformCompanyListResponse> {
     this.companyListings += 1;
+    await this.companiesGate?.promise;
     this.refuse(this.companiesError);
     const answer = await this.real.listCompanies(query);
     return this.extraCompanies.length === 0

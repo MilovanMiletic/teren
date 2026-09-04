@@ -465,6 +465,24 @@ describe('HealthPage', () => {
     expect(tallies(sr.health.pipeline.title)).toEqual([`${sr.health.reason.unrecognised} 2`]);
   });
 
+  /**
+   * **…and that sentence blames nobody, which is the point of it.**
+   *
+   * It read *"Razlog koji ova verzija aplikacije ne poznaje"* — a reason this version of the app
+   * does not know. True of one of the two cases the token covers and false of the commoner one:
+   * the **server** answers with the literal `unrecognised` for a code its own vocabulary does not
+   * declare, and no build of this app could have known it. A screen that blames the wrong end
+   * sends a founder to update a phone when what wants looking at is a deployment (review,
+   * 2026-09-04).
+   */
+  it('does not blame the app for a code the server is what did not recognise', async () => {
+    await render(true, true, estate({ pipeline_failures: [{ reason: 'unrecognised', count: 2 }] }));
+
+    expect(text(), 'the sentence still points at the app').not.toContain('aplikacije');
+    expect(sr.health.reason.unrecognised).not.toContain('aplikacij');
+    expect(en.health.reason.unrecognised.toLowerCase()).not.toContain('app');
+  });
+
   /** A tally of zero is not a fact anybody needs a row for; the narrowing drops it. */
   it('drops a tally of nothing', async () => {
     await render(
@@ -494,7 +512,7 @@ describe('HealthPage', () => {
   it('says when the server did not send the whole estate', async () => {
     await render(true, true, estate({ sites: sites(3), sites_omitted: 497 }));
 
-    expect(text()).toContain('Prikazano 3 od 500 gradilišta');
+    expect(text()).toContain('Server je poslao 3 od 500 gradilišta');
     // …and *why* it is safe, not only that it happened.
     expect(text()).toContain('prvo stavlja ona kojima nešto treba');
   });
@@ -502,7 +520,32 @@ describe('HealthPage', () => {
   it('stays quiet when the estate is whole', async () => {
     await render(true, true, estate({ sites: sites(3), sites_omitted: 0 }));
 
-    expect(text()).not.toContain('Prikazano 3 od');
+    expect(text()).not.toContain('Server je poslao');
+  });
+
+  /**
+   * **One card, one "Prikazano".**
+   *
+   * The notice and the count strip live in the same card and both used to open with *"Prikazano
+   * X od Y"* — the server's cap and the page's slice, two different arithmetics wearing one
+   * sentence, stacked. A reader comparing "Prikazano 3 od 500" with "Prikazano 3 od 3" two lines
+   * below has been given a contradiction to resolve on the screen he came to for the truth. The
+   * server's line says what the *server* did; the strip keeps the count vocabulary every other
+   * table in the product uses.
+   */
+  it('prints the count vocabulary once in the sites card', async () => {
+    // Twelve sites, so the strip is in its paging form — which is the state a truncated estate is
+    // always in, the cap being 500. Three sites would put "Ukupno 3" there instead and the two
+    // sentences would never have met, which is what made a laxer version of this spec vacuous.
+    await render(true, true, estate({ sites: sites(12), sites_omitted: 497 }));
+
+    const card = element.querySelector('.sites');
+    expect(card?.textContent, 'the paging strip is not in its range form').toContain(
+      `Prikazano 1–${TABLE_PAGE_SIZE} od 12`,
+    );
+    const said = (card?.textContent ?? '').match(/Prikazano/g) ?? [];
+    expect(said.length, 'two "Prikazano" totals in one card').toBe(1);
+    expect(card?.textContent).toContain('Server je poslao 12 od 509 gradilišta');
   });
 
   // ---- There is no answer at all --------------------------------------------------------------
@@ -546,6 +589,51 @@ describe('HealthPage', () => {
     // Not "zero days, nothing failing" — which is the most reassuring possible rendering of a
     // payload nobody could read.
     expect(text()).not.toContain(sr.health.summary.days);
+  });
+
+  /**
+   * **An older answer must not overwrite a newer question** (`ui/latest-request.ts`).
+   *
+   * This screen has a `loading` flag and had no generation guard, so a reload pressed twice could
+   * end with the slower failure landing after the faster success — the numbers stripped off the
+   * screen and *"Nije provereno na serveru"* over them, on the one screen whose whole job is
+   * saying what is wrong. The founder's own gesture: press refresh, nothing happens fast enough,
+   * press it again.
+   */
+  it('ignores a failed reading that lands after a good one', async () => {
+    await render(true, true, estate({ sites: sites(3) }));
+
+    let call = 0;
+    let release = (): void => undefined;
+    const slow = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(gateway, 'getHealth').mockImplementation(async () => {
+      call += 1;
+      if (call === 1) {
+        await slow;
+        throw platformHttpError(503);
+      }
+      return gateway.real.getHealth();
+    });
+
+    button(sr.health.reload).click();
+    await settle();
+    button(sr.health.reload).click();
+    await settle();
+    expect(element.querySelector('.stats')).not.toBeNull();
+
+    release();
+    await settle();
+
+    expect(text(), 'a stale failure painted "not confirmed" over numbers that were').not.toContain(
+      sr.platform.stale.title,
+    );
+    expect(
+      element.querySelector('.stats'),
+      'the numbers were stripped by a stale answer',
+    ).not.toBeNull();
+    expect(text()).not.toContain(sr.health.unavailable);
   });
 
   /** A reload really asks the server again; a repaint is not a reading. */

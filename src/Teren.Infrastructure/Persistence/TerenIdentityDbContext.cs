@@ -98,8 +98,17 @@ public sealed class TerenIdentityDbContext(DbContextOptions<TerenIdentityDbConte
     /// on file" above a man's name for a value it had simply not fetched. Project queries here
     /// project to the three columns they need and never hand the entity onward.
     /// </para>
+    /// <para>
+    /// <b>Named <c>PlatformProjects</c> and not <c>Projects</c>, and the name is the guard.</b> Two
+    /// contexts over one connection both know a <c>Project</c>; the filtered one calls its set
+    /// <c>Projects</c>, and while this one did too, a company-scoped handler that reached for
+    /// <c>db.Projects</c> on the wrong context compiled cleanly and read every customer's sites.
+    /// Since the names differ, that line does not build — and the one name that does build says
+    /// which surface it belongs to, which is what makes
+    /// <c>PlatformOnlyIdentitySetTests</c> an exact scan rather than a heuristic.
+    /// </para>
     /// </summary>
-    public DbSet<Project> Projects => Set<Project>();
+    public DbSet<Project> PlatformProjects => Set<Project>();
 
     /// <summary>
     /// The two read-throughs the health page needs, and the closest this model comes to evidence.

@@ -487,6 +487,10 @@
       "correction": {
         "title": "We cannot tell which site that day belongs to",
         "body": "The record you are correcting is not on this phone and the server could not be reached. A correction has to go to the same site as the record it replaces, so recording will not start until that is known. Try again when you have a signal — nothing has been lost."
+      },
+      "correctionUnknown": {
+        "title": "That day cannot be corrected from this phone",
+        "body": "The server answered, and that record does not name a site this phone can record against. Trying again gives the same answer, so there is no point waiting for a signal — ask the office to check the record. The original record is untouched."
       }
     },
     "correction": {
@@ -1162,7 +1166,7 @@
       "reports": "Reports",
       "reportsValue": "{{sent}} of {{total}}",
       "omitted": {
-        "title": "Showing {{shown}} of {{total}} sites",
+        "title": "The server sent {{shown}} of {{total}} sites",
         "body": "The server sends at most 500 sites and puts the ones needing attention first, so everything left out is a site with nothing wrong. Every number above still counts the whole estate."
       }
     },
@@ -1207,7 +1211,7 @@
       "superseded": "Replaced by a newer report",
       "supersededAfterSend": "The record changed after its report had gone out",
       "unexpected": "An unexpected failure",
-      "unrecognised": "A reason this version of the app does not know"
+      "unrecognised": "An unrecognised failure reason"
     }
   },
   "logs": {

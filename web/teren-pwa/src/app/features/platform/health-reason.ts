@@ -72,6 +72,13 @@ export const HEALTH_REASON_KEYS: Readonly<Record<string, string>> = {
   // ---- Neither: what the server reports for a code it does not declare, and what this client
   // reports for a tally whose reason it could not read. One token, because to a reader they are
   // the same fact.
+  //
+  // **And that is why its sentence attributes the failure to nobody.** It read "a reason this
+  // version of the app does not know", which is true of the second case and false of the first —
+  // and the first is the common one: the *server* answers with the literal `unrecognised` for a
+  // code its own vocabulary does not declare, and no version of this app could have known it
+  // (review, 2026-09-04). A screen that blames the wrong end sends a founder to update a phone
+  // when what needs looking at is a deployment.
   [UNRECOGNISED_REASON]: 'health.reason.unrecognised',
 };
 

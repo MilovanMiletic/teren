@@ -268,6 +268,22 @@
 }
 
 /*
+ * The skeleton, **inside** the card rather than in place of it.
+ *
+ * The whole stream card used to be replaced by the `card--loading` block, and at 1024 and up that
+ * card holds the two filter funnels in its `<thead>` — so the request a keystroke fired destroyed
+ * the box it was typed into (review, 2026-09-04). The bars now stand where the rows will be, and
+ * the header, the filters and the notices are outside the branch at every device class.
+ *
+ * The product's own skeleton block is reused for both placements (`styles.css` §Loading), which is
+ * why there is one rule here and not four: inside a `<td>` the row already brings its padding, so
+ * that one copy gives its own back. `.stream` itself sets no padding at all.
+ */
+.stream__table .card--loading {
+  padding: 0;
+}
+
+/*
  * Columns given widths rather than left to the browser: auto layout takes its cue from the content,
  * and one stack-trace-bearing message would otherwise take four fifths of the table and squeeze the
  * timestamp — which is the column a reader scans down.

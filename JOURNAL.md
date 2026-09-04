@@ -12,6 +12,171 @@ Entry format:
 
 ---
 
+## 2026-09-04 (later) — the review debt, and a stopped agent that left nothing behind
+
+**Talked about** — founder: *"Can we close this [review debt] first, what do you think?"* Yes, and for
+a reason beyond it being unblocked: **D9 touches the report renderer and C11 rewrites the report
+renderer**, so reviewing it after C11 would be reviewing code that no longer exists.
+
+**Baselines re-verified by execution on the new machine first:** backend **1142/1142** (1 m 57 s),
+PWA **1878/1878 in 93 files** — both exactly the figures on record, so the machine move left nothing
+detectable behind.
+
+**D9 (`3716283`) — reviewed accept-with-fixes, both gating items closed and mutation-proven.**
+1. **The report made a promise the server does not keep.** The unsent-correction band said *"ovo je
+   jedini izveštaj za taj dan"*. The first clause is a fact off the `report` row; the second is a
+   promise about the future, and **two paths break it** — re-confirming a `confirmed` entry (the
+   sweeper re-enqueues it and `ReportAsync` never asks whether the entry has been superseded), and a
+   three-link chain where the earliest report is already in the client's inbox. **On an evidence
+   document, in exactly the dispute a correction exists for.** The clause is gone in both languages;
+   the negative test is a **vocabulary** guard (a differently-worded paraphrase would still slip
+   past) and the chain test asserts `Sent.Count == 2` — the finding stated as an arrangement.
+2. **The `report.sent_at` vs `entry.reported_at` distinction — which the code documents as
+   load-bearing — had no test that could fail.** Swapping the read left all six e2e tests green,
+   because every existing arrangement had both columns agreeing. Now arranged in the real
+   `superseded_after_send` shape. Backend **1142 → 1146**.
+- *Left alone deliberately:* the **behaviour** behind finding 1 — two reports for one work day are
+  still reachable. That is non-gating 3b and a founder call, not a D9 defect.
+- *Non-gating, and a claim narrowed:* disabling a company's administrators first means the access
+  notice reaches an empty list, so PROJECT.md §11's *"cannot be done without the customer being
+  told"* was **wider than its mechanism**. The sentence moved rather than the claim. **Second time in
+  two days a privacy sentence was found wider than its code; the defensible claim is always the one
+  derived from the code, never the one written first.**
+
+**The frontend delta — reviewed accept-with-fixes, three gating findings, all measured in a browser
+at nine widths rather than read.**
+1. **`/company/profile` after a 401 told the owner to sign in again with nothing to press.** The
+   `<app-sign-in-again />` sat in a branch that cannot be true after a 401, and `session-link.ts`
+   renders nothing when a device session exists. With *no* device session it worked — so the only
+   stranded population was **the owner-foreman on his phone, which is the founder's own browser**.
+   Same shape as 2026-09-01's "the super admin pages aren't wired in": individually correct guards,
+   no door.
+2. **The logs filter box was destroyed by the request it fired**, ≥1024 only — the `<thead>` sat
+   inside `@if (loading())`. Typing `Ent` and pausing 700 ms erased the box mid-word. The template's
+   own comment claimed *"a control must never be removed by the state it caused."* **And the spec
+   that pinned the property could not fail** — the mock resolved in a microtask, so the loading state
+   never painted in jsdom. Fourth instance of that family.
+3. **The logs screen showed rows that did not match the filter shown** — no request generation, so a
+   slow `%a%` landing after a fast `%ab%` won; and a late `loadMore` appended 50 rows of the old
+   query to the new stream. On the one screen whose job is telling the truth.
+- Fixes are in as `ui/latest-request.ts`, applied across **six** screens (the same guard closes
+  P12's `HealthPage.load()` gap), plus P12's other four items. **PWA 1878 → 1903, 94 files;
+  `ng build` clean.**
+
+**The procedural find worth more than any single defect:** restoring a mutated file with
+`mv file.orig file` leaves the source **older than its DLL**, MSBuild skips it, and the "restored"
+suite **re-runs the mutation**. Four of the reviewer's own proof runs were void before it noticed.
+`--no-incremental` after any restore, sha256-verified. **A second way a green suite lies here — and
+unlike a mutation left by a stopped agent, this one fools someone who is being careful.**
+
+**A stopped agent that left nothing behind, for once.** The frontend implementer was killed before
+reporting — the fourth time. The tree was scanned before anything was believed: no `RESTORE`/`MUTAT`
+markers, no `console.log`, no `.orig`/`.bak`/`.rej` files, both suites green, build clean, and the
+three fixes verified **structurally** (`@if (loading())` now sits after `</thead>`, not around it).
+**But there are no mutation proofs on any of it and no account of intent, so P12 and the frontend
+fixes are in exactly D9's position and need a delta review.**
+
+**Trackers corrected — a tracker is not evidence.** CLAUDE.md's *"F7's `/platform/health` is
+unreviewed"* was wrong in both directions: the health page **frontend** is in `fc5737f`, which was
+reviewed; the **backend** half in **`a78cc05`** is what nobody has read — and it is the higher-value
+target, carrying the `TerenIdentityDbContext` widening that moved the privacy barrier from *no
+evidence tables* to *no evidence content*, the `IJobQueueDepth` seam and the correction endpoint.
+Also: F10's shipped form was reviewed inside `a42adaf`, and `c97c0e1` records its own accept. Both
+reviewers derived this from JOURNAL + `git log` rather than the trackers.
+
+**Two more reviews were launched and BOTH were stopped before reporting** — the process exited under
+them. `a78cc05`/D6/D8/D10 (backend) and the delta review of today's frontend fixes: **neither
+produced a verdict, so that debt is exactly where it was.** Their transcripts survive and they can be
+resumed rather than restarted. The tree was verified afterwards and is intact — 36 files, unchanged
+count, no residue markers, no stray files in the repo (both had been told to mutate on scratch copies
+and both did: the `.bak` and build logs are in the scratchpad, not the tree).
+**Re-verified by execution after they stopped: backend 1146/1146, PWA 1903/1903 in 94 files.**
+
+*And one self-inflicted scare worth writing down: the first PWA run after the stop came back **6
+failed across 5 files** on a tree that had been 1903 green an hour earlier — because I had started
+the **backend** suite concurrently, and its ~1000 scratch databases are precisely the memory and I/O
+pressure this file warns makes vitest time out in unrelated specs. A clean re-run at lower load:
+1903/1903. **The advice was already written down and I ran the two suites in parallel anyway.** Do
+not run them together on this machine.*
+
+### State saved mid-fix — READ THIS FIRST NEXT SESSION
+
+**Both remaining reviews were resumed from their transcripts and both completed.** Verdicts:
+frontend delta **accept**; `a78cc05` **accept-with-fixes** (2 gating); D6 `8c166a4`
+**accept-with-fixes** (1 gating); D10 `dbc6a1f` **accept**; D8 **accept**. **All review debt is now
+discharged** — every increment in the identity/M0 set has been read by a reviewer.
+
+**The frontend delta closed clean.** All three gating fixes fail when removed, each proof named and
+sha256-verified, and **the vacuity question is answered**: the replacement logs-loading spec really
+does render a loading frame, so it can fail. *The reviewer retracted two of its own measurements —
+a mutation that edited an HTML **comment** instead of the element and reported green, and an
+off-viewport `elementFromPoint` tap-target probe. Both retractions are the behaviour to want.*
+
+**The backend review's three gating findings, and one is a product defect.**
+- **G3 (D6): `emailed: true` when no mail can be built, and the previous working link dies first.**
+  `Invite()` gated on `mail.IsConfigured` alone, and `AdminInviteJob` minted + saved + *then*
+  discovered `LinkFor` had nothing to build from — while `IssueAsync` supersedes **every** live token
+  on its way past. `Auth__AppUrl` was in **no** compose file and **no** env template, only in
+  `appsettings.Development.json`. So on the dev host as configured, once Resend is live: the screen
+  says *sent*, nothing goes out, and "send again" retires the first token too. The customer never
+  gets in and the only trace is a log warning. *Exactly the silent invention `Emailed=false` exists
+  to prevent.*
+- **G1: the privacy guard does not object to a `PlatformDirectory` member returning the `Project`
+  entity.** What was admitted was a **projection** `{id, company_id, name}`; the entity is a
+  different shape. Adding a member returning `List<Project>` left all 24 privacy tests green.
+- **G2: `Projects`/`EntryHealth`/`ReportHealth` are cross-tenant sets on a filter-less context that
+  eight company-scoped endpoint files already inject**, with nothing structural pinning who may read
+  them. **C10 is the next increment and is exactly a handler over `Projects`** — forget one
+  `CompanyId ==` and a company admin reads every customer's site names.
+
+**WHERE THE TREE STANDS (verified by execution, not assumed).** A fix agent was stopped mid-task by
+the founder. **Build clean** (only the pre-existing `CS9107` at `DemoIdentitySeedTests.cs:404`),
+**backend 1150/1150** (1146 before, +4), PWA 1903/1903 untouched.
+- **G1 done** — `typeof(Project)` in `Forbidden` and in the anti-vacuity walk (`PlatformPrivacyTests.cs`).
+- **G2 done** — new `tests/Teren.Api.Tests/PlatformOnlyIdentitySetTests.cs` source-scan.
+- **G3 code done, its proof and its config NOT** — `PasswordTokens.CanLink` shared with `LinkFor`,
+  the `Invite()` gate, the job reorder, and a `Program.cs` validation are all in and green. **Still
+  owed: fix (c)** — `Auth__AppUrl` into `deploy/.env.example`, `deploy/docker-compose.prod.yml` and
+  `deploy/README.md` §2 (**no `deploy/` file has been touched**) — **and fix (d)**, a test asserting
+  that on the no-AppUrl path **no token is superseded and no row is minted**. The existing
+  `Sends_nothing_when_there_is_nowhere_to_send_him` asserts only `Sent.ShouldBeEmpty()` and cannot
+  see either half, which is why it stayed green through the defect.
+- **No mutation proofs on G1, G2 or G3.** The agent was stopped before producing any.
+
+**Non-gating, recorded not required:** `NeedsAttention` cannot see a stalled pipeline (a site with 40
+entries stuck in `received` scores 0 and sorts as healthy — and that is what the 500-site cap drops);
+`HangfireJobQueueDepth` has zero coverage and `Read()` is the only sync DB call on the platform path;
+nothing tests that the container binds `DisabledJobQueueDepth` when Hangfire is off; ARCHITECTURE §6's
+`entry` block still omits the two D8 columns; `IMailSender`'s doc still claims the link comes back in
+the response body. Four `/platform/logs` items are **P11c**.
+
+***A founder call worth naming:*** the **random** demo code inherits `DemoActivationCodeLifetime` =
+**3650 days**, while an admin-issued code lives 7. So "indistinguishable from a code an admin issues"
+is false on expiry — a ten-year credential to the demo company, in terminal scrollback on a public
+host. The alternative is a weekly re-seed or `/company` re-issue.
+
+**Next**
+1. **Finish G3: fix (c) the three `deploy/` files, fix (d) the no-AppUrl test, then mutation-prove
+   G1, G2 and G3.** Nothing else is half-done.
+2. Then **P11c** (four `/platform/logs` items) and **P11b** (`worker-page.html`'s 401 hole — F6,
+   already accepted, so it needs its own round).
+3. Then **C11 before C9**, per the scope cut.
+4. Founder calls: notify on disabling a `company_admin` or keep the narrowed wording; 3b (refusing to
+   report a superseded entry); the demo code's 3650-day lifetime; and the Serbian ear on today's new
+   strings (the shortened correction sentence plus `capture.blocked.correctionUnknown.*`,
+   `health.sites.omitted.title`, `health.reason.unrecognised`).
+
+**Old next-list, superseded by the above:**
+1. ~~**Resume the two stopped reviews rather than restarting them**~~ (their transcripts are saved).
+   Backend: **`a78cc05`** — the real priority — then **D6** (`8c166a4`), **D8**, **D10** (`dbc6a1f`).
+   Frontend: the delta review of today's fixes, which still has **no mutation proofs on any of it**.
+2. **Delta review of today's fixes** (D9's two + the frontend three + P12) — no mutation proofs on
+   the frontend half.
+3. **P11b** — `worker-page.html:103-114` has the identical 401 hole; it is F6, already accepted, so
+   it was deliberately left out rather than edited under another increment's name.
+4. Founder calls: notify on disabling a `company_admin` or keep the narrowed wording; 3b (refusing to
+   report a superseded entry); Serbian ear on the shortened correction sentence.
+
 ## 2026-09-04 — the scope cut: half of what was planned is now decided against
 
 **Talked about**

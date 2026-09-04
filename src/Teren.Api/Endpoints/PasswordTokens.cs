@@ -110,6 +110,23 @@ internal static class PasswordTokens
     }
 
     /// <summary>
+    /// Whether a link can be built at all — <b>a question that must be asked before
+    /// <see cref="IssueAsync"/>, not after it.</b>
+    ///
+    /// <para>
+    /// It exists because the order was wrong and the cost was a customer's only way in.
+    /// <c>AdminInviteJob</c> used to mint, save, and <em>then</em> discover that
+    /// <see cref="LinkFor"/> had nothing to build from — and <see cref="IssueAsync"/> supersedes
+    /// every live token on its way past. So on a host with a relay and no <c>Auth:AppUrl</c>
+    /// (which was every deployed host: the variable was in no compose file and no env template),
+    /// pressing "send again" retired a link that had already reached somebody and sent nothing in
+    /// its place. One predicate, shared with <see cref="LinkFor"/>, so the check and the build
+    /// cannot come to disagree about what "configured" means.
+    /// </para>
+    /// </summary>
+    public static bool CanLink(string appUrl) => !string.IsNullOrWhiteSpace(appUrl);
+
+    /// <summary>
     /// The link a human follows, or null when <c>Auth:AppUrl</c> is not configured.
     /// <para>
     /// Null is an ordinary outcome, not a failure: the token itself is perfectly usable and the
@@ -118,7 +135,7 @@ internal static class PasswordTokens
     /// </para>
     /// </summary>
     public static string? LinkFor(string appUrl, string token) =>
-        string.IsNullOrWhiteSpace(appUrl)
-            ? null
-            : $"{appUrl.TrimEnd('/')}/set-password?token={token}";
+        CanLink(appUrl)
+            ? $"{appUrl.TrimEnd('/')}/set-password?token={token}"
+            : null;
 }

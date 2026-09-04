@@ -704,6 +704,45 @@ Rules that fall out of it:
   re-queues the report even on a replayed, byte-identical confirmation**, because the realistic
   retry (a recipient added, a relay configured) changes nothing about the entry itself.
 
+### The correction band — what a report says about the document it replaces (D9, 2026-09-03)
+
+A correction's report **names the record it supersedes**, because without it the correction arrives
+at the client looking like an unrelated day — weak evidence in exactly the dispute a correction
+exists for, given the client is already holding the wrong document.
+
+- **Named the way a human names it: work date and site, never a GUID.** In the **project's**
+  language and time zone (`report.Language` / `report.TimeZoneId`, set from `project.ReportLanguage`
+  / `project.TimeZone`) — the client's language, not the foreman's phone.
+- **One hop, deliberately.** A correction of a correction names its *immediate* predecessor, because
+  that is the document the client last received. Walking to the head of the chain would name a report
+  two revisions old and hide the one he is holding. Chains are explicitly allowed.
+- **Two variants, because the honest sentence differs**: one for a superseded report that reached a
+  relay, one for a document still waiting. The distinction keys on **`report.sent_at`, not
+  `entry.reported_at`** — in the `superseded_after_send` state the report went out while the entry is
+  deliberately left unsealed, so the two columns disagree and only one of them is the truth.
+- **The superseded report is never rewritten.** Reports are sealed; the *new* document names its
+  predecessor.
+- **What the band must never claim (D9 review, 2026-09-04).** The unsent variant used to add *"this
+  is the only report for that day"*, and **nothing in the money path keeps that promise**: a
+  `confirmed` entry can be re-confirmed, the sweeper re-enqueues it, and `EntryReporter.ReportAsync`
+  never asks whether the entry has been superseded — so two reports for one work day are reachable,
+  and in a three-link chain the earliest report is already in the client's inbox. The band states only
+  what is read from the row. *An evidence document may report a fact; it may not make a promise about
+  the future.* **Still open and non-gating:** whether the reporter should refuse to report an entry
+  that a *reported* correction supersedes (a design call, not a defect).
+- Report assertions read text **back out of the rendered PDF** with PdfPig, so these are proven on the
+  page rather than at the builder.
+
+### Access notices — telling a customer that an administrator appeared (D4's closure, D9)
+
+`AdminAccessNoticeJob` emails **every other enabled administrator of a company** when an
+administrator is added or a credential is issued there. The company's language; **no token, no
+link**. Like `AdminInviteJob` it never puts a credential in a Hangfire argument, and a structural
+guard forbids any type reachable from `PlatformDirectory` naming a token, link, secret, password,
+code, credential, url or hash. **Its limit is written down where the claim is made** (PROJECT.md
+§11): recipients are the *enabled* administrators, so disabling them all first sends the notice
+nowhere and leaves only an audit row.
+
 ### Verification obligations B3 hands to B4 and reporting (review F3 — binding)
 
 `/complete` verifies existence + byte size only; the API never reads media bytes. Therefore:

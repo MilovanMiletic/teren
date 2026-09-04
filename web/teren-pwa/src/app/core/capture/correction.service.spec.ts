@@ -7,7 +7,7 @@ import { LocalEntry } from '../db/models';
 import { TEREN_DB, TerenDb } from '../db/teren-db';
 import { DEMO_PROJECTS } from '../projects/project-source';
 import { ProjectService } from '../projects/project.service';
-import { CorrectionService } from './correction.service';
+import { CorrectionRefusal, CorrectionService, CorrectionTarget } from './correction.service';
 
 /** The site the demo phone is standing on. */
 const HERE = DEMO_PROJECTS[0];
@@ -91,6 +91,23 @@ describe('CorrectionService', () => {
     corrections = TestBed.inject(CorrectionService);
   }
 
+  /**
+   * The target alone, which is what most of these specs are about.
+   *
+   * `resolve` answers `{ target }` or `{ target: null, refusal }` — the refusal being the half
+   * that decides whether the recording screen offers a retry. The specs that are about *which
+   * site a correction inherits* read through this; the ones about the refusal call `resolve`
+   * directly, which is the line worth being able to see in the diff.
+   */
+  async function target(entryId: string): Promise<CorrectionTarget | null> {
+    return (await corrections.resolve(entryId)).target;
+  }
+
+  /** Why the lookup refused, or null when it did not. */
+  async function refusal(entryId: string): Promise<CorrectionRefusal | null> {
+    return (await corrections.resolve(entryId)).refusal ?? null;
+  }
+
   afterEach(async () => {
     db.close();
     await db.delete();
@@ -117,17 +134,17 @@ describe('CorrectionService', () => {
     TestBed.inject(ProjectService).select(HERE.id);
     await db.entries.put(localEntry({ id: 'e-1', projectId: THERE.id, projectName: THERE.name }));
 
-    const target = await corrections.resolve('e-1');
+    const found = await target('e-1');
 
-    expect(target).not.toBeNull();
-    expect(target!.entryId).toBe('e-1');
-    expect(target!.project.id).toBe(THERE.id);
-    expect(target!.project.name).toBe(THERE.name);
-    expect(target!.day).toBe('2026-09-01');
+    expect(found).not.toBeNull();
+    expect(found!.entryId).toBe('e-1');
+    expect(found!.project.id).toBe(THERE.id);
+    expect(found!.project.name).toBe(THERE.name);
+    expect(found!.day).toBe('2026-09-01');
 
     // …and the selected site really was the other one, so this is a difference and not a match.
     expect(TestBed.inject(ProjectService).selected()?.id).toBe(HERE.id);
-    expect(target!.project.id).not.toBe(HERE.id);
+    expect(found!.project.id).not.toBe(HERE.id);
   });
 
   /** A day this phone holds resolves with no network at all — the ordinary case, before the mic. */
@@ -135,9 +152,9 @@ describe('CorrectionService', () => {
     await configure();
     await db.entries.put(localEntry({ id: 'e-1' }));
 
-    const target = await corrections.resolve('e-1');
+    const found = await target('e-1');
 
-    expect(target?.project.id).toBe(THERE.id);
+    expect(found?.project.id).toBe(THERE.id);
     expect(remoteReads, 'the server was asked about a day the phone already holds').toEqual([]);
   });
 
@@ -147,13 +164,17 @@ describe('CorrectionService', () => {
    */
   it('asks the server about a day this phone never recorded', async () => {
     await configure();
-    remote = { status: 'ok', entry: serverEntry({ id: 'r-1', project_id: THERE.id }), missing: false };
+    remote = {
+      status: 'ok',
+      entry: serverEntry({ id: 'r-1', project_id: THERE.id }),
+      missing: false,
+    };
 
-    const target = await corrections.resolve('r-1');
+    const found = await target('r-1');
 
     expect(remoteReads).toEqual(['r-1']);
-    expect(target).toMatchObject({ entryId: 'r-1', day: '2026-08-20' });
-    expect(target?.project.id).toBe(THERE.id);
+    expect(found).toMatchObject({ entryId: 'r-1', day: '2026-08-20' });
+    expect(found?.project.id).toBe(THERE.id);
   });
 
   // ---- Refusing is a real answer --------------------------------------------------------------
@@ -167,11 +188,21 @@ describe('CorrectionService', () => {
    */
   it('refuses rather than guessing, however the lookup fails', async () => {
     const outcomes: { name: string; answer: RemoteEntry }[] = [
-      { name: 'the server could not be reached', answer: { status: 'offline', entry: null, missing: false } },
-      { name: 'the server has never heard of it', answer: { status: 'ok', entry: null, missing: true } },
+      {
+        name: 'the server could not be reached',
+        answer: { status: 'offline', entry: null, missing: false },
+      },
+      {
+        name: 'the server has never heard of it',
+        answer: { status: 'ok', entry: null, missing: true },
+      },
       {
         name: 'the server named a site this device cannot see',
-        answer: { status: 'ok', entry: serverEntry({ project_id: 'a-site-from-another-company' }), missing: false },
+        answer: {
+          status: 'ok',
+          entry: serverEntry({ project_id: 'a-site-from-another-company' }),
+          missing: false,
+        },
       },
       {
         name: 'the server named no site at all',
@@ -184,7 +215,7 @@ describe('CorrectionService', () => {
       TestBed.inject(ProjectService).select(HERE.id);
       remote = answer;
 
-      expect(await corrections.resolve('r-1'), name).toBeNull();
+      expect(await target('r-1'), name).toBeNull();
     }
   });
 
@@ -202,20 +233,81 @@ describe('CorrectionService', () => {
     projects.select(HERE.id);
     remote = { status: 'offline', entry: null, missing: false };
 
-    const target = await corrections.resolve('r-1');
+    const found = await target('r-1');
 
-    expect(target).toBeNull();
+    expect(found).toBeNull();
     // The selection is untouched and unread-from: nothing about it leaked into the answer.
     expect(projects.selected()?.id).toBe(HERE.id);
+  });
+
+  /**
+   * **…and the refusal says whether asking again could ever help**, because the screen offers a
+   * retry off it.
+   *
+   * All four used to be one `null` under one sentence blaming the network — *"server nije
+   * dostupan … probajte ponovo kada budete imali signal"* — with a "Pokušaj ponovo" button under
+   * it. In three of the four the server had already answered, so that button asked the same
+   * question and got the same answer for ever, and the sentence sent a foreman who *had* a signal
+   * looking for one (review, 2026-09-04).
+   */
+  it('says whether the refusal is the network or the server’s own answer', async () => {
+    const cases: { name: string; answer: RemoteEntry; expected: CorrectionRefusal }[] = [
+      {
+        name: 'the server could not be reached',
+        answer: { status: 'offline', entry: null, missing: false },
+        expected: 'unreachable',
+      },
+      {
+        name: 'no server is configured at all',
+        answer: { status: 'not_configured', entry: null, missing: false },
+        expected: 'unreachable',
+      },
+      {
+        name: 'the server has never heard of it',
+        answer: { status: 'ok', entry: null, missing: true },
+        expected: 'unresolvable',
+      },
+      {
+        name: 'the server named a site this device cannot see',
+        answer: {
+          status: 'ok',
+          entry: serverEntry({ project_id: 'a-site-from-another-company' }),
+          missing: false,
+        },
+        expected: 'unresolvable',
+      },
+      {
+        name: 'the server named no site at all',
+        answer: { status: 'ok', entry: serverEntry({ project_id: undefined }), missing: false },
+        expected: 'unresolvable',
+      },
+    ];
+
+    for (const { name, answer, expected } of cases) {
+      await configure();
+      remote = answer;
+
+      expect(await refusal('r-1'), name).toBe(expected);
+    }
+  });
+
+  /** A resolved target carries no refusal at all — the two are never both true. */
+  it('names no refusal when it found the site', async () => {
+    await configure();
+    await db.entries.put(localEntry({ id: 'e-1' }));
+
+    expect(await refusal('e-1')).toBeNull();
   });
 
   /** An empty id is not a lookup. It never reaches Dexie and it never reaches the network. */
   it('refuses an empty id without reading anything', async () => {
     await configure();
 
-    expect(await corrections.resolve('')).toBeNull();
-    expect(await corrections.resolve('   ')).toBeNull();
+    expect(await target('')).toBeNull();
+    expect(await target('   ')).toBeNull();
     expect(remoteReads).toEqual([]);
+    // …and never as "come back when you have a signal": no signal produces an id.
+    expect(await refusal('')).toBe('unresolvable');
   });
 
   /**
@@ -228,10 +320,14 @@ describe('CorrectionService', () => {
   it('survives a store that will not answer', async () => {
     await configure();
     vi.spyOn(store, 'getEntry').mockRejectedValue(new Error('IndexedDB is not available'));
-    remote = { status: 'ok', entry: serverEntry({ id: 'e-1', project_id: THERE.id }), missing: false };
+    remote = {
+      status: 'ok',
+      entry: serverEntry({ id: 'e-1', project_id: THERE.id }),
+      missing: false,
+    };
 
     // Falls through to the server rather than throwing — the store's silence is not a verdict.
-    await expect(corrections.resolve('e-1')).resolves.toMatchObject({ entryId: 'e-1' });
+    await expect(target('e-1')).resolves.toMatchObject({ entryId: 'e-1' });
   });
 
   // ---- The project record, and its fallback ---------------------------------------------------
@@ -243,10 +339,10 @@ describe('CorrectionService', () => {
     await configure();
     await db.entries.put(localEntry({ id: 'e-1', projectId: THERE.id }));
 
-    const target = await corrections.resolve('e-1');
+    const found = await target('e-1');
 
-    expect(target?.project).toEqual(THERE);
-    expect(target?.project.address).not.toBe('');
+    expect(found?.project).toEqual(THERE);
+    expect(found?.project.address).not.toBe('');
   });
 
   /**
@@ -262,9 +358,9 @@ describe('CorrectionService', () => {
       localEntry({ id: 'e-1', projectId: 'a-site-no-longer-listed', projectName: 'Stara zgrada' }),
     );
 
-    const target = await corrections.resolve('e-1');
+    const found = await target('e-1');
 
-    expect(target?.project).toEqual({
+    expect(found?.project).toEqual({
       id: 'a-site-no-longer-listed',
       name: 'Stara zgrada',
       address: '',
@@ -282,7 +378,7 @@ describe('CorrectionService', () => {
     await configure({ projects: false });
     await db.entries.put(localEntry({ id: 'e-1', projectId: THERE.id, projectName: THERE.name }));
 
-    expect(await corrections.resolve('e-1')).toMatchObject({
+    expect(await target('e-1')).toMatchObject({
       entryId: 'e-1',
       project: { id: THERE.id, name: THERE.name },
     });
@@ -297,9 +393,9 @@ describe('CorrectionService', () => {
       missing: false,
     };
 
-    const target = await corrections.resolve('r-1');
+    const found = await target('r-1');
 
-    expect(target?.project.id).toBe(THERE.id);
-    expect(target?.day).toBeNull();
+    expect(found?.project.id).toBe(THERE.id);
+    expect(found?.day).toBeNull();
   });
 });

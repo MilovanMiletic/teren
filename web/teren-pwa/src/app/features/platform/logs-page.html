@@ -204,11 +204,11 @@
         </div>
 
         <!--
-        **The two text filters live here too, below 1024** — they used to ride as a pill bar between
-        this card and the first log line, which made a second home for filtering and a third row of
-        chrome on a phone. One place to narrow the list, one tap to reach it. They are still outside
-        the list itself, so an empty answer cannot take the boxes that caused it off the screen.
-      -->
+          **The two text filters live here too, below 1024** — they used to ride as a pill bar between
+          this card and the first log line, which made a second home for filtering and a third row of
+          chrome on a phone. One place to narrow the list, one tap to reach it. They are still outside
+          the list itself, so an empty answer cannot take the boxes that caused it off the screen.
+        -->
         @if (!viewport.expanded()) {
           <div class="filters__row">
             <span class="t-label filters__label">{{ t('logs.filters.title') }}</span>
@@ -245,159 +245,179 @@
       }
     </section>
 
-    @if (loading()) {
-      <!--
-        The shape of the rows that are coming, rather than the sentence "Učitava se…" — which
-        says that something is happening and nothing about what. The sentence is still here for
-        a screen reader, because a pulsing rectangle announces nothing (styles.css §Loading).
-      -->
-      <div class="card state wide card--loading" role="status">
-        <span class="visually-hidden">{{ t('logs.loading') }}</span>
-        <span class="skeleton skeleton--head" aria-hidden="true"></span>
-        <span class="skeleton skeleton--row" aria-hidden="true"></span>
-        <span class="skeleton skeleton--row" aria-hidden="true"></span>
-        <span class="skeleton skeleton--row skeleton--short" aria-hidden="true"></span>
-      </div>
-    } @else {
-      @if (unconfirmed() && reasonKey(); as reason) {
-        <!-- A short list because a request failed and a short list because little happened look
+    <!--
+      **Nothing that narrows the stream is ever inside a loading branch, at any width.**
+
+      The skeleton used to replace this whole block — the notices, the card, the column heads and
+      with them the two filter boxes. At 1024 and up those boxes are the funnels in the table's own
+      `<thead>`, so typing into one fired `refilter()` → `load()` → `loading.set(true)` and **the
+      request tore down the control that made it**: measured at 1280, three letters into the
+      message filter the box and its focus were gone and the rest of the word went nowhere
+      (review, 2026-09-04). Below 1024 the same pills live in the filter card above and always
+      survived, which is why it read as a desktop-only defect rather than as the one rule this
+      screen states about itself.
+
+      So the skeleton now replaces **the rows and nothing else**, and the header, the filters and
+      the notices stand at every device class. `aria-busy` says the rows are coming.
+    -->
+    @if (unconfirmed() && reasonKey(); as reason) {
+      <!-- A short list because a request failed and a short list because little happened look
              identical unless the screen says which it is. -->
-        <div class="card notice notice--warn wide" role="status">
-          <app-icon name="wifi-off" [size]="20" class="notice__icon" />
-          <div class="notice__text">
-            <span class="notice__title">{{ t('platform.stale.title') }}</span>
-            <span class="t-meta">{{ t(reason) }}</span>
-          </div>
-          <!-- The sentence above says "sign in again"; this is the control to press.
+      <div class="card notice notice--warn wide" role="status">
+        <app-icon name="wifi-off" [size]="20" class="notice__icon" />
+        <div class="notice__text">
+          <span class="notice__title">{{ t('platform.stale.title') }}</span>
+          <span class="t-meta">{{ t(reason) }}</span>
+        </div>
+        <!-- The sentence above says "sign in again"; this is the control to press.
                It renders itself away unless the admin credential really is gone. -->
-          <app-sign-in-again />
+        <app-sign-in-again />
+      </div>
+    }
+
+    @if (exportReasonKey(); as reason) {
+      <div class="card notice notice--err wide" role="status">
+        <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
+        <div class="notice__text">
+          <span class="notice__title">{{ t('logs.export.failed') }}</span>
+          <span class="t-meta">{{ t(reason) }}</span>
         </div>
-      }
-
-      @if (exportReasonKey(); as reason) {
-        <div class="card notice notice--err wide" role="status">
-          <app-icon name="alert-triangle" [size]="20" class="notice__icon" />
-          <div class="notice__text">
-            <span class="notice__title">{{ t('logs.export.failed') }}</span>
-            <span class="t-meta">{{ t(reason) }}</span>
-          </div>
+      </div>
+    } @else if (exportedAs(); as filename) {
+      <div class="card notice notice--ok wide" role="status">
+        <app-icon name="download" [size]="20" class="notice__icon" />
+        <div class="notice__text">
+          <span class="notice__title">{{ t('logs.export.done') }}</span>
+          <span class="t-meta">{{ filename }}</span>
         </div>
-      } @else if (exportedAs(); as filename) {
-        <div class="card notice notice--ok wide" role="status">
-          <app-icon name="download" [size]="20" class="notice__icon" />
-          <div class="notice__text">
-            <span class="notice__title">{{ t('logs.export.done') }}</span>
-            <span class="t-meta">{{ filename }}</span>
-          </div>
-        </div>
-      }
+      </div>
+    }
 
-      <section class="card stream wide" [attr.aria-label]="t('logs.caption')">
-        <!--
-          **There is no count strip here any more** (founder, 2026-09-02, off a 1920 screenshot:
-          *"remove the header text that is above the columns"*). It read "Učitano 50 linija — ima
-          ih još" directly under a summary card already reading **UČITANO 50** — the same number
-          twice, the second copy wedged between the filters and the column heads.
+    <section
+      class="card stream wide"
+      [attr.aria-label]="t('logs.caption')"
+      [attr.aria-busy]="loading()"
+    >
+      <!--
+        **There is no count strip here any more** (founder, 2026-09-02, off a 1920 screenshot:
+        *"remove the header text that is above the columns"*). It read "Učitano 50 linija — ima
+        ih još" directly under a summary card already reading **UČITANO 50** — the same number
+        twice, the second copy wedged between the filters and the column heads.
 
-          The honesty it carried is not lost, because it was never the strip that carried it: the
-          summary card above says how many lines are loaded, and the presence of the "Učitaj još"
-          control at the foot is what says the server is holding more behind them. What must stay
-          true is the negative — **nothing on this screen may print or imply a total the server has
-          not given** — and with the sentence gone there is one less place that could. A spec scans
-          this file for the shared "X of Y" count keys so nobody reintroduces one here by habit.
-        -->
+        The honesty it carried is not lost, because it was never the strip that carried it: the
+        summary card above says how many lines are loaded, and the presence of the "Učitaj još"
+        control at the foot is what says the server is holding more behind them. What must stay
+        true is the negative — **nothing on this screen may print or imply a total the server has
+        not given** — and with the sentence gone there is one less place that could. A spec scans
+        this file for the shared "X of Y" count keys so nobody reintroduces one here by habit.
+      -->
 
-        <!--
-          **The header is drawn even when the body is empty.**
+      <!--
+        **The header is drawn even when the body is empty.**
 
-          It used to be inside the "there are rows" branch, so an empty answer took the funnels —
-          and with them the filter boxes — off the screen. A founder who mistyped "EntryReporte"
-          could not correct the word: his only way out was the clear-everything control, which
-          also threw away the level chips he had picked. A control must never be removed by the
-          state it caused.
-        -->
-        <!--
-          **The table is the expanded rendering only** (founder, 2026-09-02: *"we will need a better
-          structure of the logs for the phone and tablet, now it is a little messy"*).
+        It used to be inside the "there are rows" branch, so an empty answer took the funnels —
+        and with them the filter boxes — off the screen. A founder who mistyped "EntryReporte"
+        could not correct the word: his only way out was the clear-everything control, which
+        also threw away the level chips he had picked. A control must never be removed by the
+        state it caused.
+      -->
+      <!--
+        **The table is the expanded rendering only** (founder, 2026-09-02: *"we will need a better
+        structure of the logs for the phone and tablet, now it is a little messy"*).
 
-          It used to be drawn from 768 up. Driven at 834 that gave the message column about 300 px —
-          every message wrapping to four or five lines, 150 px rows — while VREME and NIVO held 250 px
-          between them repeating `2.9. 16:17:23` and `INFORMACIJA` down the page. A tablet was
-          getting a desktop table with the one useful column squeezed; that is a narrowed copy of
-          another device class's layout, which CLAUDE.md forbids and which this is the case for.
+        It used to be drawn from 768 up. Driven at 834 that gave the message column about 300 px —
+        every message wrapping to four or five lines, 150 px rows — while VREME and NIVO held 250 px
+        between them repeating `2.9. 16:17:23` and `INFORMACIJA` down the page. A tablet was
+        getting a desktop table with the one useful column squeezed; that is a narrowed copy of
+        another device class's layout, which CLAUDE.md forbids and which this is the case for.
 
-          Below 1024 both classes get the list instead — and the list is a *deliberate* layout, not
-          the phone's leftovers: the same expanding row at every width (the class comment says why a
-          detail panel here would be two screens wearing one name), with the medium class spending
-          its extra width on the message rather than on a third column of near-constant text.
-        -->
-        @if (viewport.expanded()) {
-          <div class="stream__scroll">
-            <table class="stream__table data-table">
-              <caption class="visually-hidden">
-                {{
-                  t('logs.caption')
-                }}
-              </caption>
-              <thead>
+        Below 1024 both classes get the list instead — and the list is a *deliberate* layout, not
+        the phone's leftovers: the same expanding row at every width (the class comment says why a
+        detail panel here would be two screens wearing one name), with the medium class spending
+        its extra width on the message rather than on a third column of near-constant text.
+      -->
+      @if (viewport.expanded()) {
+        <div class="stream__scroll">
+          <table class="stream__table data-table">
+            <caption class="visually-hidden">
+              {{
+                t('logs.caption')
+              }}
+            </caption>
+            <thead>
+              <tr>
+                <!--
+                  Not sortable, and the arrow says why: the stream is keyset-paged over
+                  `(at DESC, id DESC)` on the server and there is no other order to ask for. A
+                  label that re-sorted nothing would be a dead control.
+                -->
+                <th scope="col" class="col--at" aria-sort="descending">
+                  <app-column-menu
+                    [label]="t('logs.column.time')"
+                    [sortable]="false"
+                    [filterable]="false"
+                    sort="desc"
+                  />
+                </th>
+                <th scope="col" class="col--level">
+                  <app-column-menu
+                    [label]="t('logs.column.level')"
+                    [sortable]="false"
+                    [filterable]="false"
+                  />
+                </th>
+                <!--
+                  A column of its own only where there is room for one. At 768 the 640 column
+                  holds a timestamp, a level, a .NET namespace and a rendered message, and the
+                  namespace is the widest unbreakable thing in the product — it took the message
+                  down to two letters and pushed the last column clean off the card. Between 768
+                  and 1023 the source therefore rides under the message, exactly as it does on
+                  the phone, and its filter rides in the pill bar above.
+                -->
+                <th scope="col" class="col--source">
+                  <app-column-menu
+                    [label]="t('logs.column.source')"
+                    [sortable]="false"
+                    [filter]="source()"
+                    (filterChanged)="setSource($event)"
+                  />
+                </th>
+                <th scope="col" class="col--message">
+                  <app-column-menu
+                    [label]="t('logs.column.message')"
+                    [sortable]="false"
+                    [filter]="q()"
+                    (filterChanged)="setQuery($event)"
+                  />
+                </th>
+                <th scope="col" class="col--ids">
+                  <app-column-menu
+                    [label]="t('logs.column.ids')"
+                    [sortable]="false"
+                    [filterable]="false"
+                  />
+                </th>
+                <th scope="col" class="col--go">
+                  <span class="visually-hidden">{{ t('logs.column.open') }}</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              @if (loading()) {
                 <tr>
-                  <!--
-                    Not sortable, and the arrow says why: the stream is keyset-paged over
-                    `(at DESC, id DESC)` on the server and there is no other order to ask for. A
-                    label that re-sorted nothing would be a dead control.
-                  -->
-                  <th scope="col" class="col--at" aria-sort="descending">
-                    <app-column-menu
-                      [label]="t('logs.column.time')"
-                      [sortable]="false"
-                      [filterable]="false"
-                      sort="desc"
-                    />
-                  </th>
-                  <th scope="col" class="col--level">
-                    <app-column-menu
-                      [label]="t('logs.column.level')"
-                      [sortable]="false"
-                      [filterable]="false"
-                    />
-                  </th>
-                  <!--
-                    A column of its own only where there is room for one. At 768 the 640 column
-                    holds a timestamp, a level, a .NET namespace and a rendered message, and the
-                    namespace is the widest unbreakable thing in the product — it took the message
-                    down to two letters and pushed the last column clean off the card. Between 768
-                    and 1023 the source therefore rides under the message, exactly as it does on
-                    the phone, and its filter rides in the pill bar above.
-                  -->
-                  <th scope="col" class="col--source">
-                    <app-column-menu
-                      [label]="t('logs.column.source')"
-                      [sortable]="false"
-                      [filter]="source()"
-                      (filterChanged)="setSource($event)"
-                    />
-                  </th>
-                  <th scope="col" class="col--message">
-                    <app-column-menu
-                      [label]="t('logs.column.message')"
-                      [sortable]="false"
-                      [filter]="q()"
-                      (filterChanged)="setQuery($event)"
-                    />
-                  </th>
-                  <th scope="col" class="col--ids">
-                    <app-column-menu
-                      [label]="t('logs.column.ids')"
-                      [sortable]="false"
-                      [filterable]="false"
-                    />
-                  </th>
-                  <th scope="col" class="col--go">
-                    <span class="visually-hidden">{{ t('logs.column.open') }}</span>
-                  </th>
+                  <td colspan="6">
+                    <span class="card--loading" role="status">
+                      <span class="visually-hidden">{{ t('logs.loading') }}</span>
+                      <span class="skeleton skeleton--row" aria-hidden="true"></span>
+                      <span class="skeleton skeleton--row" aria-hidden="true"></span>
+                      <span
+                        class="skeleton skeleton--row skeleton--short"
+                        aria-hidden="true"
+                      ></span>
+                    </span>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
+              } @else {
                 @for (row of rows(); track row.log.id) {
                   <!--
                     **The whole row opens the line**, as the whole row does on the phone — one
@@ -471,99 +491,111 @@
                     </tr>
                   }
                 }
-              </tbody>
-            </table>
-          </div>
-        } @else if (rows().length > 0) {
-          <!-- Below 1024: a list of collapsed lines that expand on tap (plan §F7). Not a table with
-               its cells forced to blocks — that loses the table role in every browser. The two
+              }
+            </tbody>
+          </table>
+        </div>
+      } @else if (loading()) {
+        <!-- The same three bars the table draws in its own body: below 1024 there is no header
+               row to keep, but the filter card above is outside this branch and always was. -->
+        <span class="card--loading" role="status">
+          <span class="visually-hidden">{{ t('logs.loading') }}</span>
+          <span class="skeleton skeleton--row" aria-hidden="true"></span>
+          <span class="skeleton skeleton--row" aria-hidden="true"></span>
+          <span class="skeleton skeleton--row skeleton--short" aria-hidden="true"></span>
+        </span>
+      } @else if (rows().length > 0) {
+        <!-- Below 1024: a list of collapsed lines that expand on tap (plan §F7). Not a table with
+             its cells forced to blocks — that loses the table role in every browser. The two
                filters are pills above it, so an empty list takes no control with it here either. -->
-          <ul class="lines">
-            @for (row of rows(); track row.log.id) {
-              <!--
-                The row wears its own tone, so an error or a warning is found by **colour down the
-                left edge** rather than by reading. Scanning a phone for the unusual line is the
-                whole task, and a stripe survives at arm's length where a word does not.
-              -->
-              <li class="line-item line-item--{{ row.tone }}" [class.line-item--open]="row.open">
-                <button
-                  type="button"
-                  class="row-button line-item__summary"
-                  [attr.aria-expanded]="row.open"
-                  [attr.aria-controls]="'log-detail-' + row.log.id"
-                  (click)="toggle(row.log)"
-                >
-                  <span class="line-item__head">
-                    <!--
-                      **The time first, and no date when it is today.** He is checking today, so a
-                      date on every row is a column of the same six characters; an older line still
-                      says which day, because then the day is the surprising part.
-                    -->
-                    <span class="t-meta t-num line-item__time">
-                      {{
-                        row.log.at
-                          ? (row.log.at
-                            | date: (isToday(row.log.at) ? 'HH:mm:ss' : 'd.M. HH:mm:ss'))
-                          : t('platform.none')
-                      }}
-                    </span>
-                    <!--
-                      **A chip only for the two levels that mean something.** `INFORMACIJA` on every
-                      row spends a phone's scarcest resource on the least surprising fact and makes
-                      the two that matter invisible — the failure mode `levelTone` documents for
-                      colour, applied to space. The level is never *lost*: it is a fact in the
-                      detail, and it is the stripe on the row.
-                    -->
-                    @if (loud(row.log.level)) {
-                      <span class="chip chip--{{ row.tone }}">{{ levelWord(row.log.level) }}</span>
-                    }
-                    <app-icon
-                      name="chevron-down"
-                      [size]="18"
-                      class="line__chevron line-item__chevron"
-                      [class.line__chevron--open]="row.open"
-                    />
+        <ul class="lines">
+          @for (row of rows(); track row.log.id) {
+            <!--
+              The row wears its own tone, so an error or a warning is found by **colour down the
+              left edge** rather than by reading. Scanning a phone for the unusual line is the
+              whole task, and a stripe survives at arm's length where a word does not.
+            -->
+            <li class="line-item line-item--{{ row.tone }}" [class.line-item--open]="row.open">
+              <button
+                type="button"
+                class="row-button line-item__summary"
+                [attr.aria-expanded]="row.open"
+                [attr.aria-controls]="'log-detail-' + row.log.id"
+                (click)="toggle(row.log)"
+              >
+                <span class="line-item__head">
+                  <!--
+                    **The time first, and no date when it is today.** He is checking today, so a
+                    date on every row is a column of the same six characters; an older line still
+                    says which day, because then the day is the surprising part.
+                  -->
+                  <span class="t-meta t-num line-item__time">
+                    {{
+                      row.log.at
+                        ? (row.log.at | date: (isToday(row.log.at) ? 'HH:mm:ss' : 'd.M. HH:mm:ss'))
+                        : t('platform.none')
+                    }}
                   </span>
-                  <!-- Two lines, clamped. A phone showing eight lines of one stack trace is a
+                  <!--
+                    **A chip only for the two levels that mean something.** `INFORMACIJA` on every
+                    row spends a phone's scarcest resource on the least surprising fact and makes
+                    the two that matter invisible — the failure mode `levelTone` documents for
+                    colour, applied to space. The level is never *lost*: it is a fact in the
+                    detail, and it is the stripe on the row.
+                  -->
+                  @if (loud(row.log.level)) {
+                    <span class="chip chip--{{ row.tone }}">{{ levelWord(row.log.level) }}</span>
+                  }
+                  <app-icon
+                    name="chevron-down"
+                    [size]="18"
+                    class="line__chevron line-item__chevron"
+                    [class.line__chevron--open]="row.open"
+                  />
+                </span>
+                <!-- Two lines, clamped. A phone showing eight lines of one stack trace is a
                        phone showing one log line. -->
-                  <span class="line-item__message">{{ row.log.message }}</span>
-                  <span class="t-meta line-item__source">
-                    {{ row.log.source ?? t('platform.none') }}
-                  </span>
-                </button>
+                <span class="line-item__message">{{ row.log.message }}</span>
+                <span class="t-meta line-item__source">
+                  {{ row.log.source ?? t('platform.none') }}
+                </span>
+              </button>
 
-                @if (row.open) {
-                  <div class="detail" [id]="'log-detail-' + row.log.id">
-                    <ng-container *ngTemplateOutlet="detail; context: { $implicit: row.log }" />
-                  </div>
-                }
-              </li>
-            }
-          </ul>
-        }
+              @if (row.open) {
+                <div class="detail" [id]="'log-detail-' + row.log.id">
+                  <ng-container *ngTemplateOutlet="detail; context: { $implicit: row.log }" />
+                </div>
+              }
+            </li>
+          }
+        </ul>
+      }
 
-        <!--
-          The sentence that stands where the lines would be — and it is three different sentences,
-          because "nothing has happened", "nothing matches what you typed" and "I could not ask"
-          are three different facts and only the reader can act on the difference.
-        -->
-        @if (rows().length === 0) {
-          <p class="t-meta state" role="status">{{ t(emptyKey()) }}</p>
-        }
+      <!--
+        The sentence that stands where the lines would be — and it is three different sentences,
+        because "nothing has happened", "nothing matches what you typed" and "I could not ask"
+        are three different facts and only the reader can act on the difference.
+      -->
+      @if (!loading() && rows().length === 0) {
+        <!-- `!loading()` is load-bearing: "nothing has happened yet" printed over rows that have
+               not come back is the same false claim the summary tiles are withheld for. -->
+        <p class="t-meta state" role="status">{{ t(emptyKey()) }}</p>
+      }
 
-        <!--
-          **One row at the foot, not three.** The arrows and the button do different things — the
-          button fetches the next fifty lines from the server, the arrows walk ten at a time through
-          what is already loaded — but they are one gesture in one place, and stacking them as a
-          "load more" row above a pager row above a table is exactly what the founder saw as *"table
-          overlaps down"* (2026-09-02). The pager owns the arrows in both shapes, so their disabled
-          logic, their accessible names and their 44 px targets are the same code the three other
-          tables use.
+      <!--
+        **One row at the foot, not three.** The arrows and the button do different things — the
+        button fetches the next fifty lines from the server, the arrows walk ten at a time through
+        what is already loaded — but they are one gesture in one place, and stacking them as a
+        "load more" row above a pager row above a table is exactly what the founder saw as *"table
+        overlaps down"* (2026-09-02). The pager owns the arrows in both shapes, so their disabled
+        logic, their accessible names and their 44 px targets are the same code the three other
+        tables use.
 
-          `pageCount` is 0 while the server is still holding a cursor: that is what tells the pager
-          to draw no numbers and take its next control from `hasNext` instead. "Strana 3" is a fact;
-          "3 / 7" would be an invention.
-        -->
+        `pageCount` is 0 while the server is still holding a cursor: that is what tells the pager
+        to draw no numbers and take its next control from `hasNext` instead. "Strana 3" is a fact;
+        "3 / 7" would be an invention.
+      -->
+      @if (!loading()) {
         <app-table-pager
           variant="steps"
           [page]="page()"
@@ -582,8 +614,8 @@
             </button>
           }
         </app-table-pager>
-      </section>
-    }
+      }
+    </section>
   </div>
 </div>
 

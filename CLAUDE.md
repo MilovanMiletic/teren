@@ -14,7 +14,10 @@ founder decides and reviews.
 4. `ARCHITECTURE.md` — stack, repo layout, data model, API surface, AI pipeline, ops. Source of
    truth for *how*. Update it when a technical decision changes; do not let code and this file
    drift.
-5. `archive/` — superseded working material, kept as raw input only (never authoritative):
+5. `PRODUCTION-CHECKLIST.md` — the live tick list from here to production (`P1`…`P39`), grouped in
+   build order, with the critical path and the two risks that are not code. **Tick it as work lands**;
+   it is a tracker, not an authority — ROADMAP wins on any disagreement.
+6. `archive/` — superseded working material, kept as raw input only (never authoritative):
    `original-brief.md` (the initial product brief) and `initial-analysis-notes.md` (first-pass
    notes). Both have now been harvested into PROJECT.md / ROADMAP.md / ARCHITECTURE.md — consult
    them only for historical context.
@@ -131,6 +134,24 @@ and `teren-screen-design` (Fable). **Every implementation increment goes through
 before being presented as done; gating fixes go back to the implementer and are re-proven.**
 
 ## Current state (update as it changes)
+
+- **A RESTORED FILE CAN BE OLDER THAN ITS OWN DLL, AND THEN THE SUITE RE-RUNS YOUR MUTATION
+  (2026-09-04, D9 review).** Restoring a mutated source with `mv file.orig file` gives it the *old*
+  mtime, so MSBuild's incremental build **skips recompiling it** and the "restored" run silently
+  executes the mutation. **Four of the reviewer's own proof runs were void** before it was spotted.
+  **Rebuild with `--no-incremental` after any restore**, or `touch` the file, and verify the restore
+  with sha256. *This is the second way a green suite lies here — the first being a mutation left in
+  the tree by a stopped agent — and unlike that one, this one fools an agent who is being careful.*
+- **This machine (2026-09-04, the founder's new Linux laptop) also has TWO Docker engines** —
+  `default` and `desktop-linux`, with the context on `desktop-linux`, where `teren_postgres-data`
+  and `teren_minio-data` live. **The two-engine trap is not old-laptop-only**: check
+  `docker context show` before believing a loss report, and never run `docker compose up` to
+  "recover" a stack that looks missing. Containers being stopped is the normal state here.
+  **The "disk at 98 %" and `df -h /c` advice below is DEAD on this machine** — it is at **8 % of
+  938 GB, 31 GB RAM, 20 cores** — and a full backend run costs under two minutes.
+- **Suites re-verified by execution on this machine 2026-09-04: backend 1142/1142 (1m 57s), PWA
+  1878/1878 in 93 files.** Both exactly the figures on record, so nothing detectable was left behind
+  by the machine move.
 
 - **THE SCOPE WAS CUT HARD ON 2026-09-04, and the biggest change is that THE REPORT IS NO LONGER A
   FORM.** PROJECT.md §11's two top entries are authoritative. The report body becomes AI-tidied prose

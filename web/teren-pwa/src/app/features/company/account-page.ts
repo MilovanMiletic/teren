@@ -8,6 +8,7 @@ import { AdminSessionService } from '../../core/session/admin-session.service';
 import { AppHeader } from '../../ui/app-header';
 import { Icon } from '../../ui/icon';
 import { LanguageSwitcher } from '../../ui/language-switcher';
+import { LatestRequest } from '../../ui/latest-request';
 import { SessionLink } from '../../ui/session-link';
 import { SignInAgain } from '../../ui/sign-in-again';
 import { companyReasonFor } from './company-reason';
@@ -136,13 +137,28 @@ export class AccountPage {
 
   protected readonly reasonKey = computed(() => companyReasonFor(this.status()));
 
+  /**
+   * Which read the screen is waiting for, so an older answer cannot overwrite a newer question.
+   *
+   * The symptom on a screen like this one is a reload pressed twice: the slower attempt fails,
+   * lands after the faster one succeeded, and paints *"Nije provereno na serveru"* over data that
+   * was confirmed a moment ago. `ui/latest-request.ts` carries the reasoning.
+   */
+  private readonly reads = new LatestRequest();
+
   constructor() {
     void this.load();
   }
 
   protected async load(): Promise<void> {
+    const read = this.reads.claim();
     this.loading.set(true);
     const result = await this.company.loadAccount();
+    if (!this.reads.holds(read)) {
+      // A newer read owns the screen. `loading` is left to it, deliberately: it set the flag and
+      // it will clear it, and clearing it here would paint this answer's absence as an answer.
+      return;
+    }
     this.status.set(result.status);
     this.remote.set(result.account);
     this.loading.set(false);

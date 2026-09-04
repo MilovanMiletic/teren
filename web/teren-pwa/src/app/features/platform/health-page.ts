@@ -1,11 +1,5 @@
 import { DatePipe } from '@angular/common';
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  inject,
-  signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { TranslocoDirective, TranslocoService } from '@jsverse/transloco';
@@ -24,6 +18,7 @@ import { ColumnMenu } from '../../ui/column-menu';
 import { Icon } from '../../ui/icon';
 import { InfoPopover } from '../../ui/info-popover';
 import { LanguageSwitcher } from '../../ui/language-switcher';
+import { LatestRequest } from '../../ui/latest-request';
 import { SessionLink } from '../../ui/session-link';
 import { SignInAgain } from '../../ui/sign-in-again';
 import { SortDirection, TableControls } from '../../ui/table-controls';
@@ -271,10 +266,27 @@ export class HealthPage {
     void this.load();
   }
 
+  /**
+   * Which read the screen is waiting for, so an older answer cannot overwrite a newer question.
+   *
+   * The symptom on a screen like this one is a reload pressed twice: the slower attempt fails,
+   * lands after the faster one succeeded, and paints *"Nije provereno na serveru"* over data that
+   * was confirmed a moment ago. `ui/latest-request.ts` carries the reasoning.
+   */
+  private readonly reads = new LatestRequest();
+
   protected async load(): Promise<void> {
+    const read = this.reads.claim();
     this.loading.set(true);
 
     const result = await this.platform.readHealth();
+
+    if (!this.reads.holds(read)) {
+      // A newer read owns the screen. This one's numbers *and* its verdict are both stale, and
+      // this screen is the one whose job is saying what is wrong — a failed second reload landing
+      // after a good one would print "nothing was confirmed" over numbers that were.
+      return;
+    }
 
     // Set together: the numbers and the verdict about them are one answer, and a screen that
     // briefly held new numbers under an old status (or the reverse) would be a screen that had

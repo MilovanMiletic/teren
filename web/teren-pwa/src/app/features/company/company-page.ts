@@ -25,6 +25,7 @@ import { ColumnMenu } from '../../ui/column-menu';
 import { Icon } from '../../ui/icon';
 import { InfoPopover } from '../../ui/info-popover';
 import { LanguageSwitcher } from '../../ui/language-switcher';
+import { LatestRequest } from '../../ui/latest-request';
 import { ModalSheet } from '../../ui/modal-sheet';
 import { SessionLink } from '../../ui/session-link';
 import { SignInAgain } from '../../ui/sign-in-again';
@@ -333,9 +334,22 @@ export class CompanyPage {
   }
 
   /** The list, and the sentence to say if it did not arrive. */
+  /**
+   * Which read the screen is waiting for, so an older answer cannot overwrite a newer question.
+   *
+   * The symptom on a screen like this one is a reload pressed twice: the slower attempt fails,
+   * lands after the faster one succeeded, and paints *"Nije provereno na serveru"* over data that
+   * was confirmed a moment ago. `ui/latest-request.ts` carries the reasoning.
+   */
+  private readonly reads = new LatestRequest();
+
   protected async load(): Promise<void> {
+    const read = this.reads.claim();
     this.loading.set(true);
     const result = await this.company.listWorkers();
+    if (!this.reads.holds(read)) {
+      return;
+    }
     this.workers.set(result.workers);
     this.status.set(result.status);
     this.loading.set(false);

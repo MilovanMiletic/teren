@@ -1472,4 +1472,42 @@ describe('CompanyPage', () => {
       expect(element.querySelector('app-sign-in-again button')).toBeNull();
     });
   });
+  /**
+   * **An older answer must not overwrite a newer question** (`ui/latest-request.ts`).
+   *
+   * The symptom: the reload is pressed twice, the slower attempt fails, and it lands *after* the
+   * faster one succeeded — so *"Nije provereno na serveru"* is painted over rows the server had
+   * just confirmed, and the screen ends up less truthful than if it had never been reloaded.
+   */
+  it('ignores a failed read that lands after a good one', async () => {
+    await render();
+
+    let call = 0;
+    let release = (): void => undefined;
+    const slow = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(gateway, 'listWorkers').mockImplementation(async () => {
+      call += 1;
+      if (call === 1) {
+        await slow;
+        throw httpError(503);
+      }
+      return gateway.real.listWorkers();
+    });
+
+    element.querySelector<HTMLButtonElement>('.head__reload')?.click();
+    await settle();
+    element.querySelector<HTMLButtonElement>('.head__reload')?.click();
+    await settle();
+    expect(text()).not.toContain(sr.company.stale.title);
+
+    release();
+    await settle();
+
+    expect(text(), 'a stale failure painted "not confirmed" over rows that were').not.toContain(
+      sr.company.stale.title,
+    );
+    expect(text()).toContain('Zoran');
+  });
 });

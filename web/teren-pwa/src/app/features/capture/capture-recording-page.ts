@@ -14,7 +14,11 @@ import { TranslocoDirective } from '@jsverse/transloco';
 
 import { AppStatus } from '../../core/app-status.service';
 import { CORRECTION_PARAM } from '../../core/capture/correction-route';
-import { CorrectionService, CorrectionTarget } from '../../core/capture/correction.service';
+import {
+  CorrectionRefusal,
+  CorrectionService,
+  CorrectionTarget,
+} from '../../core/capture/correction.service';
 import { EntryStore } from '../../core/db/entry-store';
 import { Project } from '../../core/db/models';
 import { AudioRecorderService, RecorderState } from '../../core/media/audio-recorder.service';
@@ -30,12 +34,19 @@ import { Icon } from '../../ui/icon';
 /**
  * What is stopping this screen from recording, if anything.
  *
- * `no-target` is the correction case: the URL names a day to replace and this build cannot say
- * which site that day belongs to. It is a blocker rather than a fallback because the fallback —
- * recording against the selected site — writes an entry the server answers with a `404`, which is
- * terminal in the outbox, so the take would never leave the phone (`core/capture/correction.service.ts`).
+ * The two `no-target-*` blockers are the correction case: the URL names a day to replace and this
+ * build cannot say which site that day belongs to. It is a blocker rather than a fallback because
+ * the fallback — recording against the selected site — writes an entry the server answers with a
+ * `404`, which is terminal in the outbox, so the take would never leave the phone
+ * (`core/capture/correction.service.ts`).
+ *
+ * **Two of them, because the remedies differ.** `no-target-offline` is the server not answering,
+ * and a signal is exactly what fixes it; `no-target-unknown` is the server answering with nothing
+ * this phone can use, where another attempt asks the same question and gets the same answer. One
+ * blocker meant one sentence blaming the network in both, and a retry button under the case a
+ * retry can never help (review, 2026-09-04).
  */
-type Blocker = 'no-project' | 'no-storage' | 'no-target' | null;
+type Blocker = 'no-project' | 'no-storage' | 'no-target-offline' | 'no-target-unknown' | null;
 
 /**
  * How far the rescue of an interrupted take has got.
@@ -114,8 +125,13 @@ export class CaptureRecordingPage implements OnDestroy {
   /** Looking the target up right now — a state, because it can involve the network. */
   protected readonly resolving = signal(false);
 
-  /** The lookup answered "I cannot say which site that day belongs to". */
-  protected readonly targetUnknown = signal(false);
+  /**
+   * The lookup answered "I cannot say which site that day belongs to" — **and why**.
+   *
+   * Null while there is nothing wrong. The reason is kept rather than reduced to a boolean because
+   * it decides both the sentence on the card and whether a retry is offered at all.
+   */
+  protected readonly refusal = signal<CorrectionRefusal | null>(null);
 
   /**
    * The site this take is filed against.
@@ -173,7 +189,14 @@ export class CaptureRecordingPage implements OnDestroy {
       if (this.resolving()) {
         return null;
       }
-      return this.targetUnknown() ? 'no-target' : null;
+      switch (this.refusal()) {
+        case 'unreachable':
+          return 'no-target-offline';
+        case 'unresolvable':
+          return 'no-target-unknown';
+        default:
+          return null;
+      }
     }
     return this.project() ? null : 'no-project';
   });
@@ -484,8 +507,11 @@ export class CaptureRecordingPage implements OnDestroy {
     if (blocker === 'no-project') {
       return 'capture.blocked.project';
     }
-    if (blocker === 'no-target') {
+    if (blocker === 'no-target-offline') {
       return 'capture.blocked.correction';
+    }
+    if (blocker === 'no-target-unknown') {
+      return 'capture.blocked.correctionUnknown';
     }
     switch (state) {
       case 'denied':
@@ -504,15 +530,20 @@ export class CaptureRecordingPage implements OnDestroy {
   }
 
   /**
-   * Retrying makes no sense where the browser or the store is the problem.
+   * Retrying makes no sense where the browser, the store, or **the server's own answer** is the
+   * problem.
    *
-   * `no-target` is the exception among the blockers and it is worth the extra clause: the lookup
-   * fails when the server cannot be reached about a day this phone does not hold, and a signal
-   * that comes back is exactly what makes another attempt succeed. `no-project` and `no-storage`
-   * are conditions of the app, not of the moment.
+   * `no-target-offline` is the exception among the blockers and it is worth the extra clause: the
+   * lookup failed because the server could not be reached about a day this phone does not hold,
+   * and a signal that comes back is exactly what makes another attempt succeed.
+   *
+   * `no-target-unknown` deliberately does **not** get one. The server answered; asking it again
+   * asks the same question. A retry button there is a screen inviting a foreman to press the same
+   * thing until he gives up, which is worse than no button at all — the copy sends him to the
+   * office instead. `no-project` and `no-storage` are conditions of the app, not of the moment.
    */
   protected canRetry(state: RecorderState, blocker: Blocker): boolean {
-    return (blocker === null || blocker === 'no-target') && state !== 'unsupported';
+    return (blocker === null || blocker === 'no-target-offline') && state !== 'unsupported';
   }
 
   /** Assemble the interrupted take again after the first attempt failed. Nothing was lost. */
@@ -550,22 +581,24 @@ export class CaptureRecordingPage implements OnDestroy {
   }
 
   private async resolveTarget(correctionId: string): Promise<boolean> {
-    this.targetUnknown.set(false);
+    this.refusal.set(null);
     this.resolving.set(true);
-    const target = await this.corrections.resolve(correctionId);
+    const lookup = await this.corrections.resolve(correctionId);
     this.resolving.set(false);
 
-    if (!target) {
-      this.targetUnknown.set(true);
+    if (!lookup.target) {
+      this.refusal.set(lookup.refusal);
       // A slug from this file's own vocabulary, never the id and never the sentence on the card.
+      // The refusal rides in the detail because "he could not correct a day" and "he could not
+      // correct a day the server has never heard of" are two different things to read in a log.
       this.actions.record(ACTIONS.captureRecordStart, {
         outcome: 'blocked',
-        detail: { reason: 'no-target' },
+        detail: { reason: `no-target-${lookup.refusal}` },
       });
       return false;
     }
 
-    this.target.set(target);
+    this.target.set(lookup.target);
     return true;
   }
 

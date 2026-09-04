@@ -92,7 +92,7 @@ public sealed partial class PlatformDirectory
         // {id, company_id, name} is the whole of what this model knows about a project — see
         // PlatformProjectConfiguration, where the address and the coordinates are `Ignore`d rather
         // than merely left off this Select.
-        var projects = await db.Projects.AsNoTracking()
+        var projects = await db.PlatformProjects.AsNoTracking()
             .Select(p => new { p.Id, p.CompanyId, p.Name })
             .ToListAsync(ct);
 

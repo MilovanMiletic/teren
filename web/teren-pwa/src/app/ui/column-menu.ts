@@ -240,11 +240,31 @@ export type ColumnKind = 'text' | 'date' | 'state' | 'number';
      * ellipsis rather than a second line — when the column is narrower than the word.
      */
     .sort {
+      position: relative;
       display: flex;
       align-items: center;
       gap: var(--space-1);
       flex: 0 1 auto;
-      min-width: 0;
+      /*
+       * **44 px wide as well as tall** (design/tokens.md: 44 px minimum for a control) — 36 px of
+       * box plus the 8 px its hit area claims below.
+       *
+       * It had min-height alone, so the target was the width of the word: measured at 360 and 390,
+       * "Od" on /platform/companies was 16 px wide and "Ljudi" 26 (review, 2026-09-04). The funnel
+       * beside it is drawn at 28 and hit at 44; the label had nothing of the kind, and it is the
+       * control a thumb reaches for far more often — one tap on the word is how every table in
+       * this product is sorted.
+       *
+       * **The split between box and overhang is not tidiness, it is the compact pill bar's
+       * budget.** That bar is one row and does not scroll (CLAUDE.md, 2026-09-02), and at 360 it
+       * had 11 px to spare on /company and 8 on /platform/health. A flat min-width of 44 spends
+       * 8-9 of those and leaves 2 px and 0 px — one row still, and one rounding error from the
+       * second row the founder had removed. Drawing at 36 and hitting at 44 costs 1 px on
+       * /company and nothing at all on /platform/health, because their short labels are already
+       * wider than 36. Re-measured at 360, 390 and 767 on all four bars: one row everywhere, no
+       * horizontal page scroll, and no .sort under 44 x 44 at any of 360-1920.
+       */
+      min-width: calc(var(--tap-min) - var(--space-2));
       min-height: var(--tap-min);
       padding: 0;
       border: 0;
@@ -257,6 +277,21 @@ export type ColumnKind = 'text' | 'date' | 'state' | 'number';
       text-transform: uppercase;
       text-align: left;
       cursor: pointer;
+    }
+
+    /*
+     * The 8 px that make the target 44 wide — **leftwards only, and that direction is load-bearing.**
+     *
+     * To the left is this component's own padding: the pill's space-2, or the header cell's
+     * col-pad. Nothing else claims it — the pill before this one overhangs its funnel by 4 px into
+     * an 8 px gap, which stops short of this pill's edge. To the right is the funnel, whose
+     * margin-left: space-2 exists precisely so the two 44 px areas do not overlap (see below);
+     * an overhang that way would take taps meant for the only route to a filter on a phone.
+     */
+    .sort::after {
+      content: '';
+      position: absolute;
+      inset: 0 0 0 calc(-1 * var(--space-2));
     }
 
     /*
