@@ -380,6 +380,32 @@ describe('LogsPage', () => {
 
       expect(element.querySelector('.stats')).toBeNull();
     });
+
+    /**
+     * **…and never over one that has not come back yet**, which is the state every visit passes
+     * through and the one the rule missed.
+     *
+     * `nothingLoaded` is `unconfirmed() && count() === 0`, and `unconfirmed` is false while a
+     * request is out — so on the first load these tiles read **0 / 0 / 0** until the answer landed:
+     * *nothing is wrong*, in the largest type on the screen, said before anything had been asked.
+     * On a phone that is the whole answer the founder came for; the template already claimed the
+     * tiles were withheld for exactly this.
+     */
+    it('is not drawn over a stream that has not come back yet', async () => {
+      // The **first** read, held open: no rows, no answer, nothing known.
+      await render(false, false, null, true);
+
+      expect(element.querySelector('.stats'), 'a triage count over a stream nobody has').toBeNull();
+      expect(text()).not.toContain(sr.logs.summary.errors);
+
+      gateway.logsGate?.release();
+      gateway.logsGate = null;
+      await settle();
+
+      // …and it really is only withheld until there is an answer.
+      expect(element.querySelector('.stats')).not.toBeNull();
+      expect(text()).toContain(sr.logs.summary.errors);
+    });
   });
 
   describe('the filter card, below 1024', () => {
@@ -907,6 +933,27 @@ describe('LogsPage', () => {
       gateway.logsGate = null;
       await settle();
       expect(element.querySelectorAll('tbody tr.line').length).toBeGreaterThan(0);
+    });
+
+    /**
+     * **The same claim, in the largest type on the screen.** The summary card was drawn over the
+     * first load too — `UČITANO 0 · GREŠKE 0 · UPOZORENJA 0` under a header, while the request
+     * that would say otherwise was still out. The comment above it said it was withheld when there
+     * is no answer to summarise; `nothingLoaded` only ever covered the half where the answer had
+     * already failed.
+     */
+    it('summarises nothing while the first answer is still coming', async () => {
+      await render(true, true, null, true);
+
+      expect(element.querySelector('.stats'), 'a summary of a stream nobody has').toBeNull();
+      expect(summary()).toBe('');
+
+      gateway.logsGate?.release();
+      gateway.logsGate = null;
+      await settle();
+
+      expect(element.querySelector('.stats')).not.toBeNull();
+      expect(summary()).toContain(sr.logs.summary.loaded);
     });
   });
 
@@ -1524,6 +1571,105 @@ describe('LogsPage', () => {
 
       expect(element.querySelector('.pager')).toBeNull();
       expect(summary()).toContain('Učitano 6');
+    });
+
+    /**
+     * **A page number belongs to one list, and this one outlived its list.**
+     *
+     * The reader is on the last loaded page and presses ›, so a slow `loadMore` goes out. He taps a
+     * level chip: `load` claims a new generation and puts him on page 1, and the late batch is
+     * correctly discarded — but `goToPage`, still suspended inside the request he abandoned, then
+     * wrote **page 6** over the new answer. There is no page 6 of it, so the clamp put him on its
+     * *last* page: a filter change that silently landed him at the bottom of a list he had not read
+     * a line of.
+     *
+     * Driven with a gate rather than a timer, which is the same ordering without the wall clock.
+     */
+    it('never applies a page of the question he stopped asking', async () => {
+      await render(true, true, stream(120));
+
+      // To the last page of what is loaded — fifty lines, ten at a time.
+      for (let page = 0; page < 4; page += 1) {
+        await nextPage();
+      }
+      expect(position()).toBe('Strana 5');
+
+      // From here the next page needs the server. Hold that batch open.
+      const real = gateway.real;
+      let gate: PlatformDeferred | null = null;
+      vi.spyOn(gateway, 'listLogs').mockImplementation(async (query = {}) => {
+        gateway.logQueries.push(query);
+        await gate?.promise;
+        return real.listLogs({ ...query, limit: 15 });
+      });
+      const slow = platformDeferred();
+      gate = slow;
+      await nextPage();
+      expect(position(), 'the page moved before the batch that would fill it').toBe('Strana 5');
+
+      // …and while it hangs, a different question. Fifteen lines, so a sixth page cannot exist.
+      gate = null;
+      await press(sr.logs.level.information);
+      expect(position()).toBe('Strana 1');
+      expect(lines()[0]).toBe('Linija 120');
+
+      // The abandoned batch lands. Nothing of the walk that asked for it may reach the screen.
+      slow.release();
+      await settle();
+
+      expect(position(), 'a page of the abandoned question was applied to the new one').toBe(
+        'Strana 1',
+      );
+      expect(lines()[0]).toBe('Linija 120');
+    });
+
+    /**
+     * **The foot of the card survives the request it makes.**
+     *
+     * It was inside `@if (!loading())`, so the two arrows and the "Učitaj još" between them
+     * vanished on every keystroke-triggered refilter — the same defect as the funnels one row
+     * further down, which were torn down by the request they made, and the same fix.
+     */
+    it('keeps the foot of the card standing while a fresh answer is coming', async () => {
+      await render(true, true, stream(30));
+      await nextPage();
+      expect(position()).toBe('2 / 3');
+
+      gateway.logsGate = platformDeferred();
+      button(sr.logs.reload).click();
+      await settle();
+
+      expect(
+        element.querySelector('.pager'),
+        'the card lost its foot to the request it made',
+      ).not.toBeNull();
+      // And it names the page of the question being asked, not of the one being replaced.
+      expect(position()).toBe('1 / 3');
+
+      gateway.logsGate.release();
+      gateway.logsGate = null;
+      await settle();
+      expect(position()).toBe('1 / 3');
+    });
+
+    /**
+     * Standing, but not lying about what it can do: `loadMore` refuses outright while `load` is
+     * out, and a control that answers a press with nothing is worse than one that says it is busy.
+     */
+    it('offers no load-more it would refuse while a fresh answer is coming', async () => {
+      await render(true, true, stream(120));
+      expect(button(sr.logs.more.action).disabled).toBe(false);
+
+      gateway.logsGate = platformDeferred();
+      button(sr.logs.reload).click();
+      await settle();
+
+      expect(button(sr.logs.more.action).disabled, 'a control that does nothing').toBe(true);
+
+      gateway.logsGate.release();
+      gateway.logsGate = null;
+      await settle();
+      expect(button(sr.logs.more.action).disabled).toBe(false);
     });
   });
 

@@ -85,6 +85,56 @@ public sealed class DeployContractTests
         Read("docker-compose.prod.yml").ShouldContain("/health/ready", Case.Sensitive);
     }
 
+    /// <summary>
+    /// <c>Auth__AppUrl</c> reaches a deployed host, and <c>deploy.sh</c> will not run without the
+    /// value behind it.
+    ///
+    /// <para>
+    /// <b>The variable was in no deploy artefact at all until 2026-09-04</b> — only in
+    /// <c>appsettings.Development.json</c>, which a deployed host never reads. The admin invite
+    /// mail has no content but a link, so on <c>dev.teren.rs</c> with Resend live the platform
+    /// screen said <em>emailed</em>, nothing went out, and pressing send again retired the
+    /// previous attempt's token on its way past. The code half of that is fixed and tested
+    /// elsewhere (<c>AdminInviteJobTests</c>, <c>PlatformInvitePreconditionTests</c>); this is the
+    /// half that made it reachable, and it is exactly the class of defect this file exists for —
+    /// a coupling across three files that no other test reads.
+    /// </para>
+    /// <para>
+    /// It rides on <c>TEREN_APP_ORIGIN</c> rather than a variable of its own, because two settings
+    /// obliged to hold one URL is what makes the storage endpoints above the most expensive
+    /// mistake in that file, and here there is no configuration in which they could differ.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void The_app_origin_reaches_the_container_and_the_deploy_insists_on_it()
+    {
+        Read("docker-compose.prod.yml").ShouldContain(
+            "Auth__AppUrl: ${TEREN_APP_ORIGIN}",
+            Case.Sensitive,
+            "the production stack no longer passes Auth__AppUrl to the API. The admin invite mail "
+            + "is nothing but a set-password link, so a host without it cannot onboard an "
+            + "administrator: the invite is refused before a token is minted and the platform "
+            + "screen says emailed: false. That is honest and it is still a box nobody can be "
+            + "invited to. It was missing for the whole life of this file before 2026-09-04.");
+
+        var required = Between(Read("deploy.sh"), "required=(", ")");
+
+        required.ShouldContain(
+            "TEREN_APP_ORIGIN",
+            Case.Sensitive,
+            "deploy.sh will deploy without TEREN_APP_ORIGIN again. It stopped being a CORS detail "
+            + "when it became Auth__AppUrl as well; unset, the box comes up healthy and cannot "
+            + "invite anybody, which presents as a customer who never gets his mail.");
+
+        // Anti-vacuous, the same guard the device-token test above uses: a moved or renamed
+        // `required=(` block would make the assertion pass on an empty string.
+        required.ShouldContain("TEREN_DB_PASSWORD", Case.Sensitive);
+
+        // And it is documented where a founder filling the file in would actually look. The
+        // template is the only place that says what a value is FOR.
+        Read(".env.example").ShouldContain("Auth__AppUrl", Case.Sensitive);
+    }
+
     [Theory]
     [InlineData("Caddyfile")]
     [InlineData("Caddyfile.local")]

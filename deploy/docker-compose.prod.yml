@@ -36,6 +36,18 @@ x-api-environment: &api-environment
   Storage__Region: ${TEREN_STORAGE_REGION:-us-east-1}
   Storage__ForcePathStyle: ${TEREN_STORAGE_FORCE_PATH_STYLE:-true}
 
+  # Where the PWA is served from, and therefore where a set-password link points. Deliberately
+  # the SAME variable as the bucket-CORS origin rather than a second one of its own: two settings
+  # obliged to hold one URL is exactly the confusion the two storage endpoints above are famous
+  # for, and unlike those two there is no configuration in which these differ.
+  #
+  # It appeared in NO compose file and no env template until 2026-09-04, so a host with a relay
+  # would answer "invite sent" on the platform screen and send nothing — and pressing send again
+  # retired the previous link on the way past. The code refuses honestly now (nothing minted,
+  # `emailed` false), which turns a silent loss into a visible one; this is what makes the screen
+  # able to say yes. Without it, README §2 step 11 cannot be completed at all.
+  Auth__AppUrl: ${TEREN_APP_ORIGIN}
+
   # The demo device's token, and optional (ARCHITECTURE §12). Nothing is compiled into the PWA
   # bundle any more — D7/F9 removed it — so this matches no client by construction; it is the
   # credential `seed` hashes into one device row for the demo worker. Empty is a working host

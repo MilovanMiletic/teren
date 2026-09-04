@@ -155,9 +155,60 @@ the response body. Four `/platform/logs` items are **P11c**.
 is false on expiry — a ten-year credential to the demo company, in terminal scrollback on a public
 host. The alternative is a weekly re-seed or `/company` re-issue.
 
+### Section 2 closed — reviews AND fixes, 2026-09-04
+
+**All of it landed. Backend 1157/1157, PWA 1911/1911 in 94 files, `ng build` clean.**
+
+**P11d.** G1, G2, G3 closed and mutation-proven — and the proofs include **counter-mutations that
+reproduce each original finding**, which is the standard to hold: G1's mutation with `typeof(Project)`
+removed again goes **15/15 green**, and G2's rename-plus-read passes the main test and is caught
+**only** by the anti-vacuity half. That is what an anti-vacuity test buys, demonstrated rather than
+asserted. G3's old one-line assertion was re-added under the old ordering and **passed** — the
+demonstration of why the defect stayed green for so long.
+- **The config rides `TEREN_APP_ORIGIN` rather than a new `TEREN_APP_URL`.** One URL, one setting;
+  two settings obliged to hold the same value is the `Storage__Endpoint`/`PublicEndpoint` confusion
+  in that same file. `deploy.sh` now requires it on **both** targets, not just remote.
+- **The `Program.cs` check stays a WARNING, deliberately.** Refusing to boot would turn a setting
+  that blocks onboarding into a total outage of a running box at its next restart — strictly worse
+  than what it prevents. The defect was never that the host started; it was that the screen claimed
+  a send, and that is now impossible at the request. Reversible in one line.
+- *It also found two false claims in the previous agent's own comment — a `TEREN_APP_URL` that exists
+  nowhere in the repo, and "every message this product sends is a link" when the worker's activation
+  mail carries the code itself and works fine without one. **Overstating a start-up warning is the
+  same class of problem as the defect it warns about.***
+
+**P11b / P11c / P13.** The worker page's 401 hole closed the same way the account page's was; the
+four log-viewer items closed, with the triage tiles made genuinely honest rather than the comment
+made honest. **P13's first item was already closed by F15 and was verified by tracing the whole
+route** — server → list → Home → `entry-detail` → the wire → `confirm-page.ts:266` cutting the loop
+before the status switch — **and nothing was rebuilt**.
+- ***P13's third item turned out to be narrower than the note said.*** Otkaži does **not** discard a
+  kept take during `saving()` — it is disabled and the take becomes a draft. What is true: one tap
+  deletes with no confirmation **while recording**, and **after a failed save**, where the audio is
+  on disk. The founder's question is now one sentence: *should Otkaži ever ask first?*
+
+**A machine fact this file had wrong.** **Both** Docker engines now carry `teren_postgres-data` —
+`default` created 2026-09-03T11:37 (after the move), `desktop-linux` 2026-08-29 — and
+**Testcontainers connects to `default`**, which is where every test run happens, while the global
+context is `desktop-linux`. So "check the engine" no longer identifies the data; it only says which
+copy you are looking at. *Do not assume which is the founder's live data.*
+
+**And a lesson I had already been given.** Running `dotnet test` and `ng test` together produced **6
+failures across 5 files** on a tree that was green minutes earlier — the exact load-flakiness this
+repo documents — and 1903/1903 on a clean re-run. **The advice was in the file I had read, and I ran
+them in parallel anyway.** Never again on this machine.
+
 **Next**
-1. **Finish G3: fix (c) the three `deploy/` files, fix (d) the no-AppUrl test, then mutation-prove
-   G1, G2 and G3.** Nothing else is half-done.
+1. **ROADMAP C11 — the report becomes a day's account — and it goes BEFORE C9.**
+2. Non-gating, recorded not required: `NeedsAttention` cannot see a stalled pipeline;
+   `HangfireJobQueueDepth` has no coverage; ARCHITECTURE §6's `entry` block omits the two D8 columns;
+   `IMailSender`'s doc still claims the link comes back in the response body.
+3. Founder calls, now four: notify on disabling a `company_admin` or keep the narrowed wording; 3b
+   (refusing to report a superseded entry); the demo code's 3650-day lifetime; whether Otkaži should
+   confirm before deleting a take. Plus the Serbian ear on today's new strings.
+
+**Superseded next-list:**
+1. ~~**Finish G3: fix (c), fix (d), then mutation-prove G1, G2 and G3.**~~
 2. Then **P11c** (four `/platform/logs` items) and **P11b** (`worker-page.html`'s 401 hole — F6,
    already accepted, so it needs its own round).
 3. Then **C11 before C9**, per the scope cut.

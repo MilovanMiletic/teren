@@ -14,7 +14,7 @@ Marking done: tick the box and append `✅ 2026-09-04 — how it was proven` to 
 An item is done when it is *proven*, not when it is written — see `CLAUDE.md` on what "proven"
 means (a green suite is not a proof; a substituted seam is not the shipped code).
 
-**Progress: 3 / 42** (P10, P11, P12). *All review debt discharged 2026-09-04; P11b/P11c/P11d carry what it produced.* *(P11b added 2026-09-04 — see the note above on never renumbering.)*
+**Progress: 7 / 42** — **SECTION 2 (review debt) IS FULLY CLOSED, 2026-09-04**: P10, P11, P11b, P11c, P11d, P12, P13. Reviews *and* fixes, every fix mutation-proven. Backend **1157**, PWA **1911**. Next: **C11 before C9** (§3). *(P11b added 2026-09-04 — see the note above on never renumbering.)*
 
 ---
 
@@ -49,7 +49,8 @@ means (a green suite is not a proof; a substituted seam is not the shipped code)
       so there are **no mutation proofs**. The report's supersedes band, `AdminAccessNoticeJob`, the
       credential guard. *Start here.*
 - [x] **P11** ✅ 2026-09-04 — **ALL REVIEW DEBT DISCHARGED.** Backend: `a78cc05` accept-with-fixes (2 gating), D6 `8c166a4` accept-with-fixes (1 gating), D10 `dbc6a1f` accept, D8 accept. Frontend delta: accept. **Gating fixes are NOT all in — see P11d.**
-- [ ] **P11d** Finish the backend gating fixes. **G1 and G2 are in and green (1146 → 1150); G3's code is in but owes two halves:** fix (c) `Auth__AppUrl` into `deploy/.env.example`, `deploy/docker-compose.prod.yml` and `deploy/README.md` §2 (no `deploy/` file touched yet), and fix (d) a test asserting no token is superseded and no row minted on the no-AppUrl path. **Then mutation-prove G1, G2 and G3 — none of the three has a proof.** *G3 is a real defect: the invite screen says "sent" when nothing was sent, and "send again" retires the previous working link.* **This item's original list was wrong in three places** — corrected
+- [x] **P11d** ✅ 2026-09-04 — **G1, G2 and G3 all closed and mutation-proven, with counter-mutations reproducing each original finding.** G3's config rides the existing `TEREN_APP_ORIGIN` rather than a new variable (one URL, one setting — the `Storage__Endpoint`/`PublicEndpoint` confusion avoided), now required by `deploy.sh` on **both** targets. The `Program.cs` check stays a **warning**, deliberately: refusing to boot would turn an onboarding-blocking setting into a total outage of a running box at its next restart, and the defect was never that the host started — it was that the screen claimed a send, which is now impossible at the request. Backend 1150 → **1157**.
+- [x] ~~**P11d** (original)~~ Finish the backend gating fixes. **G1 and G2 are in and green (1146 → 1150); G3's code is in but owes two halves:** fix (c) `Auth__AppUrl` into `deploy/.env.example`, `deploy/docker-compose.prod.yml` and `deploy/README.md` §2 (no `deploy/` file touched yet), and fix (d) a test asserting no token is superseded and no row minted on the no-AppUrl path. **Then mutation-prove G1, G2 and G3 — none of the three has a proof.** *G3 is a real defect: the invite screen says "sent" when nothing was sent, and "send again" retires the previous working link.* **This item's original list was wrong in three places** — corrected
       2026-09-04 by both reviewers reading `JOURNAL.md` against `git log` instead of trusting the
       trackers. *A tracker is not evidence; the commit history is.*
       - **Backend, genuinely unreviewed:** **`a78cc05`** ("A phone can make a correction, and staff
@@ -66,7 +67,8 @@ means (a green suite is not a proof; a substituted seam is not the shipped code)
         in `a78cc05` that was), **F10's shipped form** was rebuilt and reviewed inside `a42adaf`
         (delta review: accept), and **`c97c0e1`** records its own accept-with-fixes plus a delta
         accept. F13's genuinely unreviewed rounds all live inside **`9e33b8f`**.
-- [ ] **P11c** Four non-gating items from the frontend delta review (2026-09-04), all on `/platform/logs`:
+- [x] **P11c** ✅ 2026-09-04 — all four closed, each mutation-proven. (a) `goToPage` captures the generation before the await; (b) the triage tiles are now genuinely withheld until an answer exists — **the claim was made true rather than the comment made honest**; (c) the pager left the loading branch, with `Učitaj još` disabled while a load is out and the page reset moved to the head of `load()`; (d) the four Serbian strings are listed for the founder. *Watch: the page-reset move is a visible behaviour change beyond the letter of (c) — a reload snaps the foot to page 1 immediately.*
+- [x] ~~**P11c** (original)~~ Four non-gating items from the frontend delta review (2026-09-04), all on `/platform/logs`:
       **(a)** `goToPage` re-applies a stale page after a discarded batch (`logs-page.ts:458-467`) — press
       › with a slow `loadMore` in flight, then tap a level chip, and the clamp lands on the *new* list's
       last page instead of page 1; fix is to capture `reads.current()` before the await. **(b)** the triage
@@ -76,7 +78,8 @@ means (a green suite is not a proof; a substituted seam is not the shipped code)
       vanishes on every keystroke-triggered refilter. **(d)** `[F]` four new Serbian strings are
       customer-facing and unheard by the founder: `capture.blocked.correctionUnknown.title/body`,
       `health.sites.omitted.title`, `health.reason.unrecognised`.
-- [ ] **P11b** `worker-page.html:103-114` has the **identical 401 hole** the frontend review found on
+- [x] **P11b** ✅ 2026-09-04 — `<app-sign-in-again />` in `worker-page.html`'s empty state, three specs on a fixture holding **both** an admin and a device session, mutation-proven. *Finding: the sentence that survives a 401 there is `company.reason.notSignedIn`, not `signedOut` — `listWorkers` reads the `admins.token()` **signal** inside the component's `effect`, so discarding the credential invalidates the effect and the screen re-loads with nothing in hand. Harmless today; it stops being harmless when a second signal read joins that synchronous head.*
+- [x] ~~**P11b** (original)~~ `worker-page.html:103-114` has the **identical 401 hole** the frontend review found on
       `/company/profile` — offers only "reload" when the session is gone. It is **F6, already
       reviewed and accepted**, so it was deliberately left out of the fix increment rather than
       edited under another increment's name. Needs its own small round.
@@ -84,7 +87,8 @@ means (a green suite is not a proof; a substituted seam is not the shipped code)
       totals in one card; `capture.blocked.correction.body` blames the network in the one case where
       retrying can never help; `health.reason.unrecognised` says the app did not recognise a code
       when the **server** is what did not.
-- [ ] **P13** Three items carried from the 2026-09-02 fix round: `superseded_after_send` is a dead
+- [x] **P13** ✅ 2026-09-04 — **(1) `superseded_after_send` is genuinely closed end to end and nothing was changed** — the whole route was traced, not the two symbols: server writes the reason and refuses the seal → the list withholds "Ispravi" → Home routes to the record, not the gate → `entry-detail` draws the notice and the single correction control → `supersedes_entry_id` reaches the wire → and the loop is cut at `confirm-page.ts:266`, which tests `supersededAfterSend` **before** the status switch. Residual, deliberate and documented: it reads the server's answer only, so offline the phone behaves as before. **(2)** No third screen — every other admin surface carries the control under `unconfirmed() && reasonKey()`, which a 401 satisfies there; the one control-less empty state left is the **foreman's** own profile, correctly, because his way back is a code at `/activate`. **(3)** Behaviour unchanged — see the founder question below.
+- [x] ~~**P13** (original)~~ Three items carried from the 2026-09-02 fix round: `superseded_after_send` is a dead
       end on the phone; no tappable route to `/login` after a 401 on a browser that also holds a
       device session; Otkaži during `saving()` discards a kept take.
 

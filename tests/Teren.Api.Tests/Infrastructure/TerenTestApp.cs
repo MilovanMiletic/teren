@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
 using Teren.Api.Auth;
 using Teren.Api.Jobs;
+using Teren.Api.Platform;
 using Teren.Core.Mail;
 using Teren.Core.Entities;
 using Teren.Core.Identity;
@@ -406,6 +407,37 @@ public sealed class TerenTestApp : IAsyncLifetime
 
         return (mail as CapturingMailSender)?.Last;
     }
+
+    /// <summary>
+    /// A <see cref="PlatformDirectory"/> built by hand, so a test can choose what
+    /// <c>Auth:AppUrl</c> is.
+    ///
+    /// <para>
+    /// <b>Constructed rather than resolved, and that is forced.</b> The host reads that setting
+    /// through <c>IOptions&lt;AuthOptions&gt;</c>, which is a singleton bound once at start-up
+    /// from <c>appsettings.Development.json</c> — so there is no way to make it empty for one test
+    /// against the container's copy. The same reasoning <see cref="RunInviteJobAsync"/> records
+    /// for driving the job directly: a real identity context, the real class, and the one
+    /// dependency the test is about supplied explicitly.
+    /// </para>
+    /// <para>
+    /// <paramref name="invites"/> and the mail sender default to the fixture's own recorders, so
+    /// a test can assert what the directory <em>asked for</em> and not merely what it answered.
+    /// That distinction is the whole point here: <c>emailed: false</c> is also what an unqueued
+    /// invite looks like on this host, and only the recorder can tell "refused" from "queued and
+    /// declined".
+    /// </para>
+    /// </summary>
+    public PlatformDirectory CreatePlatformDirectory(
+        TerenIdentityDbContext identity,
+        string appUrl = "https://app.teren.test",
+        IMailSender? sender = null,
+        IInviteQueue? invites = null) =>
+        new(identity,
+            sender ?? Mail,
+            invites ?? Invites,
+            Options.Create(new AuthOptions { AppUrl = appUrl }),
+            Queue);
 
     /// <summary>
     /// Run the worker's activation-code mail job by hand and hand back the message it produced, or

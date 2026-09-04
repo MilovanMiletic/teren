@@ -642,21 +642,37 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", defaultValue: true))
     }
 
     // Auth:AppUrl, said here because a relay without it is the half-configured host that cost a
-    // customer his only way in. Every mail this product sends to a human is a link — the admin
-    // invite and the worker's activation code both — so with a relay and no app URL, an invite is
-    // refused before it is minted (PlatformDirectory.Invite, AdminInviteJob) and `emailed` is
-    // false on the screen. That is honest and it is still a host that cannot onboard anybody, so
-    // it is worth one loud line. deploy.sh refuses to deploy without TEREN_APP_URL; this is the
-    // net under a host brought up some other way.
+    // customer his only way in. The admin invite mail has no content but a link, so with a relay
+    // and no app URL the invite is refused before a token is minted (PlatformDirectory.Invite,
+    // AdminInviteJob) and `emailed` is false on the screen. That is honest, and it is still a
+    // host on which nobody can be onboarded, so it is worth one loud line. Since 2026-09-04
+    // deploy.sh requires TEREN_APP_ORIGIN on both targets and docker-compose.prod.yml maps it to
+    // this setting; this is the net under a host brought up some other way.
+    //
+    // NOT the worker's activation mail, which carries the code itself and merely omits the "get
+    // the app here" line when there is no origin (WorkerCodeMailJob). Saying "every mail" here
+    // would be a start-up line that overstates its own finding.
+    //
+    // **A warning and not a refusal, decided 2026-09-04.** The temptation is real — a silent
+    // default is what caused the defect — but the host's posture is settled and this does not
+    // qualify: only the storage settings stop start-up, because they are the ones with no honest
+    // degraded behaviour. Missing AI keys park an entry with a reason; a missing relay stops a
+    // report at delivery_not_configured; and a missing app URL now refuses an invite visibly,
+    // mints nothing and retires nothing. The money path — record, transcribe, confirm, PDF, email
+    // the client — is untouched by it. Refusing to boot would convert a setting that blocks
+    // onboarding into a total outage of a running box at its next restart, which is a strictly
+    // worse failure than the one being prevented, and the defect was never that the host started:
+    // it was that the screen claimed a send. That claim is now impossible at the request.
     var authOptions = app.Services.GetRequiredService<IOptions<AuthOptions>>().Value;
 
     if (reportDelivery.IsConfigured && string.IsNullOrWhiteSpace(authOptions.AppUrl))
     {
         jobsLogger.LogWarning(
-            "A mail relay is configured but Auth:AppUrl is not, so every message this product "
-            + "sends is a link with nowhere to point: admin invites are refused before a token is "
-            + "minted and the platform screen reports them as not emailed. Set Auth:AppUrl "
-            + "(TEREN_APP_URL) to the origin the PWA is served from.");
+            "A mail relay is configured but Auth:AppUrl is not. The admin invite mail is nothing "
+            + "but a link, so no administrator can be invited on this host: the invite is refused "
+            + "before a token is minted and the platform screen reports it as not emailed. Set "
+            + "Auth:AppUrl (TEREN_APP_ORIGIN) to the origin the PWA is served from. Reports and "
+            + "the worker activation mail are unaffected.");
     }
 
     // The cron string, not the configured interval: this line states what the scheduler was

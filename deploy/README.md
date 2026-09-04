@@ -46,6 +46,7 @@ are the detail.
  6. Azure Speech key, Anthropic key                     → §3 rows 6-7
  7. cp deploy/.env.example deploy/.env and fill it in    → §5
       TEREN_DOMAIN=dev.teren.rs   TEREN_DEVICE_TOKEN=   (empty, deliberately)
+      TEREN_APP_ORIGIN=https://dev.teren.rs             (step 11 does not work without it)
  8. deploy/deploy.sh                                     → §4
  9. Apply the bucket CORS rules                          → §7      (managed storage is not MinIO)
 10. Your own super_admin account, ON THE HOST (the image has no SDK, so not `dotnet run`):
@@ -55,7 +56,9 @@ are the detail.
       ...then type the password when it asks. It is read from stdin, never argv, so it
       never reaches `ps`, a shell history, or the Hangfire job store.
 11. Sign in at https://dev.teren.rs/login, create the customer's company and its admin
-      from /platform — the invite reaches him by email, which is what Resend is for
+      from /platform — the invite reaches him by email, which is what Resend is for.
+      The screen tells you whether it went: `emailed` is false when there is no relay or
+      no TEREN_APP_ORIGIN, and then nothing was minted and nobody was written to → §5
 12. Three GitHub secrets, then push a trivial commit and read the Actions notice → §4
 ```
 
@@ -195,7 +198,7 @@ value; `deploy/.env` is gitignored (`.gitignore` covers `.env` and `.env.*`, exc
 `.env.example`). **No secret ever enters the repository.** If one does, it is burned — rotate it,
 do not just delete the line.
 
-Three things in that file are worth calling out.
+Four things in that file are worth calling out.
 
 ### `Storage__PublicEndpoint` — the trap that looks like a CORS bug
 
@@ -230,6 +233,30 @@ at start-up, phones activate at `/auth/activate` with a username and a one-time 
 about the app depends on it. If you do set it, generate it (`openssl rand -hex 32`) — a value
 anyone else knows is a working credential to the demo company — and it must be at least 16
 characters.
+
+### `TEREN_APP_ORIGIN` is also the invite link, and its absence used to lie
+
+The admin invite mail has no content but a link. `Auth__AppUrl` is where that link points, and it
+is fed from `TEREN_APP_ORIGIN` — the same value the bucket CORS rules use (§7), deliberately one
+variable rather than two obliged to agree.
+
+Until 2026-09-04 it was in **no** compose file and no env template; it existed only in
+`appsettings.Development.json`, which a deployed host never reads. So on `dev.teren.rs` as
+configured, with Resend live:
+
+- `/platform` said **`emailed: true`** and no mail went out,
+- the job minted a token, saved it, and *then* discovered it had no URL to put round it,
+- and because minting supersedes every live link for that user on its way past, pressing **send
+  again** retired the previous attempt's link as well.
+
+A customer's administrator could therefore never get in, and the only trace was one warning in the
+job log. Both halves are fixed: the precondition is asked at the request, so the screen answers
+`emailed: false` instead of inventing a send; and the job checks it *before* it mints, so nothing
+is written and no working link is destroyed. `deploy.sh` now refuses to run without the value on
+either target, and `DeployContractTests` fails if it leaves the compose file again.
+
+`Auth__AppUrl` is **not** required for the worker's activation-code mail — that message carries the
+code itself and simply omits the "get the app here" line when there is no origin.
 
 ### The Hangfire dashboard
 

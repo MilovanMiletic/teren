@@ -307,6 +307,28 @@ export class LogsPage {
    */
   protected readonly nothingLoaded = computed(() => this.unconfirmed() && this.count() === 0);
 
+  /**
+   * **There is nothing to summarise** — the tiles and the summary card are withheld.
+   *
+   * Wider than {@link nothingLoaded} by exactly one state, and that state is the one every visit
+   * passes through: the **first read, still in flight**. `unconfirmed` is false while a request is
+   * out, so `nothingLoaded` was false, so `GREŠKE 0 · UPOZORENJA 0 · UČITANO 0` stood in the
+   * largest type on the screen for the length of the load — *nothing is wrong*, said before
+   * anything had been asked. That is the one conclusion a log viewer must never invite, and the
+   * template already claimed the tiles were withheld for it.
+   *
+   * Read the other way round it is one sentence: **no lines, and either a read outstanding or a
+   * read that failed.** A read that came back with nothing is *not* in it — `UČITANO 0` over an
+   * answered, empty stream is a fact, and it is the answer he came for.
+   *
+   * Rows already on screen keep their tiles while the next question loads: those lines really are
+   * loaded, the numbers really do describe them, and blanking the card on every keystroke would
+   * take a claim off the screen that was still true.
+   */
+  protected readonly nothingToSummarise = computed(
+    () => this.count() === 0 && (this.loading() || this.status() !== 'ok'),
+  );
+
   /** Which sentence stands where the lines would be. Three facts, never conflated. */
   protected readonly emptyKey = computed(() => {
     if (this.nothingLoaded()) {
@@ -381,6 +403,15 @@ export class LogsPage {
     // A batch that was in flight for the previous question is no longer wanted, and the control
     // it belongs to has to stop saying "loading" whether that batch is discarded or not.
     this.loadingMore.set(false);
+    /*
+     * **Back to the top now, not when the answer lands.** This used to sit at the foot of the
+     * method, which was invisible while the pager was inside the loading branch — the foot was
+     * simply gone. It stands at every state now, so leaving the page number alone would have it
+     * naming a page of the answer being replaced ("Strana 4" over a skeleton) for the length of
+     * every refilter. A filter change is a different question and page 4 of the last one describes
+     * nothing about it, at either moment; the only difference is which of them the reader sees.
+     */
+    this.wantedPage.set(1);
 
     const result = await this.platform.listLogs(this.batch());
 
@@ -397,9 +428,6 @@ export class LogsPage {
     // Nothing stays open across a reload: the row a chevron belonged to may not be in the new
     // answer at all, and an id that survives by coincidence would open a different line.
     this.opened.set(new Set());
-    // …and back to the top. A filter change is a different question, and page 4 of the last answer
-    // describes nothing about this one.
-    this.wantedPage.set(1);
     this.loading.set(false);
   }
 
@@ -457,9 +485,25 @@ export class LogsPage {
    */
   protected async goToPage(page: number): Promise<void> {
     const wanted = Math.max(1, Math.trunc(page));
+    /*
+     * **Captured before the await, like every other read on this screen** (`ui/latest-request.ts`).
+     *
+     * A page number is a fact about *one* list. The reader is on the last loaded page and presses
+     * ›, so a slow `loadMore` goes out; he taps a level chip, `load` claims a new generation and
+     * puts him back on page 1. The batch is correctly discarded — and then this method, still
+     * suspended in the middle of the request he abandoned, wrote page 6 over it. There is no page
+     * 6 of the filtered stream, so the clamp put him on its *last* page: a filter change that
+     * silently landed him at the bottom of the new answer, on the screen whose whole job is saying
+     * what is going on. `current()` and not `claim()` — walking a page is part of the question
+     * already outstanding, not a new one.
+     */
+    const read = this.reads.current();
 
     if (wanted > this.loadedPages() && this.hasMore()) {
       await this.loadMore();
+      if (!this.reads.holds(read)) {
+        return;
+      }
     }
 
     this.wantedPage.set(wanted);

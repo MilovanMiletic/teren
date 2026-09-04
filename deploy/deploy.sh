@@ -182,11 +182,18 @@ docker info >/dev/null 2>&1 || die "Docker is not running."
 # TEREN_DEVICE_TOKEN is deliberately NOT here. Since D7/F9 the PWA bundle carries no token at
 # all, so this value is only the *demo device's* server-side credential; empty means "provision no
 # demo device", which is a working host, not a broken one (see the note further down).
-required=(TEREN_STACK TEREN_DOMAIN TEREN_DB_NAME TEREN_DB_USER TEREN_DB_PASSWORD
+#
+# TEREN_APP_ORIGIN moved into this list on 2026-09-04, and out of the remote-only block below.
+# It stopped being a CORS detail the day it also became Auth__AppUrl: without it a host with a
+# working relay cannot invite an administrator, because the mail is nothing but a link. The
+# server declines honestly rather than pretending, so this would not present as a crash — it
+# would present as a customer who never receives his invite. A local rehearsal needs it for the
+# same reason, and the generated .env.local has always set it.
+required=(TEREN_STACK TEREN_DOMAIN TEREN_APP_ORIGIN TEREN_DB_NAME TEREN_DB_USER TEREN_DB_PASSWORD
           TEREN_STORAGE_ENDPOINT TEREN_STORAGE_ACCESS_KEY TEREN_STORAGE_SECRET_KEY
           TEREN_STORAGE_BUCKET)
 if [ "$target" = "remote" ]; then
-  required+=(TEREN_SSH_HOST TEREN_REMOTE_DIR TEREN_APP_ORIGIN)
+  required+=(TEREN_SSH_HOST TEREN_REMOTE_DIR)
 fi
 missing=()
 for v in "${required[@]}"; do

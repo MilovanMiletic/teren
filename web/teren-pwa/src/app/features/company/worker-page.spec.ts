@@ -9,6 +9,7 @@ import { TranslocoTestingModule } from '@jsverse/transloco';
 import { COMPANY_GATEWAY } from '../../core/company/company-gateway';
 import { MockCompanyGateway } from '../../core/company/mock-company-gateway';
 import { ADMIN_SESSION_STORAGE_KEY, AdminSession } from '../../core/session/admin-session';
+import { SESSION_STORAGE_KEY, Session } from '../../core/session/session';
 import { describeClick } from '../../core/telemetry/action-descriptor';
 import { ActionLogService } from '../../core/telemetry/action-log.service';
 import { ACTIONS } from '../../core/telemetry/actions';
@@ -31,6 +32,24 @@ const ADMIN: AdminSession = {
   signedInAt: '2026-08-31T08:00:00.000Z',
 };
 
+/**
+ * **The founder's own browser**: a phone activated as a device *and* signed in as an owner.
+ *
+ * `session-link.ts` deliberately renders nothing for it — a foreman has no password — which is
+ * what made the 401 state on this screen a dead end in exactly the population `company-link.ts`
+ * names as the one this surface is built for. Same fixture, same reason, as `account-page.spec.ts`.
+ */
+const DEVICE: Session = {
+  token: 'trn_d_a-real-device-token',
+  deviceId: '11111111-1111-1111-1111-111111111111',
+  userId: '22222222-2222-2222-2222-222222222222',
+  username: 'zoran.jovanovic',
+  displayName: 'Zoran Jovanović',
+  companyId: '33333333-3333-3333-3333-333333333333',
+  companyName: 'Vodoinstal Petrović d.o.o.',
+  activatedAt: '2026-08-30T06:00:00.000Z',
+};
+
 describe('WorkerPage', () => {
   let fixture: ComponentFixture<WorkerPage>;
   let element: HTMLElement;
@@ -45,10 +64,21 @@ describe('WorkerPage', () => {
     people = await routeUrlFor(CompanyPage);
   });
 
-  async function render(workerId = MockCompanyGateway.ZORAN_ID, signedIn = true): Promise<void> {
+  /**
+   * @param onADevice whether this browser **also** holds a device session — the founder's own,
+   *   and the case in which the chrome offers no sign-in control of its own.
+   */
+  async function render(
+    workerId = MockCompanyGateway.ZORAN_ID,
+    signedIn = true,
+    onADevice = false,
+  ): Promise<void> {
     localStorage.clear();
     if (signedIn) {
       localStorage.setItem(ADMIN_SESSION_STORAGE_KEY, JSON.stringify(ADMIN));
+    }
+    if (onADevice) {
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(DEVICE));
     }
 
     TestBed.resetTestingModule();
@@ -345,6 +375,70 @@ describe('WorkerPage', () => {
       expect(text()).toContain('Poslovođa nije mogao da se pročita');
       expect(text()).toContain('Server trenutno ne odgovara.');
       expect(text()).not.toContain('Taj poslovođa nije u vašoj firmi');
+    });
+
+    /**
+     * **The same 401 hole `/company/profile` had, on the screen that hands out credentials.**
+     *
+     * A 401 on the worker read makes `CompanyService.classify` discard the admin credential, so
+     * `worker()` is null and `missing()` is false: this branch. Its sentence is
+     * `company.reason.signedOut` — *"Prijavite se ponovo."* — and until now the only control under
+     * it reloaded, which re-reads with the credential that was just thrown away and prints the
+     * same sentence again.
+     *
+     * The chrome does not rescue it, which is what makes this the ordinary case rather than an
+     * edge: `session-link.ts` renders nothing for a browser holding a device session, and that
+     * browser is the owner-foreman's own phone.
+     */
+    it('leaves a way back to the form after a 401, on the browser whose chrome offers none', async () => {
+      gateway.workersError = httpError(401);
+      await render(MockCompanyGateway.ZORAN_ID, true, true);
+
+      expect(text()).toContain(sr.company.detail.unavailable.title);
+      // **The credential really is gone** — that is the state the control exists for, and it is
+      // asserted rather than assumed, because everything below follows from it.
+      expect(localStorage.getItem(ADMIN_SESSION_STORAGE_KEY)).toBeNull();
+      /*
+       * And the sentence is the *second* one, which is worth writing down. `CompanyService`'s
+       * token check is a signal read made inside this component's `effect`, so discarding the
+       * credential re-runs the effect and the screen re-reads with nothing in hand: `signedOut` is
+       * painted, then `notSignedIn` replaces it. Both say "sign in", both take this branch, and
+       * `SignInAgain` is offered under either — but a spec pinning the first one would be pinning
+       * a frame that is already gone.
+       */
+      expect(text()).toContain(sr.company.reason.notSignedIn);
+      // The chrome is silent, by design, because this browser is also a phone.
+      expect(element.querySelectorAll('app-session-link button')).toHaveLength(0);
+
+      const empty = element.querySelector('.state--empty');
+      expect(empty?.querySelector('.sign-in'), 'no way back to the sign-in form').not.toBeNull();
+      expect(empty?.textContent).toContain(sr.common.signIn);
+    });
+
+    /** And it really goes there, rather than being a second dead control beside a dead sentence. */
+    it('sends him to the sign-in form when he presses it', async () => {
+      gateway.workersError = httpError(401);
+      await render(MockCompanyGateway.ZORAN_ID, true, true);
+
+      (element.querySelector('.state--empty .sign-in') as HTMLButtonElement).click();
+
+      expect(router.navigate).toHaveBeenCalledWith(['/login']);
+    });
+
+    /**
+     * The other half of the same property: this empty state is **not** always a sign-in prompt.
+     *
+     * A 500 leaves the credential alone, so there is nothing to sign in again with and offering it
+     * would send him round a loop — the reload is the remedy that helps. `SignInAgain` decides
+     * that for itself; this pins that the decision is still being made.
+     */
+    it('offers no sign-in when the credential is intact and only the server was unwell', async () => {
+      gateway.workersError = httpError(500);
+      await render(MockCompanyGateway.ZORAN_ID, true, true);
+
+      expect(element.querySelector('.state--empty')).not.toBeNull();
+      expect(element.querySelector('.sign-in')).toBeNull();
+      expect(button('Osveži')).toBeTruthy();
     });
 
     it('sends nothing at all when this browser holds no admin credential', async () => {

@@ -142,16 +142,32 @@ before being presented as done; gating fixes go back to the implementer and are 
   **Rebuild with `--no-incremental` after any restore**, or `touch` the file, and verify the restore
   with sha256. *This is the second way a green suite lies here — the first being a mutation left in
   the tree by a stopped agent — and unlike that one, this one fools an agent who is being careful.*
-- **This machine (2026-09-04, the founder's new Linux laptop) also has TWO Docker engines** —
-  `default` and `desktop-linux`, with the context on `desktop-linux`, where `teren_postgres-data`
-  and `teren_minio-data` live. **The two-engine trap is not old-laptop-only**: check
+- **This machine (2026-09-04, the founder's new Linux laptop) also has TWO Docker engines, and
+  BOTH now carry `teren_postgres-data` and `teren_minio-data` — so "check the engine" no longer
+  identifies the data, it only tells you which copy you are looking at.** Measured 2026-09-04:
+  `default` holds one created **2026-09-03T11:37** (after the machine move) and `desktop-linux` one
+  created **2026-08-29**; the global context is `desktop-linux`, **but Testcontainers connects to
+  `unix:///var/run/docker.sock`, i.e. `default`** — which is where every backend test run actually
+  happens. Neither stack was running when this was measured. **Do not assume which copy is the
+  founder's live data: ask him, or inspect row counts before touching either.** *The older note
+  below said his data lives on `desktop-linux`; that is now at best half true, and the trap cuts
+  both ways.* **The two-engine trap is not old-laptop-only**: check
   `docker context show` before believing a loss report, and never run `docker compose up` to
   "recover" a stack that looks missing. Containers being stopped is the normal state here.
   **The "disk at 98 %" and `df -h /c` advice below is DEAD on this machine** — it is at **8 % of
   938 GB, 31 GB RAM, 20 cores** — and a full backend run costs under two minutes.
-- **Suites re-verified by execution on this machine 2026-09-04: backend 1142/1142 (1m 57s), PWA
-  1878/1878 in 93 files.** Both exactly the figures on record, so nothing detectable was left behind
-  by the machine move.
+- **Suites, re-verified by execution on the combined tree 2026-09-04 after the whole review round:
+  backend 1157/1157, PWA 1911/1911 in 94 files**, `ng build` zero warnings, `dotnet build` clean
+  apart from the pre-existing `CS9107` (at `DemoIdentitySeedTests.cs:404`, **not** `:400` as this
+  file used to say). Session start was 1142 / 1878.
+- **THE REVIEW DEBT IS FULLY DISCHARGED (2026-09-04) — reviews *and* fixes.** Every increment in the
+  identity/M0 set has been read by a reviewer and every gating fix is in and mutation-proven.
+  `PRODUCTION-CHECKLIST.md` §2 is closed (P10–P13). **The next work is ROADMAP C11, and it goes
+  before C9.**
+- **Never run `dotnet test` and `ng test` at the same time on this machine.** The backend suite's
+  ~1000 scratch databases are exactly the load that makes vitest time out in unrelated specs: it
+  produced **6 failures across 5 files** on a tree that was green minutes earlier, and 1903/1903 on a
+  clean re-run. *The advice was already written down here and I ran them in parallel anyway.*
 
 - **THE SCOPE WAS CUT HARD ON 2026-09-04, and the biggest change is that THE REPORT IS NO LONGER A
   FORM.** PROJECT.md §11's two top entries are authoritative. The report body becomes AI-tidied prose

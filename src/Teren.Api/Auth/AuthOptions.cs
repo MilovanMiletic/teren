@@ -40,9 +40,25 @@ public sealed class AuthOptions : IValidatableObject
     public TimeSpan PasswordTokenLifetime { get; set; } = TimeSpan.FromHours(48);
 
     /// <summary>
-    /// Where a worker gets the app, put into the share-text message when it is set. Empty on a
-    /// developer's machine, and the message simply leaves the line out — "download it from
-    /// (blank)" is worse than no line at all.
+    /// The origin the PWA is served from. <b>Two callers, and they do not have the same
+    /// tolerance for it being empty</b> — which is worth stating here, because this doc comment
+    /// described only the forgiving one while the strict one was silently broken.
+    ///
+    /// <para>
+    /// <b>Optional</b> for the worker's activation message (<c>WorkerCodeMailJob</c>,
+    /// <c>GET /api/workers/{id}/share-text</c>): the payload is the code, and the message simply
+    /// leaves the "download it from" line out rather than printing "download it from (blank)".
+    /// </para>
+    /// <para>
+    /// <b>Required</b> for the admin invite (<c>AdminInviteJob</c>,
+    /// <c>PlatformDirectory.Invite</c>): that mail has no content but a set-password link, so with
+    /// this empty the invite is refused before a token is minted and <c>emailed</c> is false on
+    /// the screen. Deliberately not part of <see cref="Validate"/> — an empty value is legitimate
+    /// on a developer's machine and on any host that is not onboarding anybody, and the cost of
+    /// getting it wrong is now visible rather than silent. It is
+    /// <c>TEREN_APP_ORIGIN</c> in <c>deploy/.env</c>, required by <c>deploy.sh</c> since
+    /// 2026-09-04; it was in no deploy artefact before that, which is how the defect shipped.
+    /// </para>
     /// </summary>
     public string AppUrl { get; set; } = string.Empty;
 

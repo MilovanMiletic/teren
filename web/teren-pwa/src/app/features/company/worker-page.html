@@ -109,6 +109,23 @@
         <button type="button" class="btn btn--tertiary state__action" (click)="reload()">
           {{ t('company.reload') }}
         </button>
+        <!--
+          **The other half of the 401 hole, on the screen that hands out credentials.**
+
+          `CompanyService.classify` signs the admin out on a 401, so `worker()` is null, `missing()`
+          is false, and this is the branch a 401 lands on. The sentence above it is then
+          `company.reason.signedOut` — *"Prijavite se ponovo."* — over a button that reloads, which
+          re-reads with the credential that was just discarded and prints the same sentence again.
+
+          The chrome cannot stand in for it: `session-link.ts` renders **nothing** when a device
+          session exists, and the owner-foreman's own phone is exactly that browser — the founder's,
+          which is the demo phone and the office console at once. The notice on the *loaded* branch
+          above already carries this control; this branch is the one a 401 can actually reach.
+
+          It renders itself away whenever an admin credential really is there, so a 503 — which
+          leaves the session alone — still offers only the reload, which is the remedy that helps.
+        -->
+        <app-sign-in-again />
       </div>
     } @else if (worker(); as man) {
       @if (unconfirmed() && reasonKey(); as reason) {

@@ -156,13 +156,24 @@ public sealed class AdminInviteJobTests(TerenTestApp app) : ApiTestBase(app)
     }
 
     /// <summary>
-    /// With no <c>Auth:AppUrl</c> there is no address to send anyone to, so the job says so rather
-    /// than mailing a bare token nobody can use. The token it minted is left to expire; that is
-    /// deliberately not cleaned up, because a 48-hour unusable row is a smaller problem than a
-    /// second write path over credentials.
+    /// With no <c>Auth:AppUrl</c> there is no address to send anyone to, so the job declines
+    /// <b>before it writes anything</b>.
+    ///
+    /// <para>
+    /// <b>This assertion used to be <c>sender.Sent.ShouldBeEmpty()</c> and nothing else, which is
+    /// why the defect lived here undetected.</b> "Nothing was sent" was true under the old
+    /// ordering too — the job minted a token, saved it, and only then discovered <c>LinkFor</c>
+    /// had nothing to build from. The row and the audit line are what tell the two orderings
+    /// apart, so they are what this test asks about.
+    /// </para>
+    /// <para>
+    /// The doc comment on the old version described the leftover row as deliberate ("left to
+    /// expire"). It was not deliberate; it was the visible end of a write that also superseded
+    /// whatever came before it — see the test below.
+    /// </para>
     /// </summary>
     [Fact]
-    public async Task Sends_nothing_when_there_is_nowhere_to_send_him()
+    public async Task Writes_nothing_at_all_when_there_is_nowhere_to_send_him()
     {
         var admin = await GivenAdminAsync("bezurl@gradnja.rs");
         var sender = new CapturingMailSender();
@@ -170,6 +181,80 @@ public sealed class AdminInviteJobTests(TerenTestApp app) : ApiTestBase(app)
         await App.RunInviteJobAsync(admin.Id, admin.Id, Ct, sender, appUrl: string.Empty);
 
         sender.Sent.ShouldBeEmpty();
+
+        await using var identity = App.CreateIdentityDbContext();
+
+        (await identity.PasswordTokens.CountAsync(t => t.UserId == admin.Id, Ct)).ShouldBe(
+            0,
+            "a token was minted for a mail that was never going to be sent. Nobody will ever be "
+            + "told this credential exists, and minting it is what supersedes the one that came "
+            + "before.");
+
+        (await identity.AdminAudits.CountAsync(
+            a => a.SubjectId == admin.Id
+                && a.Action == AdminAuditActions.PasswordTokenIssued, Ct))
+            .ShouldBe(
+                0,
+                "the trail says a credential was issued for this account and none was. On the one "
+                + "screen §13.6 exists to make readable, that is a false positive in the direction "
+                + "that costs an investigation.");
+    }
+
+    /// <summary>
+    /// <b>The founder's actual scenario, and the expensive half.</b> A host with a relay and no
+    /// <c>Auth:AppUrl</c> — which was every deployed host, because the variable was in no compose
+    /// file and no env template until 2026-09-04 — answers <em>emailed</em> on the platform screen
+    /// and sends nothing. So the obvious thing to do is press send again.
+    ///
+    /// <para>
+    /// Under the old ordering that second press <em>retired the first link</em>:
+    /// <c>IssueAsync</c> supersedes every live token for the user on its way past, and it ran
+    /// before the check that would refuse. If the first invite had gone out from a correctly
+    /// configured host and the setting was later lost, the customer's administrator was locked out
+    /// of an account he had a valid link for, and the only trace was a warning in a job log.
+    /// </para>
+    /// <para>
+    /// A live link is only destroyed by a send that <em>replaces</em> it. That is the invariant,
+    /// and nothing in the schema enforces it (there is no <c>ux_password_token_live</c>).
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Does_not_retire_a_live_link_when_there_is_nowhere_to_send_him()
+    {
+        var admin = await GivenAdminAsync("izgubljenurl@gradnja.rs");
+        var sender = new CapturingMailSender();
+
+        // A host that was configured correctly: the link goes out and is live in his inbox.
+        await App.RunInviteJobAsync(admin.Id, admin.Id, Ct, sender);
+        sender.Sent.Count.ShouldBe(1, "the arrange did not send the first invite");
+        var live = InviteMail.TokenIn(sender.Sent[0].TextBody);
+
+        Guid firstTokenId;
+        await using (var before = App.CreateIdentityDbContext())
+        {
+            firstTokenId = (await before.PasswordTokens.SingleAsync(t => t.UserId == admin.Id, Ct))
+                .Id;
+        }
+
+        // …and the same host after Auth:AppUrl went missing. "Send again" must be a no-op.
+        await App.RunInviteJobAsync(admin.Id, admin.Id, Ct, sender, appUrl: string.Empty);
+
+        sender.Sent.Count.ShouldBe(1, "the second run sent a second mail");
+
+        await using var identity = App.CreateIdentityDbContext();
+        var tokens = await identity.PasswordTokens.Where(t => t.UserId == admin.Id)
+            .ToListAsync(Ct);
+
+        var kept = tokens.ShouldHaveSingleItem();
+        kept.Id.ShouldBe(firstTokenId, "a second token was minted for a mail nobody sent");
+        kept.SupersededAt.ShouldBeNull(
+            "the link in his inbox was retired by an invite that went nowhere. He now holds the "
+            + "only credential he was ever given and it no longer works, and nothing on any "
+            + "screen says so.");
+        kept.ConsumedAt.ShouldBeNull();
+
+        // And it is still the link he was actually sent, not merely *a* live row.
+        kept.TokenHash.ShouldBe(CredentialTokens.Hash(live));
     }
 
     /// <summary>

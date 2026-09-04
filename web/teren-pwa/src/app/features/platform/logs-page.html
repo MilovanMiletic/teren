@@ -58,11 +58,13 @@
       "of the lines loaded" for the same reason the count strip below does — this screen does not
       know a total and must never look as though it does.
 
-      And, like the count strip below, not drawn at all when there is no answer to summarise:
-      "GREŠKE 0" over a stream that could not be read says *nothing is wrong*, in the largest type
-      on the screen, which is the one conclusion a log viewer must never invite.
+      And not drawn at all when there is no answer to summarise — a read that failed, **or one
+      that has not come back yet**: "GREŠKE 0" over a stream nobody has says *nothing is wrong*, in
+      the largest type on the screen, which is the one conclusion a log viewer must never invite.
+      `nothingToSummarise` carries the whole of that condition; this comment used to describe it
+      and the code only covered the failure half.
     -->
-    @if (viewport.expanded() && !nothingLoaded()) {
+    @if (viewport.expanded() && !nothingToSummarise()) {
       <dl class="card stats wide">
         <div class="stats__cell">
           <dt class="t-label">{{ t('logs.summary.loaded') }}</dt>
@@ -92,10 +94,12 @@
       the moment a tile says a number he does not like. `UČITANO` rides with them as plain text —
       it is a fact, not a question, and nothing here is ever a total (see the class comment).
 
-      Not drawn when there is no answer to summarise: "GREŠKE 0" over a stream that could not be
-      read says *nothing is wrong*, which is the one conclusion a log viewer must never invite.
+      Not drawn when there is no answer to summarise, the first load included: "GREŠKE 0" over a
+      stream nobody has says *nothing is wrong*, which is the one conclusion a log viewer must
+      never invite — and it is worse here than at expanded, because on a phone these two tiles are
+      the whole answer he came for.
     -->
-    @if (!viewport.expanded() && !nothingLoaded()) {
+    @if (!viewport.expanded() && !nothingToSummarise()) {
       <div
         class="card stats stats--tight wide"
         role="group"
@@ -595,26 +599,36 @@
         to draw no numbers and take its next control from `hasNext` instead. "Strana 3" is a fact;
         "3 / 7" would be an invention.
       -->
-      @if (!loading()) {
-        <app-table-pager
-          variant="steps"
-          [page]="page()"
-          [pageCount]="pageCount()"
-          [hasNext]="hasNextPage()"
-          (goTo)="goToPage($event)"
-        >
-          @if (hasMore()) {
-            <button
-              type="button"
-              class="btn btn--row btn--tertiary"
-              [disabled]="loadingMore()"
-              (click)="loadMore()"
-            >
-              {{ loadingMore() ? t('logs.more.loading') : t('logs.more.action') }}
-            </button>
-          }
-        </app-table-pager>
-      }
+      <!--
+        **Outside the loading branch, like the header and the filters above it.** It was inside,
+        so the card's whole foot — the two arrows and the "Učitaj još" between them — vanished on
+        every keystroke-triggered refilter and came back a moment later, which is the same defect
+        as the funnels that were torn down by the request they made, one row further down.
+
+        The controls are inert rather than absent while a fresh answer is coming: "Učitaj još" is
+        disabled, because `loadMore` refuses outright while `load` is out and a control that
+        answers a press with nothing is worse than one that says it is busy. The pager itself
+        draws only when there is somewhere to go (`ui/table-pager.ts`), so on the first load —
+        no rows, no cursor — there is still nothing here at all.
+      -->
+      <app-table-pager
+        variant="steps"
+        [page]="page()"
+        [pageCount]="pageCount()"
+        [hasNext]="hasNextPage()"
+        (goTo)="goToPage($event)"
+      >
+        @if (hasMore()) {
+          <button
+            type="button"
+            class="btn btn--row btn--tertiary"
+            [disabled]="loadingMore() || loading()"
+            (click)="loadMore()"
+          >
+            {{ loadingMore() ? t('logs.more.loading') : t('logs.more.action') }}
+          </button>
+        }
+      </app-table-pager>
     </section>
   </div>
 </div>
